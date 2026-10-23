@@ -1,0 +1,40 @@
+"""Shared fixtures. Test clips are generated on first run (tests/media)."""
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from vsc.core import encoders, ffmpeg_bin
+
+MEDIA = Path(__file__).parent / "media"
+
+
+def _make(name: str, args: list[str]) -> Path:
+    p = MEDIA / name
+    if not p.exists():
+        MEDIA.mkdir(exist_ok=True)
+        subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-y", *args, str(p)], check=True)
+    return p
+
+
+@pytest.fixture(scope="session")
+def h264_clip() -> Path:
+    return _make("h264_240.mp4", [
+        "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=240000/1001:d=4",
+        "-f", "lavfi", "-i", "sine=f=440:d=4", "-c:v", "libx264", "-preset", "veryfast",
+        "-g", "24", "-bf", "2", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+
+
+@pytest.fixture(scope="session")
+def hevc10_clip() -> Path:
+    return _make("hevc10_240.mp4", [
+        "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=240:d=2", "-c:v", "libx265",
+        "-preset", "ultrafast", "-x265-params", "keyint=30:log-level=error",
+        "-pix_fmt", "yuv420p10le"])
+
+
+@pytest.fixture(scope="session")
+def encoder_status():
+    return encoders.detect()

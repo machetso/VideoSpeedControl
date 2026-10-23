@@ -59,7 +59,7 @@ Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
 
 ## Milestones
 1. Core: probe, frame map, lossless retime, re-encode, codecs, CLI, tests ✅
-2. GUI basics: import, clip list, info panel, output settings
+2. GUI basics: import, clip list, info panel, output settings ✅
 3. Timeline + trimming
 4. Test encode, comparison view, time estimates
 5. Interpolation: RIFE integration

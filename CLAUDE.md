@@ -3,10 +3,10 @@
 Read SCOPE.md for the agreed feature set and milestone status.
 
 ## Resume here
-- Status 2026-10-23: milestone 1 done (commit d91c4e4), 36 tests green.
-- Next: milestone 2 – GUI basics in `vsc/gui/` (import + drag & drop, clip list with codec info,
-  info panel, per-clip output settings with "apply to all", tooltips from `formats.py`).
-  Encoder detection and frame scans must run off the UI thread.
+- Status 2026-10-23: milestone 2 (GUI basics) implemented, 40 tests green (36 core + 4 GUI),
+  committed.
+- Next: milestone 3 – timeline + trimming (thumbnails, playhead, keyframe markers, in/out;
+  mode A snaps to keyframes). Clip already carries `frames` (FrameMap); trims go into `Job.trim`.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
 ## Setup
@@ -16,7 +16,8 @@ Read SCOPE.md for the agreed feature set and milestone status.
   not installed system-wide). Run things with `.venv/bin/python`.
 - FFmpeg: `python tools/fetch_ffmpeg.py [linux|windows]` → `vendor/ffmpeg/<platform>-x64/`.
   `vsc/core/ffmpeg_bin.py` prefers the bundled copy, then `VSC_FFMPEG_DIR`, then PATH.
-- Tests: `.venv/bin/python -m pytest tests -q` (test clips are generated into tests/media).
+- Tests: `.venv/bin/python -m pytest tests -q` (test clips are generated into tests/media;
+  shared fixtures in tests/conftest.py).
 - CLI: `.venv/bin/python -m vsc info CLIP`, `... encode CLIP -o DIR --fps 25 [--codec x264 ...]`.
 
 ## Layout
@@ -27,7 +28,14 @@ Read SCOPE.md for the agreed feature set and milestone status.
     ~/.config/VideoSpeedControl/encoders.json per FFmpeg version)
   - `job.py` – OutputSettings (per clip), Trim, Job (mode decision, sizes, formats)
   - `command.py` – Job → ffmpeg args; `runner.py` – execution, progress, cancel
-- `vsc/gui/` – PySide6 (milestone 2+).
+- `vsc/gui/` – PySide6. Start with `.venv/bin/python -m vsc.gui [CLIPS...]`.
+  - `clips.py` – Clip (path, info, frames, settings, `ui` dict for widget-only choices such as
+    resolution preset / aspect) and the table model
+  - `workers.py` – QThreadPool tasks: probe + frame scan per clip, encoder detection
+  - `info_panel.py`, `settings_panel.py` (widgets → OutputSettings → `_sync()` back to widgets),
+    `main_window.py` (clip table on top, info | settings below)
+  - Combo item data must not be a `Fraction` (Qt turns it into a float) – stored as `str`.
+  - GUI tests run headless (`QT_QPA_PLATFORM=offscreen`, set in tests/test_gui.py).
 
 ## Hard-won details
 - Lossless retime uses `-itsscale` with a 1e-11 upward bias (ffmpeg truncates scaled timestamps).

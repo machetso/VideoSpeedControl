@@ -12,6 +12,12 @@ python3 -m venv .venv
 .venv/bin/python tools/fetch_ffmpeg.py          # downloads the bundled FFmpeg
 ```
 
+## GUI
+
+```bash
+.venv/bin/python -m vsc.gui [clip.mp4 ...]       # or drag & drop files into the window
+```
+
 ## Command line (core, for testing)
 
 ```bash

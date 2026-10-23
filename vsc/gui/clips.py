@@ -1,0 +1,149 @@
+"""The list of imported clips: one Clip per file, shown in a QTableView."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtGui import QColor
+
+from ..core.job import Job, Mode, OutputSettings
+from ..core.probe import FrameMap, MediaInfo
+
+
+class Status(Enum):
+    PROBING = "Reading…"
+    SCANNING = "Scanning frames…"
+    READY = "Ready"
+    ERROR = "Error"
+
+
+MODE_SHORT = {
+    Mode.RETIME: "A – lossless retime",
+    Mode.REENCODE: "Re-encode",
+    Mode.DROP: "B – frame selection",
+    Mode.INTERPOLATE: "C – interpolation",
+}
+
+
+@dataclass
+class Clip:
+    path: Path
+    status: Status = Status.PROBING
+    info: MediaInfo | None = None
+    frames: FrameMap | None = None
+    error: str = ""
+    settings: OutputSettings = field(default_factory=OutputSettings)
+    # Widget choices that OutputSettings cannot express (e.g. which resolution preset or
+    # aspect ratio was picked). Copied together with the settings by "apply to all".
+    ui: dict = field(default_factory=dict)
+
+    @property
+    def job(self) -> Job | None:
+        return Job(self.info, self.settings, frames=self.frames) if self.info else None
+
+
+def fmt_rate(r) -> str:
+    return f"{float(r):.6g}"
+
+
+def fmt_duration(seconds: float) -> str:
+    m, s = divmod(seconds, 60)
+    h, m = divmod(int(m), 60)
+    return f"{h}:{m:02d}:{s:06.3f}" if h else f"{m}:{s:06.3f}"
+
+
+def chroma_label(chroma: str) -> str:
+    return ":".join(chroma) if len(chroma) == 3 else chroma
+
+
+class ClipModel(QAbstractTableModel):
+    COLUMNS = ("File", "Codec", "Resolution", "FPS", "Frames", "Duration", "Format",
+               "Output", "Status")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.clips: list[Clip] = []
+
+    # ------------------------------------------------------------------ Qt API
+
+    def rowCount(self, parent=QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self.clips)
+
+    def columnCount(self, parent=QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self.COLUMNS)
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return self.COLUMNS[section]
+        return None
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        clip = self.clips[index.row()]
+        col = self.COLUMNS[index.column()]
+        if role == Qt.DisplayRole:
+            return self._text(clip, col)
+        if role == Qt.ToolTipRole:
+            if col == "File":
+                return str(clip.path)
+            if clip.status == Status.ERROR:
+                return clip.error
+        if role == Qt.ForegroundRole:
+            if clip.status == Status.ERROR:
+                return QColor("#c0392b")
+            if col == "FPS" and clip.info and clip.info.possibly_vfr:
+                return QColor("#d35400")
+        return None
+
+    @staticmethod
+    def _text(clip: Clip, col: str) -> str:
+        if col == "File":
+            return clip.path.name
+        if col == "Status":
+            return clip.status.value
+        i = clip.info
+        if i is None:
+            return ""
+        if col == "Codec":
+            return f"{i.codec} {i.profile}" if i.profile else i.codec
+        if col == "Resolution":
+            w, h = i.display_size
+            return f"{w}×{h}"
+        if col == "FPS":
+            return fmt_rate(i.fps) + (" (VFR?)" if i.possibly_vfr else "")
+        if col == "Frames":
+            return str(clip.frames.count if clip.frames else i.frame_count)
+        if col == "Duration":
+            return fmt_duration(i.duration)
+        if col == "Format":
+            return f"{chroma_label(i.chroma)} {i.bit_depth}-bit"
+        if col == "Output":
+            return MODE_SHORT[clip.job.mode]
+        return ""
+
+    # ------------------------------------------------------------------ editing
+
+    def add(self, path: Path) -> Clip | None:
+        """Append a clip; returns None if the file is already in the list."""
+        if any(c.path == path for c in self.clips):
+            return None
+        row = len(self.clips)
+        self.beginInsertRows(QModelIndex(), row, row)
+        clip = Clip(path)
+        self.clips.append(clip)
+        self.endInsertRows()
+        return clip
+
+    def remove_rows(self, rows: list[int]) -> None:
+        for row in sorted(set(rows), reverse=True):
+            self.beginRemoveRows(QModelIndex(), row, row)
+            del self.clips[row]
+            self.endRemoveRows()
+
+    def clip_changed(self, clip: Clip) -> None:
+        if clip in self.clips:
+            row = self.clips.index(clip)
+            self.dataChanged.emit(self.index(row, 0), self.index(row, len(self.COLUMNS) - 1))
