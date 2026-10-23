@@ -201,6 +201,10 @@ class SettingsPanel(QGroupBox):
                 child.setEnabled(usable)
         self._sync()
 
+    def refresh(self) -> None:
+        """Re-read the clip, e.g. after its trim changed."""
+        self._sync()
+
     def set_encoders(self, status: dict[str, EncoderStatus]) -> None:
         self.encoders = status
         self._sync()

@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
-from ..core.job import Job, Mode, OutputSettings
+from ..core.job import Job, Mode, OutputSettings, Trim
 from ..core.probe import FrameMap, MediaInfo
 
 
@@ -38,10 +38,14 @@ class Clip:
     # Widget choices that OutputSettings cannot express (e.g. which resolution preset or
     # aspect ratio was picked). Copied together with the settings by "apply to all".
     ui: dict = field(default_factory=dict)
+    trim: Trim = field(default_factory=Trim)          # per clip, never copied to other clips
+    thumbs: list = field(default_factory=list)        # [(frame index, QImage)], filled in background
+    playhead: int = 0
+    removed: bool = False                             # tells background tasks to stop
 
     @property
     def job(self) -> Job | None:
-        return Job(self.info, self.settings, frames=self.frames) if self.info else None
+        return Job(self.info, self.settings, self.trim, self.frames) if self.info else None
 
 
 def fmt_rate(r) -> str:
@@ -115,7 +119,10 @@ class ClipModel(QAbstractTableModel):
         if col == "FPS":
             return fmt_rate(i.fps) + (" (VFR?)" if i.possibly_vfr else "")
         if col == "Frames":
-            return str(clip.frames.count if clip.frames else i.frame_count)
+            job = clip.job
+            if clip.trim.start or clip.trim.end is not None:
+                return f"{job.source_frame_count} of {job.total_frames}"
+            return str(job.total_frames)
         if col == "Duration":
             return fmt_duration(i.duration)
         if col == "Format":
@@ -140,6 +147,7 @@ class ClipModel(QAbstractTableModel):
     def remove_rows(self, rows: list[int]) -> None:
         for row in sorted(set(rows), reverse=True):
             self.beginRemoveRows(QModelIndex(), row, row)
+            self.clips[row].removed = True
             del self.clips[row]
             self.endRemoveRows()
 

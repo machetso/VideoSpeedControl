@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from vsc.core import encoders, ffmpeg_bin, formats
+from vsc.core import encoders, ffmpeg_bin, formats, preview
 from vsc.core.job import Job, Mode, OutputSettings, Trim, output_path
 from vsc.core.probe import probe, scan_frames
 from vsc.core.runner import Runner
@@ -168,3 +168,52 @@ def test_unsupported_format_falls_back(h264_clip, encoder_status):
     """SVT-AV1 is 4:2:0 only – asking for 4:4:4 picks the closest possible format."""
     job = _job(h264_clip, codec="svtav1", chroma="444", depth=10)
     assert job.output_format(encoder_status["svtav1"].pix_fmts)[:2] == ("420", 10)
+
+
+# ---------------------------------------------------------------- trimming rules
+
+def test_trim_rules(h264_clip):
+    copy_job = _job(h264_clip)                                  # mode A: keyframes every 24
+    assert copy_job.snaps_to_keyframes
+    assert copy_job.trim_with_in(30) == Trim(24, None)
+    copy_job.trim = Trim(24, None)
+    assert copy_job.trim_with_out(500) == Trim(24, 504)         # last frame 500 → end 504
+    copy_job.trim = Trim(24, 504)
+    assert copy_job.trim_with_in(600) == Trim(600, None)        # in after out drops out
+    assert copy_job.trim_with_out(5) == Trim(0, 24)             # out before in resets in
+
+    enc = _job(h264_clip, codec="x264", trim=Trim(30, 61))      # frame-exact
+    assert not enc.snaps_to_keyframes
+    assert enc.trim_with_in(31) == Trim(31, 61)
+    assert enc.trim_with_out(enc.total_frames + 5) == Trim(30, None)
+    assert enc.snapped_trim() == Trim(24, 72)
+
+
+# ---------------------------------------------------------------- preview frames
+
+def _decoded_frame(path: Path, index: int, size) -> bytes:
+    """Reference: decode from the start and pick frame `index` by number."""
+    res = subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-i", str(path), "-vf",
+                          f"select=eq(n\\,{index}),scale={size[0]}:{size[1]}:flags=bilinear,setsar=1",
+                          "-frames:v", "1", "-c:v", "bmp", "-pix_fmt", "bgr24",
+                          "-f", "image2pipe", "-"], capture_output=True, check=True)
+    return res.stdout
+
+
+@pytest.mark.parametrize("index", [0, 30, 501, 958])
+def test_grab_exact_frame(h264_clip, index):
+    info = probe(h264_clip)
+    fm = scan_frames(h264_clip, info.stream_index)
+    size = preview.fit_size(info, 320, 320)
+    assert size == (320, 180)
+    assert preview.grab_frame(info, fm, index, size) == _decoded_frame(h264_clip, index, size)
+
+
+def test_thumbnails_are_keyframes(h264_clip):
+    info = probe(h264_clip)
+    fm = scan_frames(h264_clip, info.stream_index)
+    picks = preview.thumbnail_frames(fm, 10)
+    assert len(picks) == 10 and all(p in fm.keyframes for p in picks)
+    size = (160, 90)
+    fast = preview.grab_frame(info, fm, 30, size, accurate=False)
+    assert fast == preview.grab_frame(info, fm, 24, size)

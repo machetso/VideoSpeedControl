@@ -98,3 +98,45 @@ def test_apply_to_all_and_per_clip(window):
 
     window._select(second)
     assert panel.clip is second and panel.fps_combo.currentData() == "25"
+
+
+def test_preview_frame_and_thumbnails(qapp, window):
+    panel, clip = window.preview, window.current_clip()
+    panel.seek(30)
+    _wait(qapp, lambda: panel._shown and panel._shown[1] == 30)
+    assert not panel.view.image.isNull()
+    assert "Frame 30 of 958" in panel.position.text()
+    _wait(qapp, lambda: all(clip.thumbs))
+    assert all(t[0] in clip.frames.keyframes for t in clip.thumbs)
+    panel.step_key(1)
+    assert clip.playhead == 48
+    panel.step_key(-1)
+    assert clip.playhead == 24
+
+
+def test_trim_snapping_and_modes(window):
+    panel, settings = window.preview, window.settings
+    first, second = window.model.clips
+    panel.seek(30)
+    panel.set_in(first.playhead)                      # mode A → keyframe 24
+    assert first.trim.start == 24 and "moved to frame 24" in panel.note.text()
+    panel.set_out(500)                                # last frame 500 → GOP ends at 504
+    assert first.trim.end == 504
+    assert window.model.data(window.model.index(0, 4)) == "480 of 959"
+    assert "480 → " in settings.summary.text()
+
+    _pick(settings.codec_combo, "x264")               # frame-exact from now on
+    panel.set_in(30)
+    assert first.trim.start == 30 and not panel.note.text()
+
+    _pick(settings.codec_combo, "copy")               # back to A: trim is off the keyframes
+    assert "not on keyframes" in settings.summary.text()
+    assert panel.snap_button.isVisibleTo(panel)
+    panel.snap_button.click()
+    assert (first.trim.start, first.trim.end) == (24, 504)
+    assert not panel.snap_button.isVisibleTo(panel)
+
+    settings.apply_button.click()                     # trims are per clip
+    assert second.trim.start == 0 and second.trim.end is None
+    panel.clear_trim()
+    assert first.trim.end is None

@@ -1,4 +1,4 @@
-"""Main window: clip table on top, clip info and output settings side by side below."""
+"""Main window: clip table on top; below, preview / clip info tabs next to the output settings."""
 from __future__ import annotations
 
 import copy
@@ -7,12 +7,13 @@ from pathlib import Path
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QMainWindow,
-                               QSplitter, QTableView, QToolBar)
+                               QSplitter, QTableView, QTabWidget, QToolBar)
 
 from ..core.formats import CODECS_BY_KEY
 from .clips import Clip, ClipModel, Status
 from .info_panel import InfoPanel
 from .settings_panel import SettingsPanel
+from .timeline import PreviewPanel
 from . import workers
 
 VIDEO_FILTER = ("Video files (*.mp4 *.mov *.mkv *.avi *.mts *.m2ts *.mxf *.webm *.m4v *.wmv "
@@ -39,18 +40,23 @@ class MainWindow(QMainWindow):
         self.table.selectionModel().currentRowChanged.connect(self._current_changed)
 
         self.info = InfoPanel()
+        self.preview = PreviewPanel()
+        self.preview.trim_changed.connect(self._trim_changed)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.preview, "Preview && trim")
+        self.tabs.addTab(self.info, "Clip info")
         self.settings = SettingsPanel()
         self.settings.changed.connect(self._settings_changed)
         self.settings.apply_to_all.connect(self._apply_to_all)
 
         bottom = QSplitter(Qt.Horizontal)
-        bottom.addWidget(self.info)
+        bottom.addWidget(self.tabs)
         bottom.addWidget(self.settings)
-        bottom.setSizes([550, 750])
+        bottom.setSizes([780, 520])
         split = QSplitter(Qt.Vertical)
         split.addWidget(self.table)
         split.addWidget(bottom)
-        split.setSizes([250, 600])
+        split.setSizes([170, 680])
         self.setCentralWidget(split)
 
         toolbar = QToolBar("Clips")
@@ -67,11 +73,18 @@ class MainWindow(QMainWindow):
         self.clip_signals.probed.connect(self._probed)
         self.clip_signals.scanned.connect(self._scanned)
         self.clip_signals.failed.connect(self._failed)
+        self.thumb_signals = workers.ThumbnailSignals(self)
+        self.thumb_signals.thumbnail.connect(self._thumbnail)
         self.encoder_signals = workers.EncoderSignals(self)
         self.encoder_signals.done.connect(self._encoders_done)
         self.encoder_signals.failed.connect(
             lambda msg: self.statusBar().showMessage(f"Encoder detection failed: {msg}"))
         workers.start(workers.EncoderDetector(self.encoder_signals))
+
+    def closeEvent(self, event) -> None:
+        for clip in self.model.clips:
+            clip.removed = True          # stops thumbnail loaders
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------ import
 
@@ -124,6 +137,8 @@ class MainWindow(QMainWindow):
         clip = self._clip(path)
         if clip:
             clip.frames, clip.status = frames, Status.READY
+            clip.thumbs = [None] * workers.THUMB_COUNT
+            workers.start(workers.ThumbnailLoader(clip, self.thumb_signals))
             self._update(clip)
 
     def _failed(self, path, message: str) -> None:
@@ -131,6 +146,11 @@ class MainWindow(QMainWindow):
         if clip:
             clip.status, clip.error = Status.ERROR, message
             self._update(clip)
+
+    def _thumbnail(self, clip: Clip, slot: int, index: int, image) -> None:
+        if not clip.removed:
+            clip.thumbs[slot] = (index, image)
+            self.preview.thumbnail_arrived(clip)
 
     def _encoders_done(self, status) -> None:
         n = sum(st.available for st in status.values())
@@ -157,6 +177,7 @@ class MainWindow(QMainWindow):
         clip = self.current_clip()
         self.info.show_clip(clip)
         self.settings.set_clip(clip)
+        self.preview.set_clip(clip)
 
     def _update(self, clip: Clip) -> None:
         self.model.clip_changed(clip)
@@ -167,6 +188,13 @@ class MainWindow(QMainWindow):
         clip = self.current_clip()
         if clip:
             self.model.clip_changed(clip)
+            self.preview.refresh()      # mode may have changed → snapping, keyframe markers
+
+    def _trim_changed(self) -> None:
+        clip = self.current_clip()
+        if clip:
+            self.model.clip_changed(clip)
+            self.settings.refresh()
 
     def _apply_to_all(self) -> None:
         source = self.current_clip()
@@ -178,5 +206,5 @@ class MainWindow(QMainWindow):
                 clip.ui = copy.deepcopy(source.ui)
                 self.model.clip_changed(clip)
         self.statusBar().showMessage(
-            f"Settings of {source.path.name} applied to {len(self.model.clips) - 1} other clip(s)",
+            f"Output settings (not the trim) of {source.path.name} applied to {len(self.model.clips) - 1} other clip(s)",
             5000)

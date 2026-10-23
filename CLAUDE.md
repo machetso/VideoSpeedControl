@@ -3,10 +3,10 @@
 Read SCOPE.md for the agreed feature set and milestone status.
 
 ## Resume here
-- Status 2026-10-23: milestone 2 (GUI basics) implemented, 40 tests green (36 core + 4 GUI),
-  committed.
-- Next: milestone 3 – timeline + trimming (thumbnails, playhead, keyframe markers, in/out;
-  mode A snaps to keyframes). Clip already carries `frames` (FrameMap); trims go into `Job.trim`.
+- Status 2026-10-23: milestone 2 committed (ef30c15). Milestone 3 (timeline + trimming)
+  implemented and committed, 48 tests green.
+- Next: milestone 4 – test encode of N frames from the playhead, side-by-side / wipe comparison,
+  measured speed → time estimates. Clip.playhead and Clip.trim already exist.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
 ## Setup
@@ -28,12 +28,18 @@ Read SCOPE.md for the agreed feature set and milestone status.
     ~/.config/VideoSpeedControl/encoders.json per FFmpeg version)
   - `job.py` – OutputSettings (per clip), Trim, Job (mode decision, sizes, formats)
   - `command.py` – Job → ffmpeg args; `runner.py` – execution, progress, cancel
+  - `preview.py` – one frame as BMP via ffmpeg (exact seek for the playhead, keyframe-only
+    seek for thumbnails); trim rules live in `Job.trim_with_in/out`, `snapped_trim`
 - `vsc/gui/` – PySide6. Start with `.venv/bin/python -m vsc.gui [CLIPS...]`.
   - `clips.py` – Clip (path, info, frames, settings, `ui` dict for widget-only choices such as
     resolution preset / aspect) and the table model
   - `workers.py` – QThreadPool tasks: probe + frame scan per clip, encoder detection
   - `info_panel.py`, `settings_panel.py` (widgets → OutputSettings → `_sync()` back to widgets),
-    `main_window.py` (clip table on top, info | settings below)
+    `timeline.py` (frame view, thumbnail timeline with keyframe ticks + draggable in/out,
+    transport, shortcuts ←/→, Shift+←/→, Home/End, I/O), `main_window.py` (clip table on
+    top; below, tabs "Preview & trim" / "Clip info" next to the settings)
+  - Clip.trim / Clip.playhead are per clip and never copied by "apply to all".
+  - Workers emit via `_emit()` – the window may be gone; Clip.removed stops thumbnail loaders.
   - Combo item data must not be a `Fraction` (Qt turns it into a float) – stored as `str`.
   - GUI tests run headless (`QT_QPA_PLATFORM=offscreen`, set in tests/test_gui.py).
 

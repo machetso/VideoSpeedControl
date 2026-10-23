@@ -116,16 +116,53 @@ class Job:
                 f"{float(self.lossless_speed):.4g}× at {float(s.fps):.5g} fps")
         if s.resize != "source":
             reasons.append("Resizing requires re-encoding")
-        if self.frames and not self._trim_on_keyframes():
+        if self.frames and not self.trim_on_keyframes():
             reasons.append("Trim points are not on keyframes")
         return reasons
 
-    def _trim_on_keyframes(self) -> bool:
+    def trim_on_keyframes(self) -> bool:
         fm = self.frames
         start, end = self.trim.start, self.trim.end
         if start and start not in fm.keyframes:
             return False
         return end is None or end >= fm.count or end in fm.keyframes
+
+    # ------------------------------------------------------------------ trimming
+
+    @property
+    def total_frames(self) -> int:
+        return self.frames.count if self.frames else self.info.frame_count
+
+    @property
+    def snaps_to_keyframes(self) -> bool:
+        """Mode A can only cut at keyframes (see KEYFRAME_TRIM_REASON)."""
+        return self.mode == Mode.RETIME and self.frames is not None
+
+    def trim_with_in(self, frame: int) -> Trim:
+        """Trim with a new in-point (first frame); the out-point is dropped if it is before."""
+        frame = max(0, min(frame, self.total_frames - 1))
+        if self.snaps_to_keyframes:
+            frame = self.frames.snap_in(frame)
+        end = self.trim.end
+        return Trim(frame, None if end is not None and end <= frame else end)
+
+    def trim_with_out(self, last: int) -> Trim:
+        """Trim with a new out-point; `last` is the last frame to include."""
+        total = self.total_frames
+        end = max(1, min(last + 1, total))
+        if self.snaps_to_keyframes:
+            end = self.frames.snap_out(end)
+        start = self.trim.start if end > self.trim.start else 0
+        return Trim(start, None if end >= total else end)
+
+    def snapped_trim(self) -> Trim:
+        """The current trim moved to the nearest keyframes / GOP boundaries."""
+        fm = self.frames
+        start = fm.snap_in(self.trim.start)
+        end = fm.snap_out(self.trim.end) if self.trim.end is not None else None
+        if end is not None and end <= start:
+            end = fm.keyframe_after(start)
+        return Trim(start, None if end is None or end >= fm.count else end)
 
     # ------------------------------------------------------------------ frame counts
 
