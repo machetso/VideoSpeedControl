@@ -2,7 +2,16 @@
 
 Read SCOPE.md for the agreed feature set and milestone status.
 
+## Resume here
+- Status 2026-10-23: milestone 1 done (commit d91c4e4), 36 tests green.
+- Next: milestone 2 – GUI basics in `vsc/gui/` (import + drag & drop, clip list with codec info,
+  info panel, per-clip output settings with "apply to all", tooltips from `formats.py`).
+  Encoder detection and frame scans must run off the UI thread.
+- Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
+
 ## Setup
+- Git: local repo, branch main. `.venv/`, `vendor/`, `tests/media/` are not committed –
+  recreate with the setup steps below (tests regenerate their media).
 - venv: `.venv/` (created with `--without-pip` + get-pip.py, because python3-venv/ensurepip is
   not installed system-wide). Run things with `.venv/bin/python`.
 - FFmpeg: `python tools/fetch_ffmpeg.py [linux|windows]` → `vendor/ffmpeg/<platform>-x64/`.
