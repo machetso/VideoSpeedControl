@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from vsc.core import encoders, ffmpeg_bin, formats, preview
+from vsc.core import encoders, ffmpeg_bin, formats, preview, testencode
 from vsc.core.job import Job, Mode, OutputSettings, Trim, output_path
 from vsc.core.probe import probe, scan_frames
 from vsc.core.runner import Runner
@@ -217,3 +217,44 @@ def test_thumbnails_are_keyframes(h264_clip):
     size = (160, 90)
     fast = preview.grab_frame(info, fm, 30, size, accurate=False)
     assert fast == preview.grab_frame(info, fm, 24, size)
+
+
+# ---------------------------------------------------------------- test encode / estimates
+
+def test_test_encode_and_estimate(h264_clip, hevc10_clip, encoder_status):
+    job = _job(h264_clip, codec="x264", preset="ultrafast", speed=Fraction(1, 20),
+               interpolation="blend", resize="exact", width=640, height=360)
+    supported = encoder_status["x264"].pix_fmts
+    assert testencode.test_trim(job, 955, 20) == Trim(949, 959)        # shifted back at the end
+    t = testencode.TestEncode(job, playhead=100, n_frames=20, supported_pix_fmts=supported)
+    res = t.run()
+    try:
+        assert res.ok and res.frames == 21 and res.source_start == 100  # 10 src → 21 out
+        assert res.bytes > 0 and res.fps > 0
+        assert res.source_frame(0) == 100 and res.source_frame(20) == 110
+        assert _stream(res.output)[0]["nb_read_frames"] == "21"
+        est = testencode.estimate(job, res, [])
+        assert est.exact and est.seconds > 0
+        assert est.bytes == round(res.bytes / 21 * job.output_frame_count)
+
+        job.settings.quality = 30                                     # stale → no estimate
+        assert testencode.estimate(job, res, []) is None
+        job.settings.quality = None
+        other = _job(hevc10_clip, codec="x264", preset="ultrafast", speed=Fraction(1, 20),
+                     interpolation="blend", resize="exact", width=640, height=360)
+        derived = testencode.estimate(other, None, [res])
+        assert derived and not derived.exact
+    finally:
+        testencode.discard(res)
+    assert not res.workdir.exists()
+
+
+def test_test_encode_copy_mode(h264_clip):
+    job = _job(h264_clip, fps=Fraction(50))
+    t = testencode.TestEncode(job, playhead=30, n_frames=30)
+    assert (t.job.trim.start, t.job.trim.end) == (24, 72)              # whole GOPs
+    res = t.run()
+    try:
+        assert res.ok and res.frames == 48
+    finally:
+        testencode.discard(res)

@@ -395,7 +395,7 @@ class SettingsPanel(QGroupBox):
                                   f"{c.description}\n\nNot available: {reason}", False))
         return items
 
-    def _supported(self, clip: Clip) -> list[str] | None:
+    def supported_pix_fmts(self, clip: Clip) -> list[str] | None:
         codec = clip.job.codec
         if codec and self.encoders and codec.key in self.encoders:
             return self.encoders[codec.key].pix_fmts or None
@@ -412,7 +412,7 @@ class SettingsPanel(QGroupBox):
                 w.setEnabled(False)
                 w.setToolTip("Lossless retime keeps the source format.")
             return
-        allowed = formats.allowed_formats(codec, job.profile, self._supported(clip))
+        allowed = formats.allowed_formats(codec, job.profile, self.supported_pix_fmts(clip))
         chromas = sorted({c for c, _ in allowed}, key=CHROMA_ORDER.get)
         depths = sorted({d for _, d in allowed})
         src_rank = CHROMA_ORDER.get(info.chroma, 3)
@@ -453,7 +453,7 @@ class SettingsPanel(QGroupBox):
         if job.codec:
             w, h = job.output_size()
             try:
-                chroma, depth, pix = job.output_format(self._supported(clip))
+                chroma, depth, pix = job.output_format(self.supported_pix_fmts(clip))
                 fmt = f"{chroma_label(chroma)} {depth}-bit ({pix})"
             except ValueError as e:
                 fmt = f"<span style='color:#c0392b'>{e}</span>"

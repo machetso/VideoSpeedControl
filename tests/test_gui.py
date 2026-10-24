@@ -82,7 +82,7 @@ def test_chroma_options_follow_codec(window):
     _pick(panel.profile_combo, "4444")
     chroma = [panel.chroma_combo.itemData(i) for i in range(panel.chroma_combo.count())]
     assert chroma == [None, "444"]
-    assert clip.job.output_format(panel._supported(clip))[:2] == ("444", 10)
+    assert clip.job.output_format(panel.supported_pix_fmts(clip))[:2] == ("444", 10)
 
 
 def test_apply_to_all_and_per_clip(window):
@@ -103,7 +103,7 @@ def test_apply_to_all_and_per_clip(window):
 def test_preview_frame_and_thumbnails(qapp, window):
     panel, clip = window.preview, window.current_clip()
     panel.seek(30)
-    _wait(qapp, lambda: panel._shown and panel._shown[1] == 30)
+    _wait(qapp, lambda: panel.fetcher.shown and panel.fetcher.shown[1] == 30)
     assert not panel.view.image.isNull()
     assert "Frame 30 of 958" in panel.position.text()
     _wait(qapp, lambda: all(clip.thumbs))
@@ -140,3 +140,40 @@ def test_trim_snapping_and_modes(window):
     assert second.trim.start == 0 and second.trim.end is None
     panel.clear_trim()
     assert first.trim.end is None
+
+
+def test_test_encode_and_estimates(qapp, window):
+    settings, panel = window.settings, window.test_panel
+    first, second = window.model.clips
+    _pick(settings.codec_combo, "x264")
+    _pick(settings.preset_combo, "ultrafast")
+    settings.speed_custom.setChecked(True)
+    settings.speed_spin.setValue(0.05)
+    window.preview.seek(200)
+    panel.frames_spin.setValue(20)
+    panel.run_button.click()
+    assert first.testing and window.model.data(window.model.index(0, 8)) == "testing…"
+    _wait(qapp, lambda: not first.testing)
+    test = first.test
+    assert test.ok and test.frames == 21 and test.source_start == 200
+    assert "frames/s" in panel.result.text() and "Estimate for the whole clip" in panel.result.text()
+    est = window.model.data(window.model.index(0, 8))
+    assert est and not est.startswith("≈")
+    assert "without estimate" in window.batch_label.text()      # second clip: other settings
+
+    # comparison: output frame 10 ↔ source frame 205 (21 output frames from 10 source frames)
+    _pick(panel.mode_combo, "wipe")
+    panel.slider.setValue(10)
+    assert "source frame 205" in panel.frame_label.text()
+    _wait(qapp, lambda: panel.view.source is not None and panel.view.output is not None)
+
+    settings.apply_button.click()                                 # same settings → derived
+    assert window.model.data(window.model.index(1, 8)).startswith("≈")
+    assert "without estimate" not in window.batch_label.text()
+
+    settings.quality_spin.setValue(30)                            # test is stale now
+    assert "changed after this test" in panel.result.text()
+    assert window.model.data(window.model.index(0, 8)) == ""
+    workdir = test.workdir
+    window.clear()
+    assert not workdir.exists()                                  # temp files removed

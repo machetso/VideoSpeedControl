@@ -3,10 +3,10 @@
 Read SCOPE.md for the agreed feature set and milestone status.
 
 ## Resume here
-- Status 2026-10-23: milestone 2 committed (ef30c15). Milestone 3 (timeline + trimming)
-  implemented and committed, 48 tests green.
-- Next: milestone 4 – test encode of N frames from the playhead, side-by-side / wipe comparison,
-  measured speed → time estimates. Clip.playhead and Clip.trim already exist.
+- Status 2026-10-23: milestone 3 committed (15accb1). Milestone 4 (test encode, comparison,
+  estimates) implemented and committed, 51 tests green.
+- Next: milestone 5 – RIFE interpolation (Vulkan, also iGPU); entries already exist in
+  `formats.INTERPOLATIONS` (disabled in the GUI via `needs_gpu`), command.py raises for them.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
 ## Setup
@@ -30,6 +30,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
   - `command.py` – Job → ffmpeg args; `runner.py` – execution, progress, cancel
   - `preview.py` – one frame as BMP via ffmpeg (exact seek for the playhead, keyframe-only
     seek for thumbnails); trim rules live in `Job.trim_with_in/out`, `snapped_trim`
+  - `testencode.py` – TestEncode (N output frames from the playhead into a temp dir), steady
+    fps = frames / elapsed (see Hard-won details), Estimate for a clip: own test if settings
+    are equal, else scaled by pixel count from another clip's test with equal settings
 - `vsc/gui/` – PySide6. Start with `.venv/bin/python -m vsc.gui [CLIPS...]`.
   - `clips.py` – Clip (path, info, frames, settings, `ui` dict for widget-only choices such as
     resolution preset / aspect) and the table model
@@ -37,7 +40,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
   - `info_panel.py`, `settings_panel.py` (widgets → OutputSettings → `_sync()` back to widgets),
     `timeline.py` (frame view, thumbnail timeline with keyframe ticks + draggable in/out,
     transport, shortcuts ←/→, Shift+←/→, Home/End, I/O), `main_window.py` (clip table on
-    top; below, tabs "Preview & trim" / "Clip info" next to the settings)
+    top; below, tabs "Preview & trim" / "Test encode" / "Clip info" next to the settings),
+    `test_panel.py` (run/cancel, result + estimate, CompareView side by side / wipe)
+  - `workers.FrameFetcher` – one decode at a time per view, latest request wins.
   - Clip.trim / Clip.playhead are per clip and never copied by "apply to all".
   - Workers emit via `_emit()` – the window may be gone; Clip.removed stops thumbnail loaders.
   - Combo item data must not be a `Fraction` (Qt turns it into a float) – stored as `str`.
@@ -55,3 +60,7 @@ Read SCOPE.md for the agreed feature set and milestone status.
 - ProRes 4444 is reported as yuv444p12le by the decoder even if encoded from 10-bit.
 - Dev machine: i7-8565U + Intel UHD 620, no working HW encoders (no CUDA, QSV runtime missing,
   VAAPI crash). minterpolate ≈ 1.2 fps at 1080p, x264 medium ≈ 35 fps.
+- Time estimate = test frames / total test time. Checked against full encodes (4K + 1080p, x264):
+  −8 … +19 % when the test piece is typical, −26 % on a clip whose test piece was easier than
+  the rest. A "steady rate + start-up" model was 7–42 % too optimistic (x264 lookahead).
+  Size estimate (bytes per test frame × frames) was within ~1.5 %.

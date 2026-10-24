@@ -207,12 +207,9 @@ class PreviewPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.clip: Clip | None = None
-        self._busy = False                # one frame decode at a time; the latest request wins
-        self._shown: tuple | None = None  # (path, frame, size) of the image on screen
-        self._requested: tuple | None = None
-        self.frame_signals = workers.FrameSignals(self)
-        self.frame_signals.frame.connect(self._frame_ready)
-        self.frame_signals.failed.connect(self._frame_failed)
+        self.fetcher = workers.FrameFetcher(self)
+        self.fetcher.ready.connect(lambda image: self.view.set_image(image))
+        self.fetcher.failed.connect(lambda message: self.view.clear_image(message))
         self._resize_timer = QTimer(self, singleShot=True, interval=150,
                                     timeout=self._request_frame)
 
@@ -288,7 +285,7 @@ class PreviewPanel(QWidget):
     def set_clip(self, clip: Clip | None) -> None:
         if clip is not self.clip:
             self.note.clear()
-            self._shown = None
+            self.fetcher.reset()
             self.view.clear_image()
         self.clip = clip
         self.timeline.clip = clip
@@ -397,35 +394,13 @@ class PreviewPanel(QWidget):
 
     # ------------------------------------------------------------------ frame preview
 
-    def _wanted(self) -> tuple | None:
+    def _request_frame(self) -> None:
         if not self._ready():
-            return None
+            return
         dpr = self.view.devicePixelRatioF()
         size = preview.fit_size(self.clip.info, min(1920, int(self.view.width() * dpr)),
                                 min(1080, int(self.view.height() * dpr)))
-        return self.clip.path, self.clip.playhead, size
-
-    def _request_frame(self) -> None:
-        wanted = self._wanted()
-        if self._busy or wanted is None or wanted == self._shown:
-            return
-        self._busy = True
-        workers.start(workers.FrameGrabber(self.clip, wanted[1], wanted[2], self.frame_signals))
-        self._requested = wanted
-
-    def _frame_ready(self, path, index: int, image) -> None:
-        self._busy = False
-        if self.clip and path == self.clip.path:
-            self.view.set_image(image)
-            self._shown = self._requested
-        self._request_frame()      # the playhead may have moved meanwhile
-
-    def _frame_failed(self, path, index: int, message: str) -> None:
-        self._busy = False
-        if self.clip and path == self.clip.path:
-            self.view.clear_image(message)
-            self._shown = self._requested   # do not retry the same frame endlessly
-        self._request_frame()
+        self.fetcher.request(self.clip, self.clip.playhead, size)
 
     # ------------------------------------------------------------------ labels
 

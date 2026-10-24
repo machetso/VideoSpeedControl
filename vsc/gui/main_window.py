@@ -6,13 +6,16 @@ from pathlib import Path
 
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QMainWindow,
-                               QSplitter, QTableView, QTabWidget, QToolBar)
+from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLabel, QMainWindow,
+                               QMessageBox, QSplitter, QTableView, QTabWidget, QToolBar)
 
+from ..core import testencode
+from ..core.command import CommandError
 from ..core.formats import CODECS_BY_KEY
-from .clips import Clip, ClipModel, Status
+from .clips import Clip, ClipModel, Status, fmt_bytes, fmt_seconds
 from .info_panel import InfoPanel
 from .settings_panel import SettingsPanel
+from .test_panel import TestPanel
 from .timeline import PreviewPanel
 from . import workers
 
@@ -44,7 +47,13 @@ class MainWindow(QMainWindow):
         self.preview.trim_changed.connect(self._trim_changed)
         self.tabs = QTabWidget()
         self.tabs.addTab(self.preview, "Preview && trim")
+        self.test_panel = TestPanel()
+        self.test_panel.start_test.connect(self._start_test)
+        self.test_panel.cancel_test.connect(self._cancel_test)
+        self.tabs.addTab(self.test_panel, "Test encode")
         self.tabs.addTab(self.info, "Clip info")
+        self.tabs.currentChanged.connect(lambda: self.test_panel.refresh())  # playhead may have moved
+        self._tests: dict[int, testencode.TestEncode] = {}   # id(clip) → running test
         self.settings = SettingsPanel()
         self.settings.changed.connect(self._settings_changed)
         self.settings.apply_to_all.connect(self._apply_to_all)
@@ -68,6 +77,10 @@ class MainWindow(QMainWindow):
         for action in (add, remove, clear):
             toolbar.addAction(action)
 
+        self.batch_label = QLabel()
+        self.statusBar().addPermanentWidget(self.batch_label)
+        for sig in (self.model.dataChanged, self.model.rowsInserted, self.model.rowsRemoved):
+            sig.connect(self._update_batch)
         self.statusBar().showMessage("Detecting encoders…")
         self.clip_signals = workers.ClipSignals(self)
         self.clip_signals.probed.connect(self._probed)
@@ -75,6 +88,9 @@ class MainWindow(QMainWindow):
         self.clip_signals.failed.connect(self._failed)
         self.thumb_signals = workers.ThumbnailSignals(self)
         self.thumb_signals.thumbnail.connect(self._thumbnail)
+        self.test_signals = workers.TestSignals(self)
+        self.test_signals.progress.connect(self._test_progress)
+        self.test_signals.done.connect(self._test_done)
         self.encoder_signals = workers.EncoderSignals(self)
         self.encoder_signals.done.connect(self._encoders_done)
         self.encoder_signals.failed.connect(
@@ -82,8 +98,11 @@ class MainWindow(QMainWindow):
         workers.start(workers.EncoderDetector(self.encoder_signals))
 
     def closeEvent(self, event) -> None:
+        for test in self._tests.values():
+            test.cancel()
         for clip in self.model.clips:
             clip.removed = True          # stops thumbnail loaders
+            testencode.discard(clip.test)
         super().closeEvent(event)
 
     # ------------------------------------------------------------------ import
@@ -178,6 +197,7 @@ class MainWindow(QMainWindow):
         self.info.show_clip(clip)
         self.settings.set_clip(clip)
         self.preview.set_clip(clip)
+        self.test_panel.set_clip(clip)
 
     def _update(self, clip: Clip) -> None:
         self.model.clip_changed(clip)
@@ -189,12 +209,68 @@ class MainWindow(QMainWindow):
         if clip:
             self.model.clip_changed(clip)
             self.preview.refresh()      # mode may have changed → snapping, keyframe markers
+            self.test_panel.refresh()   # the test may be stale now
+            self.model.refresh_all()    # derived estimates of other clips
 
     def _trim_changed(self) -> None:
         clip = self.current_clip()
         if clip:
             self.model.clip_changed(clip)
             self.settings.refresh()
+            self.test_panel.refresh()
+
+    # ------------------------------------------------------------------ test encode
+
+    def _start_test(self, n_frames: int) -> None:
+        clip = self.current_clip()
+        if not clip or clip.testing or not clip.frames:
+            return
+        try:
+            test = testencode.TestEncode(clip.job, clip.playhead, n_frames,
+                                         self.settings.supported_pix_fmts(clip))
+        except (CommandError, ValueError) as e:
+            QMessageBox.warning(self, "Test encode", f"These settings cannot be encoded:\n{e}")
+            return
+        testencode.discard(clip.test)
+        clip.test = clip.test_media = None
+        clip.testing = True
+        self._tests[id(clip)] = test
+        workers.start(workers.TestEncodeTask(clip, test, self.test_signals))
+        self._update(clip)
+        self.test_panel.refresh()
+
+    def _cancel_test(self) -> None:
+        clip = self.current_clip()
+        if clip and id(clip) in self._tests:
+            self._tests[id(clip)].cancel()
+
+    def _test_progress(self, clip: Clip, progress) -> None:
+        if clip is self.current_clip():
+            self.test_panel.set_progress(progress)
+
+    def _test_done(self, clip: Clip, result, media) -> None:
+        self._tests.pop(id(clip), None)
+        clip.testing = False
+        if clip.removed:
+            testencode.discard(result)
+            return
+        clip.test, clip.test_media = result, media
+        self.model.refresh_all()
+        if clip is self.current_clip():
+            self.test_panel.refresh()
+
+    def _update_batch(self, *_) -> None:
+        clips = [c for c in self.model.clips if c.status != Status.ERROR]
+        if not clips:
+            self.batch_label.clear()
+            return
+        seconds, size, missing = self.model.batch_estimate()
+        text = f"Batch: {len(clips)} clip(s)"
+        if missing < len(clips):
+            text += f" ≈ {fmt_seconds(seconds)}, {fmt_bytes(size)}"
+        if missing:
+            text += f" – {missing} without estimate (run a test encode)"
+        self.batch_label.setText(text)
 
     def _apply_to_all(self) -> None:
         source = self.current_clip()
@@ -204,7 +280,7 @@ class MainWindow(QMainWindow):
             if clip is not source:
                 clip.settings = source.settings.clone()
                 clip.ui = copy.deepcopy(source.ui)
-                self.model.clip_changed(clip)
-        self.statusBar().showMessage(
-            f"Output settings (not the trim) of {source.path.name} applied to {len(self.model.clips) - 1} other clip(s)",
-            5000)
+        self.model.refresh_all()
+        others = len(self.model.clips) - 1
+        self.statusBar().showMessage(f"Output settings (not the trim) of {source.path.name} "
+                                     f"applied to {others} other clip(s)", 5000)

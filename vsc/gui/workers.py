@@ -5,6 +5,7 @@ delivered to the receiving widgets on the UI thread.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
@@ -73,7 +74,7 @@ class FrameSignals(QObject):
 class FrameGrabber(QRunnable):
     """Decode one frame exactly (preview at the playhead)."""
 
-    def __init__(self, clip, index: int, size: tuple[int, int], signals: FrameSignals):
+    def __init__(self, clip, index: int, size: tuple[int, int], signals: "FrameSignals"):
         super().__init__()
         self.clip, self.index, self.size, self.signals = clip, index, size, signals
 
@@ -83,6 +84,92 @@ class FrameGrabber(QRunnable):
             _emit(self.signals.frame, self.clip.path, self.index, QImage.fromData(data, "BMP"))
         except Exception as e:  # noqa: BLE001
             _emit(self.signals.failed, self.clip.path, self.index, str(e))
+
+
+class FrameFetcher(QObject):
+    """Decodes frames for one view: one decode at a time, and only the latest request counts.
+
+    `source` is anything with .path, .info and .frames (a Clip or a TestMedia).
+    """
+    ready = Signal(object)     # QImage
+    failed = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.signals = FrameSignals(self)
+        self.signals.frame.connect(self._done)
+        self.signals.failed.connect(self._failed)
+        self._busy = False
+        self._wanted = None    # (source, index, size)
+        self._running = None
+        self.shown = None      # key of the image last delivered
+
+    @staticmethod
+    def _key(request):
+        return None if request is None else (request[0].path, request[1], request[2])
+
+    def request(self, source, index: int, size: tuple[int, int]) -> None:
+        self._wanted = (source, index, size)
+        self._next()
+
+    def reset(self) -> None:
+        self._wanted = None
+        self.shown = None
+
+    def _next(self) -> None:
+        if self._busy or self._wanted is None or self._key(self._wanted) == self.shown:
+            return
+        self._busy, self._running = True, self._wanted
+        source, index, size = self._running
+        start(FrameGrabber(source, index, size, self.signals))
+
+    def _finish(self) -> bool:
+        """True if the finished decode is still the one wanted."""
+        self._busy = False
+        current = self._key(self._running) == self._key(self._wanted)
+        if current:
+            self.shown = self._key(self._running)
+        return current
+
+    def _done(self, path, index, image) -> None:
+        if self._finish():
+            self.ready.emit(image)
+        self._next()
+
+    def _failed(self, path, index, message) -> None:
+        if self._finish():
+            self.failed.emit(message)
+        self._next()
+
+
+@dataclass
+class TestMedia:
+    """The test encode's output file, readable like a clip."""
+    path: Path
+    info: object
+    frames: object
+
+
+class TestSignals(QObject):
+    progress = Signal(object, object)          # clip, Progress
+    done = Signal(object, object, object)      # clip, TestResult, TestMedia | None
+
+
+class TestEncodeTask(QRunnable):
+    def __init__(self, clip, test, signals: TestSignals):
+        super().__init__()
+        self.clip, self.test, self.signals = clip, test, signals
+
+    def run(self) -> None:
+        result = self.test.run(lambda p: _emit(self.signals.progress, self.clip, p))
+        media = None
+        if result.ok:
+            try:
+                info = probe(result.output)
+                media = TestMedia(result.output, info, scan_frames(result.output, info.stream_index))
+            except Exception:  # noqa: BLE001 – comparison is optional (e.g. image sequences)
+                media = None
+        _emit(self.signals.done, self.clip, result, media)
 
 
 class ThumbnailSignals(QObject):
