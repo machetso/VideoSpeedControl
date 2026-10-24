@@ -177,3 +177,54 @@ def test_test_encode_and_estimates(qapp, window):
     workdir = test.workdir
     window.clear()
     assert not workdir.exists()                                  # temp files removed
+
+
+def test_zoom_state():
+    from PySide6.QtCore import QPointF, QRectF
+    from vsc.gui.zoom import ZoomState
+    z = ZoomState()
+    box = QRectF(0, 0, 400, 300)
+    assert z.rect(1600, 900, box, 1.0) == QRectF(0, 37.5, 400, 225)          # fit
+    z.set_zoom(1.0)
+    assert z.rect(1600, 900, box, 1.0) == QRectF(-600, -300, 1600, 900)      # centred 1:1
+    assert z.rect(1600, 900, box, 2.0).width() == 800                        # HiDPI: device px
+    z.pan(QPointF(10000, 0), 1600, 900, 1.0)                                 # clamped at the edge
+    assert z.rect(1600, 900, box, 1.0).x() == 0
+    assert z.rect(200, 100, box, 1.0) == QRectF(100, 100, 200, 100)          # small: centred
+    z.toggle_at(QPointF(0, 0), box)
+    assert z.zoom is None
+
+
+def test_zoom_requests_full_frames(qapp, window):
+    preview_panel = window.preview
+    preview_panel.seek(10)
+    preview_panel.zoom.set_zoom(1.0)
+    _wait(qapp, lambda: preview_panel.view.image is not None
+          and preview_panel.view.image.width() == 1280)                      # native 1280×720
+    dpr = preview_panel.view.devicePixelRatioF()
+    assert preview_panel.view.drawn_rect().width() == 1280 / dpr
+
+
+def test_rife_in_gui(qapp, window):
+    from vsc.core import rife
+    if not rife.detect().available:
+        pytest.skip("RIFE / Vulkan not available")
+    settings, panel = window.settings, window.test_panel
+    first = window.model.clips[0]
+    _pick(settings.codec_combo, "x264")
+    _pick(settings.preset_combo, "ultrafast")
+    _pick(settings.res_combo, "sd480")
+    settings.speed_custom.setChecked(True)
+    settings.speed_spin.setValue(0.05)
+    idx = settings.interp_combo.findData("rife")
+    assert settings.interp_combo.model().item(idx).isEnabled()
+    assert "Runs on:" in settings.interp_combo.itemData(idx, 3)
+    _pick(settings.interp_combo, "rife")
+    assert first.settings.interpolation == "rife"
+    panel.frames_spin.setValue(10)
+    panel.run_button.click()
+    _wait(qapp, lambda: not first.testing, timeout=120)
+    assert first.test.ok, first.test.error
+    assert first.test.frames >= 10
+    assert len(first.test.commands) == 3 and "rife-ncnn-vulkan" in first.test.commands[1][0]
+    assert "Estimate for the whole clip" in panel.result.text()

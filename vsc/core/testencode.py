@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .job import Job, OutputSettings, Trim, output_path
-from .runner import Runner
+from . import runner
 
 DEFAULT_FRAMES = 100
 
@@ -36,7 +36,7 @@ class TestResult:
     ok: bool = True
     cancelled: bool = False
     error: str = ""
-    args: list[str] = field(default_factory=list)
+    commands: list[list[str]] = field(default_factory=list)   # for display
 
     def source_frame(self, out_frame: int) -> int:
         """Source frame shown at (or nearest to) output frame `out_frame` of the test."""
@@ -77,11 +77,12 @@ class TestEncode:
         self.job = Job(job.info, self.settings, test_trim(job, playhead, n_frames), job.frames)
         self.workdir = Path(tempfile.mkdtemp(prefix="vsc-test-"))
         self.output = output_path(self.job, self.workdir, "test")
-        self.runner = Runner(self.job, self.output, supported_pix_fmts)
+        self.runner = runner.create(self.job, self.output, supported_pix_fmts)
 
     @property
-    def args(self) -> list[str]:
-        return self.runner.args
+    def commands(self) -> list[list[str]]:
+        describe = getattr(self.runner, "describe", None)   # RIFE: extract, rife, encode
+        return describe() if describe else [self.runner.args]
 
     def cancel(self) -> None:
         self.runner.cancel()
@@ -97,7 +98,7 @@ class TestEncode:
             fps=frames / res.elapsed if res.elapsed > 0 else 0.0,
             bytes=sum(f.stat().st_size for f in out_files if f.is_file()),
             src_pixels=pixels(self.job)[0], out_pixels=pixels(self.job)[1], ok=res.ok, cancelled=res.cancelled,
-            error=res.error, args=self.args)
+            error=res.error, commands=self.commands)
 
 
 def discard(result: TestResult | None) -> None:

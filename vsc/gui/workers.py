@@ -11,7 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QImage
 
-from ..core import encoders, preview
+from ..core import encoders, preview, rife
 from ..core.probe import probe, scan_frames
 
 
@@ -49,7 +49,7 @@ class ClipLoader(QRunnable):
 
 
 class EncoderSignals(QObject):
-    done = Signal(object)              # dict[str, EncoderStatus]
+    done = Signal(object, object)      # dict[str, EncoderStatus], rife.RifeStatus
     failed = Signal(str)
 
 
@@ -61,7 +61,7 @@ class EncoderDetector(QRunnable):
 
     def run(self) -> None:
         try:
-            _emit(self.signals.done, encoders.detect(self.use_cache))
+            _emit(self.signals.done, encoders.detect(self.use_cache), rife.detect())
         except Exception as e:  # noqa: BLE001
             _emit(self.signals.failed, str(e))
 

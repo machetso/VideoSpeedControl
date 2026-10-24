@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSpinBox,
                                QToolButton, QVBoxLayout, QWidget)
 
@@ -16,6 +16,7 @@ from ..core import preview
 from ..core.job import KEYFRAME_TRIM_REASON
 from .clips import Clip, Status, fmt_duration
 from . import workers
+from .zoom import ZoomState
 
 MARGIN = 8
 THUMB_BAND = 56
@@ -165,39 +166,63 @@ class Timeline(QWidget):
             self.seek.emit(self.clip.playhead + step)
 
 
-class FrameView(QLabel):
-    """Shows a QImage scaled to fit, keeping its aspect ratio."""
+class FrameView(QWidget):
+    """Shows a frame fitted or at 1:1 / 2:1 zoom; drag pans, double-click toggles."""
     resized = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, zoom: ZoomState, parent=None):
         super().__init__(parent)
+        self.zoom = zoom
+        self.zoom.changed.connect(self.update)
         self.image = None
-        self.setAlignment(Qt.AlignCenter)
+        self.native: tuple[int, int] | None = None   # full size of the footage
+        self.text = ""
+        self._drag: QPointF | None = None
         self.setMinimumSize(160, 90)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.setStyleSheet("background:#111; color:#888;")
 
     def set_image(self, image) -> None:
-        self.image = image
-        self._rescale()
+        self.image, self.text = image, ""
+        self.update()
 
     def clear_image(self, text: str = "") -> None:
-        self.image = None
-        self.clear()
-        self.setText(text)
+        self.image, self.text = None, text
+        self.update()
 
-    def _rescale(self) -> None:
+    def drawn_rect(self) -> QRectF:
+        w, h = self.native or (self.image.width(), self.image.height())
+        return self.zoom.rect(w, h, QRectF(self.rect()), self.devicePixelRatioF())
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor("#111"))
         if self.image is None or self.image.isNull():
+            p.setPen(QColor("#888"))
+            p.drawText(self.rect(), Qt.AlignCenter | Qt.TextWordWrap, self.text)
             return
-        pix = QPixmap.fromImage(self.image)
-        dpr = self.devicePixelRatioF()
-        pix = pix.scaled(self.size() * dpr, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        pix.setDevicePixelRatio(dpr)
-        self.setPixmap(pix)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, self.zoom.zoom is None)
+        p.drawImage(self.drawn_rect(), self.image)
+
+    def mousePressEvent(self, event) -> None:
+        if self.zoom.zoom is not None:
+            self._drag = event.position()
+            self.setCursor(Qt.ClosedHandCursor)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag is not None and self.native:
+            self.zoom.pan(event.position() - self._drag, *self.native, self.devicePixelRatioF())
+            self._drag = event.position()
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag = None
+        self.unsetCursor()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if self.image is not None:
+            self.zoom.toggle_at(event.position(), self.drawn_rect())
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._rescale()
         self.resized.emit()
 
 
@@ -213,7 +238,9 @@ class PreviewPanel(QWidget):
         self._resize_timer = QTimer(self, singleShot=True, interval=150,
                                     timeout=self._request_frame)
 
-        self.view = FrameView()
+        self.zoom = ZoomState(self)
+        self.zoom.changed.connect(self._request_frame)   # 1:1 needs the full-size frame
+        self.view = FrameView(self.zoom)
         self.view.resized.connect(self._resize_timer.start)
         self.timeline = Timeline()
         self.timeline.seek.connect(self.seek)
@@ -241,6 +268,7 @@ class PreviewPanel(QWidget):
         transport.addWidget(button("▶▶", "Next keyframe (Shift+→)", lambda: self.step_key(1)))
         transport.addWidget(button("⏭", "Last frame (End)", lambda: self.seek(10**9)))
         transport.addWidget(self.position, 1)
+        transport.addWidget(self.zoom.combo())
 
         self.in_button = QPushButton("Set in (I)")
         self.in_button.setToolTip("First frame of the output = frame at the playhead")
@@ -397,9 +425,14 @@ class PreviewPanel(QWidget):
     def _request_frame(self) -> None:
         if not self._ready():
             return
-        dpr = self.view.devicePixelRatioF()
-        size = preview.fit_size(self.clip.info, min(1920, int(self.view.width() * dpr)),
-                                min(1080, int(self.view.height() * dpr)))
+        info = self.clip.info
+        self.view.native = info.display_size
+        if self.zoom.zoom is None:
+            dpr = self.view.devicePixelRatioF()
+            size = preview.fit_size(info, min(1920, int(self.view.width() * dpr)),
+                                    min(1080, int(self.view.height() * dpr)))
+        else:
+            size = info.display_size        # every pixel, for 1:1 / 2:1
         self.fetcher.request(self.clip, self.clip.playhead, size)
 
     # ------------------------------------------------------------------ labels

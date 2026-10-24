@@ -26,7 +26,7 @@ class CommandError(ValueError):
     pass
 
 
-def _seek_time(job: Job, frame: int) -> float:
+def seek_time(job: Job, frame: int) -> float:
     frame_dur = 1 / float(job.info.fps)
     if job.frames and frame < job.frames.count:
         t = job.frames.times[frame] - job.info.format_start
@@ -87,7 +87,7 @@ def _build_copy(job: Job, output: Path) -> list[str]:
     return args
 
 
-def _scale_filters(job: Job) -> list[str]:
+def scale_filters(job: Job) -> list[str]:
     s = job.settings
     if s.resize == "source":
         return []
@@ -133,37 +133,17 @@ def _time_filters(job: Job) -> list[str]:
     return chain
 
 
-def _build_encode(job: Job, output: Path, supported: list[str] | None) -> list[str]:
-    codec = job.codec
-    if codec is None:
-        raise CommandError(f"Unknown codec '{job.settings.codec}'")
-    chroma, depth, pix_fmt = job.output_format(supported)
-    s = job.settings
+def pixel_filters(job: Job, pix_fmt: str) -> list[str]:
+    """Last filters: convert to the encoder's pixel format (or upload to the GPU)."""
+    if job.codec.hw:
+        return hw_filter_suffix(job.codec, pix_fmt)
+    return [f"format={pix_fmt}"]
 
-    filters: list[str] = []
-    if job.trim.end is not None:
-        filters.append(f"trim=end_frame={job.source_frame_count}")
-    scale = _scale_filters(job)
-    time = _time_filters(job)
-    w, h = job.output_size()
-    src_w, src_h = job.info.display_size
-    shrinking = w * h < src_w * src_h
-    if job.mode == Mode.DROP or not shrinking:
-        filters += time + scale     # scale fewer frames / interpolate on fewer pixels
-    else:
-        filters += scale + time
-    if codec.hw:
-        filters += hw_filter_suffix(codec, pix_fmt)
-    else:
-        filters.append(f"format={pix_fmt}")
 
-    args = _base_args() + hw_input_args(codec)
-    if job.trim.start:
-        args += ["-ss", _num(_seek_time(job, job.trim.start))]
-    args += ["-i", str(job.info.path)] + _stream_args(job)
-    args += ["-vf", ",".join(filters), "-frames:v", str(job.output_frame_count)]
-
-    args += ["-c:v", codec.encoder]
+def encode_args(job: Job, output: Path) -> list[str]:
+    """Everything after the filters: encoder, its options, colour tags and the output."""
+    codec, s = job.codec, job.settings
+    args = ["-c:v", codec.encoder]
     if profile := job.profile:
         args += list(profile.args)
     if codec.preset_flag and codec.presets:
@@ -184,3 +164,34 @@ def _build_encode(job: Job, output: Path, supported: list[str] | None) -> list[s
         args += ["-f", "image2"]
     args.append(str(output))
     return args
+
+
+def _build_encode(job: Job, output: Path, supported: list[str] | None) -> list[str]:
+    codec = job.codec
+    if codec is None:
+        raise CommandError(f"Unknown codec '{job.settings.codec}'")
+    chroma, depth, pix_fmt = job.output_format(supported)
+
+    filters: list[str] = []
+    if job.trim.end is not None:
+        filters.append(f"trim=end_frame={job.source_frame_count}")
+    scale = scale_filters(job)
+    time = _time_filters(job)
+    if job.mode == Mode.DROP or not shrinks(job):
+        filters += time + scale     # scale fewer frames / interpolate on fewer pixels
+    else:
+        filters += scale + time
+    filters += pixel_filters(job, pix_fmt)
+
+    args = _base_args() + hw_input_args(codec)
+    if job.trim.start:
+        args += ["-ss", _num(seek_time(job, job.trim.start))]
+    args += ["-i", str(job.info.path)] + _stream_args(job)
+    args += ["-vf", ",".join(filters), "-frames:v", str(job.output_frame_count)]
+    return args + encode_args(job, output)
+
+
+def shrinks(job: Job) -> bool:
+    w, h = job.output_size()
+    src_w, src_h = job.info.display_size
+    return w * h < src_w * src_h

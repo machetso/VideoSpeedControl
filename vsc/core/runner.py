@@ -92,3 +92,11 @@ class Runner:
         error = "" if ok else "\n".join(l.rstrip() for l in stderr_lines).strip()
         return Result(ok=ok, cancelled=self._cancelled, output=self.output,
                       elapsed=elapsed, frames=frame, error=error)
+
+
+def create(job: Job, output: Path, supported_pix_fmts: list[str] | None = None):
+    """The right runner for a job: RIFE interpolation runs its own pipeline."""
+    from . import rife   # rife imports this module
+    if rife.is_rife(job):
+        return rife.RifeRunner(job, output, supported_pix_fmts)
+    return Runner(job, output, supported_pix_fmts)

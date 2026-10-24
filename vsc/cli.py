@@ -14,7 +14,7 @@ from pathlib import Path
 from .core import encoders, formats
 from .core.job import KEYFRAME_TRIM_REASON, MODE_LABELS, Job, Mode, OutputSettings, Trim, output_path
 from .core.probe import probe, scan_frames
-from .core.runner import Runner
+from .core import runner as runners
 
 
 def _fmt_rate(r: Fraction) -> str:
@@ -87,7 +87,7 @@ def cmd_encode(args) -> None:
         print(f"Format: {job.output_size()[0]}×{job.output_size()[1]} {pix}")
 
     out = output_path(job, Path(args.output), args.name)
-    runner = Runner(job, out, supported)
+    runner = runners.create(job, out, supported)
     if args.show_cmd:
         print(" ".join(runner.args))
 

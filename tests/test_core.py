@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
+import tempfile
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
-from vsc.core import encoders, ffmpeg_bin, formats, preview, testencode
+from vsc.core import encoders, ffmpeg_bin, formats, preview, rife, testencode
+from vsc.core import runner as runners
 from vsc.core.job import Job, Mode, OutputSettings, Trim, output_path
 from vsc.core.probe import probe, scan_frames
 from vsc.core.runner import Runner
@@ -258,3 +261,59 @@ def test_test_encode_copy_mode(h264_clip):
         assert res.ok and res.frames == 48
     finally:
         testencode.discard(res)
+
+
+# ---------------------------------------------------------------- RIFE
+
+needs_rife = pytest.mark.skipif(not rife.detect().available, reason="RIFE / Vulkan not available")
+
+
+def test_rife_plan_is_exact(h264_clip):
+    job = _job(h264_clip, codec="x264", speed=Fraction(1, 20), interpolation="rife")
+    ratio = rife.grid_ratio(job)                       # 25 / (240000/1001 · 1/20) = 1001/480
+    exact = Fraction(25) / (job.info.fps / 20)
+    assert ratio.denominator < exact.denominator and abs(float(ratio / exact) - 1) <= 5e-4
+    pieces = rife.plan(job, ratio, src_per_piece=ratio.denominator * 3)
+    assert len(pieces) > 1
+    assert sum(p.keep for p in pieces) == job.output_frame_count
+    k = 0
+    for p in pieces:
+        assert p.files * ratio == p.n                   # rife spacing == 1/ratio exactly
+        for i in range(p.keep):                         # global grid continues across pieces
+            assert p.start + Fraction(i) / ratio == Fraction(k) / ratio
+            k += 1
+        last = p.start + Fraction(p.keep - 1) / ratio
+        assert int(last) + 1 < p.start + p.files        # blend partner is a real input file
+
+    two = _job(h264_clip, codec="x264", fps=Fraction(24000, 1001), speed=Fraction(1, 20),
+               interpolation="rife")
+    assert rife.grid_ratio(two) == 2                   # 239.76 → 23.976 at 1/20: exactly 2×
+
+
+def _psnr(a: bytes, b: bytes) -> float:
+    a, b = a[54:], b[54:]                               # skip BMP headers
+    mse = sum((x - y) ** 2 for x, y in zip(a, b)) / len(a)
+    return 99.0 if mse == 0 else 10 * math.log10(255 ** 2 / mse)
+
+
+@needs_rife
+def test_rife_encode(h264_clip, tmp_path, encoder_status):
+    supported = encoder_status["x264"].pix_fmts
+    outputs = {}
+    for method in ("rife", "dup"):          # dup = the plain ffmpeg pipeline as reference
+        job = _job(h264_clip, codec="x264", preset="ultrafast", quality=12,
+                   fps=Fraction(24000, 1001), speed=Fraction(1, 20), interpolation=method,
+                   resize="exact", width=320, height=180, trim=Trim(100, 130))
+        runner = runners.create(job, output_path(job, tmp_path, method), supported)
+        assert isinstance(runner, rife.RifeRunner) == (method == "rife")
+        res = runner.run()
+        assert res.ok, res.error
+        assert int(_stream(res.output)[0]["nb_read_frames"]) == job.output_frame_count == 60
+        outputs[method] = (probe(res.output), scan_frames(res.output))
+    # ratio is exactly 2: every even output frame is a real source frame. Same picture and
+    # colours as the ffmpeg pipeline (a wrong YUV↔RGB matrix would drop this far below 35 dB)
+    for k in (0, 20, 58):
+        got = preview.grab_frame(*outputs["rife"], k, (320, 180))
+        want = preview.grab_frame(*outputs["dup"], k, (320, 180))
+        assert _psnr(got, want) > 37, k
+    assert not list(Path(tempfile.gettempdir()).glob("vsc-rife-*"))   # temp files removed

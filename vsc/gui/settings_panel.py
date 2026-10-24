@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDoubleSpinBox, QFormLay
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
-from ..core import formats
+from ..core import formats, rife
 from ..core.encoders import EncoderStatus
 from ..core.formats import COPY, CODECS
 from ..core.job import KEYFRAME_TRIM_REASON, MODE_LABELS, Mode, _even
@@ -22,7 +22,8 @@ from .clips import Clip, chroma_label, fmt_duration
 CUSTOM = "custom"
 SPEED_PRESETS = [Fraction(1, n) for n in (2, 4, 5, 8, 10, 16, 20, 32)]
 CHROMA_ORDER = {"411": 0, "420": 1, "422": 2, "444": 3}
-NOT_YET = "Planned for a later version (RIFE integration, milestone 5)."
+RIFE_8BIT = ("RIFE works on 8-bit RGB pictures: the extra precision of 10-bit / HDR footage "
+             "is lost (risk of banding in gradients).")
 
 
 def fill_combo(combo: QComboBox, items: list[tuple], current) -> None:
@@ -62,6 +63,7 @@ class SettingsPanel(QGroupBox):
         super().__init__("Output settings", parent)
         self.clip: Clip | None = None
         self.encoders: dict[str, EncoderStatus] | None = None
+        self.rife = None          # rife.RifeStatus once detected
         self._loading = False
 
         form_widget = QWidget()
@@ -205,8 +207,9 @@ class SettingsPanel(QGroupBox):
         """Re-read the clip, e.g. after its trim changed."""
         self._sync()
 
-    def set_encoders(self, status: dict[str, EncoderStatus]) -> None:
+    def set_encoders(self, status: dict[str, EncoderStatus], rife_status=None) -> None:
         self.encoders = status
+        self.rife = rife_status
         self._sync()
 
     # ------------------------------------------------------------------ widgets → settings
@@ -362,10 +365,7 @@ class SettingsPanel(QGroupBox):
         self.scaler_combo.setEnabled(resized)
 
         # interpolation
-        items = [(f"{i.label}  (quality {i.quality}/5)", i.key,
-                  i.tooltip + ("\n\n" + NOT_YET if i.needs_gpu else ""), not i.needs_gpu)
-                 for i in formats.INTERPOLATIONS]
-        fill_combo(self.interp_combo, items, s.interpolation)
+        fill_combo(self.interp_combo, self._interp_items(), s.interpolation)
         interpolating = job.mode == Mode.INTERPOLATE
         self.interp_combo.setEnabled(interpolating)
         current = next(i for i in formats.INTERPOLATIONS if i.key == s.interpolation)
@@ -373,6 +373,26 @@ class SettingsPanel(QGroupBox):
                                      "Only used when the speed is slower than the lossless speed.")
 
         self.summary.setText(self._summary(clip))
+
+    def _interp_items(self) -> list[tuple]:
+        items = []
+        for i in formats.INTERPOLATIONS:
+            label, tip, enabled = f"{i.label}  (quality {i.quality}/5)", i.tooltip, True
+            if i.needs_gpu:
+                r = self.rife
+                if r is None:
+                    tip, enabled = tip + "\n\nChecking for a Vulkan GPU…", False
+                elif not r.available:
+                    label += "  (unavailable)"
+                    tip, enabled = tip + f"\n\nNot available: {r.reason}", False
+                elif r.software:
+                    label += "  (no GPU – very slow)"
+                    tip += (f"\n\nOnly a software Vulkan device was found ({r.gpu}).\n"
+                            "RIFE runs on the CPU and is extremely slow.")
+                else:
+                    tip += f"\n\nRuns on: {r.gpu}"
+            items.append((label, i.key, tip, enabled))
+        return items
 
     def _codec_items(self) -> list[tuple]:
         items = [("Keep source codec – lossless retime", COPY,
@@ -438,6 +458,8 @@ class SettingsPanel(QGroupBox):
     def _summary(self, clip: Clip) -> str:
         job = clip.job
         lines = [f"<b>{MODE_LABELS[job.mode]}</b>"]
+        if rife.is_rife(job) and (clip.info.bit_depth > 8 or clip.info.is_hdr):
+            lines.append(f"<span style='color:#d35400'>{RIFE_8BIT}</span>")
         if job.mode == Mode.RETIME:
             blockers = job.retime_blockers()
             if blockers:

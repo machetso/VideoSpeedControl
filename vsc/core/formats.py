@@ -155,10 +155,13 @@ INTERPOLATIONS: list[Interpolation] = [
     Interpolation("rife", "AI interpolation (RIFE)", 4, 4.0, True,
                   "Neural network on the GPU (Vulkan, also integrated Intel/AMD graphics).\n"
                   "Clearly better motion and edges than minterpolate.\n"
-                  "Fast on dedicated GPUs, slow on integrated graphics."),
-    Interpolation("rife_hq", "AI interpolation (RIFE, high quality)", 5, 10.0, True,
-                  "RIFE with test-time augmentation and UHD mode.\n"
-                  "Best result for fast motion and 4K, about 2–3× slower than RIFE."),
+                  "Fast on dedicated GPUs, slow on integrated graphics\n"
+                  "(measured on Intel UHD 620: 2 fps at 720p, 0.9 fps at 1080p).\n"
+                  "Works on 8-bit RGB – 10-bit / HDR precision is lost."),
+    Interpolation("rife_hq", "AI interpolation (RIFE, high quality)", 5, 8.0, True,
+                  "RIFE run in both time directions and merged (temporal test-time\n"
+                  "augmentation): fewer artefacts on fast motion and occlusions.\n"
+                  "About 2× slower than RIFE (measured on Intel UHD 620: 1 fps at 720p)."),
 ]
 DEFAULT_INTERPOLATION = "blend"
 

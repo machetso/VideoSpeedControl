@@ -171,14 +171,19 @@ class MainWindow(QMainWindow):
             clip.thumbs[slot] = (index, image)
             self.preview.thumbnail_arrived(clip)
 
-    def _encoders_done(self, status) -> None:
+    def _encoders_done(self, status, rife_status) -> None:
         n = sum(st.available for st in status.values())
         hw = [CODECS_BY_KEY[k].label for k, st in status.items()
               if st.available and CODECS_BY_KEY[k].hw]
-        self.statusBar().showMessage(f"{n} encoders available"
-                                     + (f", hardware: {', '.join(hw)}" if hw else
-                                        ", no working hardware encoder (software only)"))
-        self.settings.set_encoders(status)
+        text = f"{n} encoders available" + (f", hardware: {', '.join(hw)}" if hw else
+                                            ", no working hardware encoder (software only)")
+        if rife_status.available:
+            text += f" · RIFE on {rife_status.gpu}" + (" (software, slow)" if rife_status.software
+                                                     else "")
+        else:
+            text += f" · RIFE unavailable: {rife_status.reason}"
+        self.statusBar().showMessage(text)
+        self.settings.set_encoders(status, rife_status)
 
     # ------------------------------------------------------------------ selection / settings
 
