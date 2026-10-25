@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QItemSelectionModel, Qt
@@ -9,10 +10,11 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLabel, QMainWindow,
                                QMessageBox, QSplitter, QTableView, QTabWidget, QToolBar)
 
-from ..core import testencode
+from ..core import batch, testencode
 from ..core.command import CommandError
 from ..core.formats import CODECS_BY_KEY
 from .clips import Clip, ClipModel, Status, fmt_bytes, fmt_seconds
+from .export_panel import ExportPanel
 from .info_panel import InfoPanel
 from .settings_panel import SettingsPanel
 from .test_panel import TestPanel
@@ -52,7 +54,18 @@ class MainWindow(QMainWindow):
         self.test_panel.cancel_test.connect(self._cancel_test)
         self.tabs.addTab(self.test_panel, "Test encode")
         self.tabs.addTab(self.info, "Clip info")
+        self.export_panel = ExportPanel()
+        self.export_panel.start.connect(self.start_export)
+        self.export_panel.cancel.connect(self._cancel_export)
+        self.export_panel.options_changed.connect(self._plan_export)
+        self.tabs.addTab(self.export_panel, "Export")
+        self._batch: batch.Batch | None = None
+        self._batch_clips: list[Clip] = []
+        self._batch_estimates: list[float | None] = []
+        self._batch_done_frames = 0
+        self._batch_start = 0.0
         self.tabs.currentChanged.connect(lambda: self.test_panel.refresh())  # playhead may have moved
+        self.tabs.currentChanged.connect(self._plan_export)   # files on disk may have changed
         self._tests: dict[int, testencode.TestEncode] = {}   # id(clip) → running test
         self.settings = SettingsPanel()
         self.settings.changed.connect(self._settings_changed)
@@ -74,6 +87,7 @@ class MainWindow(QMainWindow):
         add = QAction("Add files…", self, shortcut=QKeySequence.Open, triggered=self.add_dialog)
         remove = QAction("Remove", self, shortcut=QKeySequence.Delete, triggered=self.remove_selected)
         clear = QAction("Clear list", self, triggered=self.clear)
+        self._list_actions = (remove, clear)    # disabled while an export runs
         for action in (add, remove, clear):
             toolbar.addAction(action)
 
@@ -81,6 +95,9 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.batch_label)
         for sig in (self.model.dataChanged, self.model.rowsInserted, self.model.rowsRemoved):
             sig.connect(self._update_batch)
+            sig.connect(self._plan_export)
+        self.table.selectionModel().selectionChanged.connect(
+            lambda *_: self.export_panel.selected_only() and self._plan_export())
         self.statusBar().showMessage("Detecting encoders…")
         self.clip_signals = workers.ClipSignals(self)
         self.clip_signals.probed.connect(self._probed)
@@ -91,6 +108,11 @@ class MainWindow(QMainWindow):
         self.test_signals = workers.TestSignals(self)
         self.test_signals.progress.connect(self._test_progress)
         self.test_signals.done.connect(self._test_done)
+        self.batch_signals = workers.BatchSignals(self)
+        self.batch_signals.started.connect(self._export_started)
+        self.batch_signals.progress.connect(self._export_progress)
+        self.batch_signals.item_done.connect(self._export_item_done)
+        self.batch_signals.finished.connect(self._export_finished)
         self.encoder_signals = workers.EncoderSignals(self)
         self.encoder_signals.done.connect(self._encoders_done)
         self.encoder_signals.failed.connect(
@@ -98,6 +120,15 @@ class MainWindow(QMainWindow):
         workers.start(workers.EncoderDetector(self.encoder_signals))
 
     def closeEvent(self, event) -> None:
+        if self._batch:
+            answer = QMessageBox.question(
+                self, "Export running",
+                "An export is still running. Cancel it and quit?\n"
+                "The clip being encoded right now is deleted; finished clips are kept.")
+            if answer != QMessageBox.Yes:
+                event.ignore()
+                return
+            self._batch.cancel()
         for test in self._tests.values():
             test.cancel()
         for clip in self.model.clips:
@@ -184,6 +215,7 @@ class MainWindow(QMainWindow):
             text += f" · RIFE unavailable: {rife_status.reason}"
         self.statusBar().showMessage(text)
         self.settings.set_encoders(status, rife_status)
+        self._plan_export()
 
     # ------------------------------------------------------------------ selection / settings
 
@@ -216,6 +248,7 @@ class MainWindow(QMainWindow):
             self.preview.refresh()      # mode may have changed → snapping, keyframe markers
             self.test_panel.refresh()   # the test may be stale now
             self.model.refresh_all()    # derived estimates of other clips
+            self._plan_export()         # names contain speed, fps, codec …
 
     def _trim_changed(self) -> None:
         clip = self.current_clip()
@@ -223,6 +256,7 @@ class MainWindow(QMainWindow):
             self.model.clip_changed(clip)
             self.settings.refresh()
             self.test_panel.refresh()
+            self._plan_export()
 
     # ------------------------------------------------------------------ test encode
 
@@ -286,6 +320,130 @@ class MainWindow(QMainWindow):
                 clip.settings = source.settings.clone()
                 clip.ui = copy.deepcopy(source.ui)
         self.model.refresh_all()
+        self._plan_export()
         others = len(self.model.clips) - 1
         self.statusBar().showMessage(f"Output settings (not the trim) of {source.path.name} "
                                      f"applied to {others} other clip(s)", 5000)
+
+    # ------------------------------------------------------------------ export
+
+    def _export_candidates(self) -> tuple[list[Clip], list[str]]:
+        """Clips to export (in table order) and why others are left out."""
+        clips = self.model.clips
+        if self.export_panel.selected_only():
+            rows = {i.row() for i in self.table.selectionModel().selectedRows()}
+            clips = [c for i, c in enumerate(clips) if i in rows]
+        ok, problems = [], []
+        for clip in clips:
+            if clip.status == Status.ERROR:
+                problems.append(f"{clip.path.name} (cannot be read)")
+            elif clip.status != Status.READY:
+                problems.append(f"{clip.path.name} (still loading)")
+            else:
+                ok.append(clip)
+        return ok, problems
+
+    def _plan(self) -> tuple[list[Clip], list[batch.Item], list[str]]:
+        clips, problems = self._export_candidates()
+        jobs = []
+        for clip in clips:
+            job = clip.job
+            # snapshot: changes made while the batch runs do not affect it
+            snapshot = type(job)(job.info, job.settings.clone(), copy.copy(job.trim), job.frames)
+            jobs.append((snapshot, self.settings.supported_pix_fmts(clip)))
+        panel = self.export_panel
+        items = batch.plan(jobs, panel.output_folder(), panel.pattern_text(), panel.policy_key())
+        return clips, items, problems
+
+    def _plan_export(self, *_) -> None:
+        if self._batch or not hasattr(self, "export_panel"):
+            return
+        clips, items, problems = self._plan()
+        if self.settings.encoders is None and clips:
+            problems.append("waiting for encoder detection")
+        self.export_panel.show_plan([c.path.name for c in clips], items, problems)
+        if self.settings.encoders is None:
+            self.export_panel.start_button.setEnabled(False)
+
+    def start_export(self) -> None:
+        if self._batch or self.settings.encoders is None:
+            return
+        clips, items, problems = self._plan()
+        if not any(it.output for it in items):
+            return
+        folder = self.export_panel.output_folder()
+        if folder is not None:
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                QMessageBox.warning(self, "Export", f"Cannot create the output folder:\n{e}")
+                return
+        self.export_panel.show_plan([c.path.name for c in clips], items, problems)
+        self._batch = batch.Batch(items)
+        self._batch_clips = clips
+        self._batch_estimates = [e.seconds if (e := self.model.estimate(c)) else None
+                                 for c in clips]
+        self._batch_done_frames = 0
+        self._batch_start = time.monotonic()
+        for clip, item in zip(clips, items):
+            clip.export = "Queued" if item.output else "Skipped (file exists)"
+            self.model.clip_changed(clip)
+        for action in self._list_actions:
+            action.setEnabled(False)
+        self.export_panel.set_running(True)
+        workers.start(workers.BatchTask(self._batch, self.batch_signals))
+
+    def _cancel_export(self) -> None:
+        if self._batch:
+            self._batch.cancel()
+            self.export_panel.cancel_button.setEnabled(False)
+            self.export_panel.message.setText("Cancelling…")
+
+    def _export_started(self, index: int) -> None:
+        self.export_panel.set_status(index, "running")
+        clip = self._batch_clips[index]
+        clip.export = "Encoding 0 %"
+        self.model.clip_changed(clip)
+
+    def _export_progress(self, index: int, p) -> None:
+        if not self._batch:
+            return
+        clip = self._batch_clips[index]
+        clip.export = f"Encoding {p.fraction:.0%}"
+        self.model.clip_changed(clip)
+        clip_text = f"{p.frame}/{p.total_frames} frames, {p.fps:.1f} fps"
+        if p.eta is not None:
+            clip_text += f", {fmt_seconds(p.eta)} left"
+        total = max(1, self._batch.total_frames)
+        overall = min(1.0, (self._batch_done_frames + p.frame) / total)
+        overall_text = f"{fmt_seconds(time.monotonic() - self._batch_start)} elapsed"
+        later = [self._batch_estimates[i] for i, it in enumerate(self._batch.items)
+                 if i > index and it.output]
+        if p.eta is not None and None not in later:
+            overall_text += f", ≈ {fmt_seconds(p.eta + sum(later))} left"
+        self.export_panel.set_progress(clip.path.name, p.fraction, clip_text,
+                                       overall, overall_text)
+
+    def _export_item_done(self, r: batch.ItemResult) -> None:
+        if not self._batch:
+            return
+        item = self._batch.items[r.index]
+        if item.output:
+            self._batch_done_frames += item.job.output_frame_count
+        detail = fmt_seconds(r.elapsed) if r.status == "done" else ""
+        if r.status == "skipped":
+            detail = item.note.removeprefix("skipped: ")
+        self.export_panel.set_status(r.index, r.status, detail)
+        self.export_panel.set_error(r.index, r.error)
+        clip = self._batch_clips[r.index]
+        clip.export = {"done": "Exported", "failed": "Export failed",
+                       "cancelled": "Export cancelled", "skipped": "Skipped (file exists)"}[r.status]
+        self.model.clip_changed(clip)
+
+    def _export_finished(self, result: batch.BatchResult) -> None:
+        elapsed = time.monotonic() - self._batch_start
+        self._batch = None
+        for action in self._list_actions:
+            action.setEnabled(True)
+        self.export_panel.finished(result, elapsed)
+        self.statusBar().showMessage(self.export_panel.message.text(), 10000)

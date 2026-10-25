@@ -172,6 +172,27 @@ class TestEncodeTask(QRunnable):
         _emit(self.signals.done, self.clip, result, media)
 
 
+class BatchSignals(QObject):
+    started = Signal(int)                  # item index
+    progress = Signal(int, object)         # item index, runner.Progress
+    item_done = Signal(object)             # batch.ItemResult
+    finished = Signal(object)              # batch.BatchResult
+
+
+class BatchTask(QRunnable):
+    """Runs a whole export batch, one clip after another."""
+
+    def __init__(self, job_batch, signals: BatchSignals):
+        super().__init__()
+        self.batch, self.signals = job_batch, signals
+
+    def run(self) -> None:
+        result = self.batch.run(lambda i: _emit(self.signals.started, i),
+                                lambda i, p: _emit(self.signals.progress, i, p),
+                                lambda r: _emit(self.signals.item_done, r))
+        _emit(self.signals.finished, result)
+
+
 class ThumbnailSignals(QObject):
     thumbnail = Signal(object, int, int, object)   # clip, slot, frame index, QImage
 

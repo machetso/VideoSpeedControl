@@ -3,10 +3,10 @@
 Read SCOPE.md for the agreed feature set and milestone status.
 
 ## Resume here
-- Status 2026-10-25: milestone 4 committed (fdc0558). Milestone 5 (RIFE) + 1:1 zoom in preview
-  and comparison implemented and committed, 56 tests green – user has not tried it yet.
-- Next: milestone 6 – batch queue (output folder, name pattern, overwrite policy, per-clip and
-  overall progress, cancel). `runner.create()` picks Runner / RifeRunner.
+- Status 2026-10-25: milestones 1–5 done (user confirmed the zoom; RIFE only test-encoded).
+  Milestone 6 (batch queue, "Export" tab) implemented and committed, 64 tests green – the
+  user has not tried it yet.
+- Next: milestone 7 – packaging (PyInstaller) for Windows and Linux.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
 ## Setup
@@ -36,6 +36,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
     RifeRunner: per piece ffmpeg → PNG → rife-ncnn-vulkan -n → PNG stream into one encoder
   - `preview.py` – one frame as BMP via ffmpeg (exact seek for the playhead, keyframe-only
     seek for thumbnails); trim rules live in `Job.trim_with_in/out`, `snapped_trim`
+  - `batch.py` – name pattern (`render_name`, tokens), `plan()` (output folder or next to the
+    source, policy rename / overwrite / skip; names unique within the batch, a source is never
+    overwritten), `Batch.run()` one item after another, cancel; incomplete outputs are deleted
   - `testencode.py` – TestEncode (N output frames from the playhead into a temp dir), steady
     fps = frames / elapsed (see Hard-won details), Estimate for a clip: own test if settings
     are equal, else scaled by pixel count from another clip's test with equal settings
@@ -47,7 +50,11 @@ Read SCOPE.md for the agreed feature set and milestone status.
     `timeline.py` (frame view, thumbnail timeline with keyframe ticks + draggable in/out,
     transport, shortcuts ←/→, Shift+←/→, Home/End, I/O), `main_window.py` (clip table on
     top; below, tabs "Preview & trim" / "Test encode" / "Clip info" next to the settings),
-    `test_panel.py` (run/cancel, result + estimate, CompareView side by side / wipe)
+    `test_panel.py` (run/cancel, result + estimate, CompareView side by side / wipe),
+    `export_panel.py` (tab "Export": options stored in QSettings, planned queue, progress)
+  - Export: jobs are snapshots taken at start (settings / trim edits don't affect a running
+    batch); Remove / Clear are disabled while it runs; Clip.export is shown in the Status
+    column; the plan is refreshed on any change and when a tab is switched.
   - `workers.FrameFetcher` – one decode at a time per view, latest request wins.
   - `zoom.py` – ZoomState (Fit / 100 % / 200 %, pan, double-click toggle) shared by FrameView
     and CompareView; at 1:1 the full-size frame is requested. In the comparison both pictures
@@ -55,7 +62,8 @@ Read SCOPE.md for the agreed feature set and milestone status.
   - Clip.trim / Clip.playhead are per clip and never copied by "apply to all".
   - Workers emit via `_emit()` – the window may be gone; Clip.removed stops thumbnail loaders.
   - Combo item data must not be a `Fraction` (Qt turns it into a float) – stored as `str`.
-  - GUI tests run headless (`QT_QPA_PLATFORM=offscreen`, set in tests/test_gui.py).
+  - GUI tests run headless (`QT_QPA_PLATFORM=offscreen`, set in tests/test_gui.py); QSettings
+    are redirected to a temp dir there.
 
 ## Hard-won details
 - Lossless retime uses `-itsscale` with a 1e-11 upward bias (ffmpeg truncates scaled timestamps).

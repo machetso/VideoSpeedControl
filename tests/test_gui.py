@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import time
 from fractions import Fraction
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6.QtCore import QSettings  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from vsc.core.job import Mode  # noqa: E402
@@ -17,6 +19,9 @@ from vsc.gui.main_window import MainWindow  # noqa: E402
 
 @pytest.fixture(scope="session")
 def qapp():
+    # keep the export options of the tests out of the user's settings
+    QSettings.setDefaultFormat(QSettings.IniFormat)
+    QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, tempfile.mkdtemp())
     return QApplication.instance() or QApplication([])
 
 
@@ -228,3 +233,33 @@ def test_rife_in_gui(qapp, window):
     assert first.test.frames >= 10
     assert len(first.test.commands) == 3 and "rife-ncnn-vulkan" in first.test.commands[1][0]
     assert "Estimate for the whole clip" in panel.result.text()
+
+
+def test_export_queue(qapp, window, tmp_path):
+    panel = window.export_panel
+    (tmp_path / "01_h264_240.mp4").write_bytes(b"old")
+    panel.to_folder.setChecked(True)
+    panel.folder.setText(str(tmp_path))
+    panel.pattern.setText("{n}_{name}")
+    _pick(panel.policy, "rename")
+    assert panel.queue.topLevelItemCount() == 2
+    assert panel.queue.topLevelItem(0).text(1) == "01_h264_240_2.mp4"
+    assert "renamed" in panel.queue.topLevelItem(0).text(2)
+
+    _pick(panel.policy, "skip")
+    assert panel.queue.topLevelItem(0).text(1) == "–"
+    _pick(panel.scope, "selected")              # only the current (first) clip is selected
+    assert panel.queue.topLevelItemCount() == 1 and not panel.start_button.isEnabled()
+
+    _pick(panel.scope, "all")
+    panel.start_button.click()
+    assert window._batch is not None and not panel.start_button.isEnabled()
+    assert not window._list_actions[0].isEnabled()           # no removing while exporting
+    _wait(qapp, lambda: window._batch is None, timeout=120)
+    clips = window.model.clips
+    assert [c.export for c in clips] == ["Skipped (file exists)", "Exported"]
+    assert panel.queue.topLevelItem(1).text(2).startswith("Done")
+    assert (tmp_path / "01_h264_240.mp4").read_bytes() == b"old"
+    assert (tmp_path / "02_hevc10_240.mp4").stat().st_size > 1000
+    assert "1 done, 1 skipped" in panel.message.text()
+    assert panel.start_button.isEnabled() and window._list_actions[0].isEnabled()

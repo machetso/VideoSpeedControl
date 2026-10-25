@@ -45,6 +45,7 @@ class Clip:
     test: testencode.TestResult | None = None     # last test encode
     test_media: object = None                       # workers.TestMedia of its output
     testing: bool = False
+    export: str = ""                                  # export state for the Status column
     removed: bool = False                             # tells background tasks to stop
 
     @property
@@ -136,7 +137,7 @@ class ClipModel(QAbstractTableModel):
         if col == "File":
             return clip.path.name
         if col == "Status":
-            return clip.status.value
+            return clip.export or clip.status.value
         i = clip.info
         if i is None:
             return ""

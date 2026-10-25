@@ -62,6 +62,6 @@ Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
 2. GUI basics: import, clip list, info panel, output settings ✅
 3. Timeline + trimming ✅
 4. Test encode, comparison view, time estimates ✅
-5. Interpolation: RIFE integration ✅ (committed, awaiting user test); 1:1 zoom in preview + comparison
-6. Batch queue
+5. Interpolation: RIFE integration ✅; 1:1 zoom in preview + comparison (zoom confirmed by user)
+6. Batch queue ✅ (committed, awaiting user test)
 7. Packaging (PyInstaller) for Windows and Linux

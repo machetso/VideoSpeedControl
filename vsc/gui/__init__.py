@@ -13,6 +13,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
     app = QApplication(argv)
     app.setApplicationName("VideoSpeedControl")
+    app.setOrganizationName("VideoSpeedControl")   # QSettings → ~/.config/VideoSpeedControl/
     window = MainWindow()
     window.add_files([Path(a) for a in argv[1:]])
     window.show()
