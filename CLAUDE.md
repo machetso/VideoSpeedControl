@@ -6,6 +6,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
 - Status 2026-10-25: milestones 1–5 done (user confirmed the zoom; RIFE only test-encoded).
   Milestone 6 (batch queue, "Export" tab) implemented and committed, 64 tests green – the
   user has not tried it yet.
+- 2026-10-25 also added (user request): Device / Recorded / Audio in "Clip info", Device column
+  in the table, note for phone slow-mo (capture fps > file fps). Only a note – speeds still
+  refer to the file's frame rate.
 - Next: milestone 7 – packaging (PyInstaller) for Windows and Linux.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
@@ -25,7 +28,12 @@ Read SCOPE.md for the agreed feature set and milestone status.
 
 ## Layout
 - `vsc/core/` – no Qt imports; GUI-independent and testable.
-  - `probe.py` – MediaInfo (ffprobe) and FrameMap (packet scan: exact pts, keyframes)
+  - `probe.py` – MediaInfo (ffprobe) and FrameMap (packet scan: exact pts, keyframes).
+    Recording metadata from container tags: device (Android / Apple make+model, GoPro via
+    handler_name + `firmware` prefix → GOPRO_MODELS, else a non-Lavf `encoder` tag, e.g. DJI),
+    recorded time (Apple creationdate with offset, else creation_time; GoPro writes local
+    time marked as UTC), `com.android.capture.fps` → `slowmo_factor` (phone slow-mo files
+    play at ~30 fps), first audio track
   - `formats.py` – catalogue: fps, resolutions, chroma, scalers, interpolation, codecs + UI texts
   - `encoders.py` – encoder detection, pix_fmt lists, hardware test encodes (cached in
     ~/.config/VideoSpeedControl/encoders.json per FFmpeg version)

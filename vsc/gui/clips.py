@@ -87,7 +87,7 @@ def chroma_label(chroma: str) -> str:
 
 
 class ClipModel(QAbstractTableModel):
-    COLUMNS = ("File", "Codec", "Resolution", "FPS", "Frames", "Duration", "Format",
+    COLUMNS = ("File", "Device", "Codec", "Resolution", "FPS", "Frames", "Duration", "Format",
                "Output", "Estimate", "Status")
 
     def __init__(self, parent=None):
@@ -121,6 +121,12 @@ class ClipModel(QAbstractTableModel):
                 return str(clip.path)
             if clip.status == Status.ERROR:
                 return clip.error
+            if col == "FPS" and clip.info and clip.info.slowmo_factor:
+                i = clip.info
+                return (f"Recorded at {fmt_rate(i.capture_fps)} fps, stored at {fmt_rate(i.fps)} fps:\n"
+                        f"the file is already {i.slowmo_factor:.3g}× slow motion.")
+            if col == "Device" and clip.info and clip.info.recorded:
+                return f"Recorded {clip.info.recorded:%Y-%m-%d %H:%M}"
             if col == "Estimate":
                 return ("Time and size for the whole (trimmed) clip.\n"
                         "Measured by a test encode of this clip, or ≈ scaled from a test of\n"
@@ -128,7 +134,7 @@ class ClipModel(QAbstractTableModel):
         if role == Qt.ForegroundRole:
             if clip.status == Status.ERROR:
                 return QColor("#c0392b")
-            if col == "FPS" and clip.info and clip.info.possibly_vfr:
+            if col == "FPS" and clip.info and (clip.info.possibly_vfr or clip.info.slowmo_factor):
                 return QColor("#d35400")
         return None
 
@@ -141,13 +147,18 @@ class ClipModel(QAbstractTableModel):
         i = clip.info
         if i is None:
             return ""
+        if col == "Device":
+            return (i.device or "").split(" (firmware")[0]
         if col == "Codec":
             return f"{i.codec} {i.profile}" if i.profile else i.codec
         if col == "Resolution":
             w, h = i.display_size
             return f"{w}×{h}"
         if col == "FPS":
-            return fmt_rate(i.fps) + (" (VFR?)" if i.possibly_vfr else "")
+            text = fmt_rate(i.fps) + (" (VFR?)" if i.possibly_vfr else "")
+            if i.slowmo_factor:
+                text += f" (slow-mo, rec. {fmt_rate(i.capture_fps)})"
+            return text
         if col == "Frames":
             job = clip.job
             if clip.trim.start or clip.trim.end is not None:

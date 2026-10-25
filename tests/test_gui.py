@@ -43,6 +43,11 @@ def window(qapp, h264_clip, hevc10_clip):
     w.close()
 
 
+def _cell(window, row: int, column: str):
+    model = window.model
+    return model.data(model.index(row, model.COLUMNS.index(column)))
+
+
 def _pick(combo, data):
     idx = combo.findData(data)
     assert idx >= 0, data
@@ -53,10 +58,10 @@ def test_import_and_info(window):
     clips = window.model.clips
     assert [c.path.name for c in clips] == ["h264_240.mp4", "hevc10_240.mp4"]
     assert window.current_clip() is clips[0]
-    assert window.model.data(window.model.index(1, 1)).startswith("hevc")
-    assert window.model.data(window.model.index(1, 6)) == "4:2:0 10-bit"
+    assert _cell(window, 1, "Codec").startswith("hevc")
+    assert _cell(window, 1, "Format") == "4:2:0 10-bit"
     assert "every ≈ 24 frames" in window.info.values["Keyframes"].text()
-    assert "lossless" in window.model.data(window.model.index(0, 7))
+    assert "lossless" in _cell(window, 0, "Output")
 
 
 def test_settings_change_mode(window):
@@ -70,7 +75,7 @@ def test_settings_change_mode(window):
     _pick(panel.codec_combo, "x264")
     assert clip.job.mode == Mode.INTERPOLATE and panel.interp_combo.isEnabled()
     assert panel.preset_combo.isVisibleTo(panel) and panel.quality_spin.value() == 18
-    assert "C – interpolation" == window.model.data(window.model.index(0, 7))
+    assert "C – interpolation" == _cell(window, 0, "Output")
 
     _pick(panel.res_combo, "hd720")
     _pick(panel.aspect_combo, "1:1")
@@ -127,7 +132,7 @@ def test_trim_snapping_and_modes(window):
     assert first.trim.start == 24 and "moved to frame 24" in panel.note.text()
     panel.set_out(500)                                # last frame 500 → GOP ends at 504
     assert first.trim.end == 504
-    assert window.model.data(window.model.index(0, 4)) == "480 of 959"
+    assert _cell(window, 0, "Frames") == "480 of 959"
     assert "480 → " in settings.summary.text()
 
     _pick(settings.codec_combo, "x264")               # frame-exact from now on
@@ -157,12 +162,12 @@ def test_test_encode_and_estimates(qapp, window):
     window.preview.seek(200)
     panel.frames_spin.setValue(20)
     panel.run_button.click()
-    assert first.testing and window.model.data(window.model.index(0, 8)) == "testing…"
+    assert first.testing and _cell(window, 0, "Estimate") == "testing…"
     _wait(qapp, lambda: not first.testing)
     test = first.test
     assert test.ok and test.frames == 21 and test.source_start == 200
     assert "frames/s" in panel.result.text() and "Estimate for the whole clip" in panel.result.text()
-    est = window.model.data(window.model.index(0, 8))
+    est = _cell(window, 0, "Estimate")
     assert est and not est.startswith("≈")
     assert "without estimate" in window.batch_label.text()      # second clip: other settings
 
@@ -173,12 +178,12 @@ def test_test_encode_and_estimates(qapp, window):
     _wait(qapp, lambda: panel.view.source is not None and panel.view.output is not None)
 
     settings.apply_button.click()                                 # same settings → derived
-    assert window.model.data(window.model.index(1, 8)).startswith("≈")
+    assert _cell(window, 1, "Estimate").startswith("≈")
     assert "without estimate" not in window.batch_label.text()
 
     settings.quality_spin.setValue(30)                            # test is stale now
     assert "changed after this test" in panel.result.text()
-    assert window.model.data(window.model.index(0, 8)) == ""
+    assert _cell(window, 0, "Estimate") == ""
     workdir = test.workdir
     window.clear()
     assert not workdir.exists()                                  # temp files removed

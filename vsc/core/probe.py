@@ -5,6 +5,7 @@ import json
 import re
 from bisect import bisect_right
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from fractions import Fraction
 from pathlib import Path
 
@@ -28,6 +29,14 @@ def parse_rate(text: str | None) -> Fraction | None:
     except (ValueError, ZeroDivisionError):
         return None
     return r if r > 0 else None
+
+
+# GoPro firmware prefix → camera (the firmware tag is stored in every GoPro MP4)
+GOPRO_MODELS = {
+    "HD5": "HERO5", "HD6": "HERO6", "HD7": "HERO7", "HD8": "HERO8", "HD9": "HERO9",
+    "H21": "HERO10", "H22": "HERO11", "H23": "HERO12", "H24": "HERO13",
+}
+SLOWMO_MIN = 1.5     # capture fps / file fps above this = slow motion already in the file
 
 
 def chroma_and_depth(pix_fmt: str) -> tuple[str, int]:
@@ -83,6 +92,20 @@ class MediaInfo:
     has_audio: bool
     stream_index: int
     extra_streams: list[str] = field(default_factory=list)
+    # recording details from the metadata (None = not stored in the file)
+    device: str | None = None
+    recorded: datetime | None = None          # aware (local time of the camera if known)
+    capture_fps: Fraction | None = None       # phones: rate the sensor recorded at
+    audio: str | None = None                  # first audio track, e.g. "aac stereo 48 kHz"
+
+    @property
+    def slowmo_factor(self) -> float | None:
+        """> 1 if the file is already slowed down (recorded faster than it plays)."""
+        if self.capture_fps:
+            f = float(self.capture_fps / self.fps)
+            if f >= SLOWMO_MIN:
+                return f
+        return None
 
     @property
     def display_size(self) -> tuple[int, int]:
@@ -186,7 +209,77 @@ def probe(path: str | Path) -> MediaInfo:
         has_audio=any(s.get("codec_type") == "audio" for s in streams),
         stream_index=int(v["index"]),
         extra_streams=extra,
+        **_recording(fmt.get("tags", {}), streams, v),
     )
+
+
+def _tags(d: dict) -> dict[str, str]:
+    return {k.lower(): str(val).strip() for k, val in d.items()}
+
+
+def _device(tags: dict[str, str], v_tags: dict[str, str]) -> str | None:
+    for make_key, model_key in (("com.android.manufacturer", "com.android.model"),
+                                ("com.apple.quicktime.make", "com.apple.quicktime.model"),
+                                ("make", "model")):
+        make, model = tags.get(make_key, ""), tags.get(model_key, "")
+        if model:
+            return model if model.lower().startswith(make.lower()) else f"{make} {model}".strip()
+    firmware = tags.get("firmware", "")
+    if v_tags.get("handler_name", "").startswith("GoPro") or firmware.startswith(
+            tuple(GOPRO_MODELS)):
+        model = next((m for prefix, m in GOPRO_MODELS.items() if firmware.startswith(prefix)), "")
+        name = f"GoPro {model}".strip()
+        return f"{name} (firmware {firmware})" if firmware else name
+    encoder = tags.get("encoder", "")
+    if encoder and not encoder.lower().startswith(("lavf", "lavc")):
+        return encoder         # e.g. DJI cameras write their name here
+    return None
+
+
+def _recorded(tags: dict[str, str], gopro: bool) -> datetime | None:
+    text = tags.get("com.apple.quicktime.creationdate")    # local time with offset
+    if not text:
+        text = tags.get("creation_time")
+    if not text:
+        return None
+    text = text.split(";")[0]        # duplicated tags arrive joined with ';'
+    try:
+        t = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if t.year < 1971:          # unset camera clock / QuickTime epoch
+        return None
+    if gopro:
+        # GoPro writes its local clock time but marks it as UTC
+        return t.replace(tzinfo=None).astimezone()
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    return t.astimezone()
+
+
+def _audio(streams: list[dict]) -> str | None:
+    a = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    if a is None:
+        return None
+    parts = [a.get("codec_name") or "?"]
+    layout = a.get("channel_layout") or (f"{a['channels']} ch" if a.get("channels") else "")
+    if layout:
+        parts.append(layout)
+    if str(a.get("sample_rate", "")).isdigit():
+        parts.append(f"{int(a['sample_rate']) / 1000:g} kHz")
+    return " ".join(parts)
+
+
+def _recording(fmt_tags: dict, streams: list[dict], v: dict) -> dict:
+    tags = _tags(fmt_tags)
+    device = _device(tags, _tags(v.get("tags", {})))
+    capture = parse_rate(tags.get("com.android.capture.fps"))
+    if capture:
+        capture = capture.limit_denominator(1001)
+    return {"device": device,
+            "recorded": _recorded(tags, bool(device and device.startswith("GoPro"))),
+            "capture_fps": capture,
+            "audio": _audio(streams)}
 
 
 @dataclass

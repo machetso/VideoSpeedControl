@@ -40,6 +40,12 @@ def cmd_info(args) -> None:
               f"  {i.bit_depth}-bit  {i.transfer_label}")
         print(f"  Bitrate   : {(i.stream_bitrate or i.bitrate or 0) / 1e6:.1f} Mbit/s")
         print(f"  Other     : {', '.join(i.extra_streams) or '–'}")
+        print(f"  Device    : {i.device or '–'}")
+        print(f"  Recorded  : {i.recorded:%Y-%m-%d %H:%M:%S}" if i.recorded else "  Recorded  : –")
+        print(f"  Audio     : {i.audio or '–'} (not exported)")
+        if i.slowmo_factor:
+            print(f"  Slow-mo   : recorded at {_fmt_rate(i.capture_fps)} fps – the file is already "
+                  f"{i.slowmo_factor:.3g}× slow motion")
         for fps_label, fps in formats.FRAME_RATES:
             print(f"    lossless @ {fps_label:9}: {float(fps / i.fps):.5f}×"
                   f"  ({float(i.fps / fps):.3g}× slower)")

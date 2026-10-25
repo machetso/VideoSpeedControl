@@ -7,8 +7,9 @@ from PySide6.QtWidgets import QFormLayout, QGroupBox, QLabel, QScrollArea, QVBox
 from ..core import formats
 from .clips import Clip, Status, chroma_label, fmt_duration, fmt_rate
 
-FIELDS = ("File", "Container", "Codec", "Size", "Frame rate", "Frames", "Duration", "Keyframes",
-          "Pixel format", "Colour", "Bitrate", "Other streams")
+FIELDS = ("File", "Device", "Recorded", "Container", "Codec", "Size", "Frame rate", "Frames",
+          "Duration", "Keyframes", "Pixel format", "Colour", "Bitrate", "Audio", "Other streams")
+NOT_STORED = "<span style='color:gray'>not stored in the file</span>"
 
 
 class InfoPanel(QGroupBox):
@@ -76,6 +77,8 @@ class InfoPanel(QGroupBox):
             vfr = vfr or hi > lo * 1.5
         rate += ("  <span style='color:#d35400'>⚠ possibly variable frame rate</span>"
                  if vfr else "  constant")
+        if i.slowmo_factor:
+            rate += "<br>" + slowmo_note(i)
 
         if fm:
             gop = (fm.keyframes[1] - fm.keyframes[0]) if len(fm.keyframes) > 1 else fm.count
@@ -85,6 +88,8 @@ class InfoPanel(QGroupBox):
         bitrate = i.stream_bitrate or i.bitrate
         values = {
             "File": f"{i.path.name}  ({i.size_bytes / 1e6:.1f} MB)",
+            "Device": i.device or NOT_STORED,
+            "Recorded": i.recorded.strftime("%Y-%m-%d %H:%M:%S") if i.recorded else NOT_STORED,
             "Container": i.container_long or i.container,
             "Codec": f"{i.codec}{' ' + i.profile if i.profile else ''} – {i.codec_long}",
             "Size": size,
@@ -96,6 +101,7 @@ class InfoPanel(QGroupBox):
             "Colour": f"{i.transfer_label}; space {i.color_space or '?'}, "
                       f"primaries {i.color_primaries or '?'}, range {i.color_range or '?'}",
             "Bitrate": f"{bitrate / 1e6:.1f} Mbit/s" if bitrate else "unknown",
+            "Audio": f"{i.audio}  (not exported)" if i.audio else "none",
             "Other streams": ", ".join(i.extra_streams) + "  (discarded)" if i.extra_streams else "–",
         }
         for name, text in values.items():
@@ -106,3 +112,12 @@ class InfoPanel(QGroupBox):
             f"<td align=right>&nbsp;({float(i.fps / fps):.3g}× slower)</td></tr>"
             for label, fps in formats.FRAME_RATES)
         self.speeds.setText(f"<table cellspacing=0>{rows}</table>")
+
+
+def slowmo_note(i) -> str:
+    """Phone slow motion: the file plays slower than it was recorded."""
+    return (f"<span style='color:#d35400'>⚠ Recorded at {fmt_rate(i.capture_fps)} fps – this "
+            f"file is already {i.slowmo_factor:.3g}× slow motion (phone slow-mo).</span><br>"
+            f"Speeds in this app refer to the file's {fmt_rate(i.fps)} fps: e.g. 0.5× here is "
+            f"{2 * i.slowmo_factor:.3g}× slower than real time. Lossless retime at "
+            f"{fmt_rate(i.capture_fps)} fps would restore real time.")

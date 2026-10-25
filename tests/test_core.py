@@ -317,3 +317,34 @@ def test_rife_encode(h264_clip, tmp_path, encoder_status):
         want = preview.grab_frame(*outputs["dup"], k, (320, 180))
         assert _psnr(got, want) > 37, k
     assert not list(Path(tempfile.gettempdir()).glob("vsc-rife-*"))   # temp files removed
+
+
+# ---------------------------------------------------------------- recording metadata
+
+def test_recording_metadata(tmp_path):
+    """Device, date, capture rate (phone slow-mo) and audio from the container tags."""
+    phone = tmp_path / "phone.mp4"
+    subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
+                    "testsrc2=s=320x240:r=30000/1001:d=1", "-f", "lavfi", "-i", "sine=d=1",
+                    "-c:v", "libx264", "-c:a", "aac", "-ac", "2", "-shortest",
+                    "-movflags", "use_metadata_tags",
+                    "-metadata", "com.android.manufacturer=Google",
+                    "-metadata", "com.android.model=Pixel 10 Pro",
+                    "-metadata", "com.android.capture.fps=240.000000",
+                    "-metadata", "creation_time=2026-10-25T09:12:21.000000Z", str(phone)],
+                   check=True)
+    i = probe(phone)
+    assert i.device == "Google Pixel 10 Pro"
+    assert i.recorded.isoformat().startswith("2026-10-25") and i.recorded.utcoffset() is not None
+    assert i.recorded.timestamp() == 1792919541
+    assert i.capture_fps == 240 and round(i.slowmo_factor, 2) == 8.01
+    assert i.audio.startswith("aac stereo")
+
+    gopro = tmp_path / "gopro.mp4"
+    subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
+                    "testsrc2=s=320x240:r=240:d=0.2", "-c:v", "libx264",
+                    "-movflags", "use_metadata_tags", "-metadata", "firmware=H23.01.02.32.00", "-metadata:s:v",
+                    "handler_name=GoPro H.265", str(gopro)], check=True)
+    g = probe(gopro)
+    assert g.device == "GoPro HERO12 (firmware H23.01.02.32.00)"
+    assert g.slowmo_factor is None and g.audio is None
