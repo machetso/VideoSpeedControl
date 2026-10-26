@@ -22,8 +22,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
   - Desktop launcher (see Setup).
 - 2026-10-26: artwork, docs, open source (user request): `assets/*.webp` (user's artwork; the
   .jpeg / .psd next to them in the root are the user's and not committed) → `tools/make_icons.py`
-  → `vsc/gui/resources/` (icons 16–512, icon.ico, splash.webp). Splash at start, Help menu
-  (F1 guide, PDF, About) in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
+  → `vsc/gui/resources/` (icons 16–512, icon.ico, splash.webp = About picture; no splash at start
+  – user removed it). "Help" button with menu at the right end of the toolbar (F1 guide, PDF,
+  About), code in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
   `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
   MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
   Version in `vsc/__init__.py` (0.9.0).

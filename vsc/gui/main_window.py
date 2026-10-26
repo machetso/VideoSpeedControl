@@ -16,7 +16,8 @@ from pathlib import Path
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLabel, QMainWindow,
-                               QMessageBox, QSplitter, QTableView, QTabWidget, QToolBar)
+                               QMenu, QMessageBox, QSizePolicy, QSplitter, QTableView, QTabWidget,
+                               QToolBar, QToolButton, QWidget)
 
 from ..core import batch, testencode
 from ..core.command import CommandError
@@ -119,14 +120,26 @@ class MainWindow(QMainWindow):
         for action in (add, remove, clear):
             toolbar.addAction(action)
 
-        menu = self.menuBar().addMenu("&Help")
-        menu.addAction(QAction("User guide", self, shortcut=QKeySequence.HelpContents,
-                               triggered=self.show_help))
+        # Help: a button with a menu at the right end of the same row
+        guide = QAction("User guide", self, shortcut=QKeySequence.HelpContents,
+                        triggered=self.show_help)
+        self.addAction(guide)                     # F1 works without opening the menu
         pdf = QAction("User guide (PDF)", self, triggered=self._open_pdf)
         pdf.setEnabled(help.PDF.is_file())
+        menu = QMenu(self)
+        menu.addAction(guide)
         menu.addAction(pdf)
         menu.addSeparator()
         menu.addAction(QAction("About VideoSpeedControl", self, triggered=self.show_about))
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
+        self.help_button = QToolButton()
+        self.help_button.setText("Help")
+        self.help_button.setToolTip("User guide (F1), PDF and About")
+        self.help_button.setMenu(menu)
+        self.help_button.setPopupMode(QToolButton.InstantPopup)
+        toolbar.addWidget(self.help_button)
         self._help: help.HelpWindow | None = None
 
         self.batch_label = QLabel()

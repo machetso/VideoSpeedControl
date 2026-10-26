@@ -10,7 +10,7 @@
   assets/VideoSpeedControl_Icon.webp → vsc/gui/resources/icon_<size>.png (16 … 512) + icon.ico
       The rounded symbol is cut out of the landscape picture, its corners made transparent.
       Sizes ≤ 64 px show only the camera – the name would not be readable there.
-  assets/VideoSpeedControl_big.webp  → vsc/gui/resources/splash.webp (start screen, About)
+  assets/VideoSpeedControl_big.webp  → vsc/gui/resources/splash.webp (About dialog, PDF title)
 
 Usage:  python tools/make_icons.py
 """

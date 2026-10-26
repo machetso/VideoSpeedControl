@@ -25,9 +25,6 @@ def main(argv: list[str] | None = None) -> int:
     app.setDesktopFileName("videospeedcontrol")   # Wayland: matches the launcher entry's icon
     app.setWindowIcon(help.app_icon())
     window = MainWindow()
-    splash = help.show_splash(app, window)
     window.add_files([Path(a) for a in argv[1:]])
     window.show()
-    if splash:
-        splash.raise_()
     return app.exec()

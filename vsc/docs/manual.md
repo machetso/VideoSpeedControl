@@ -37,7 +37,7 @@ A 240 fps camera records 240 pictures per second. Played at 240 fps, that is rea
 - **Clip list (top):** every loaded file with its device, codec, resolution, frame rate, length, the chosen output and an estimate of export time and size.
 - **Tabs (bottom left):** *Preview & trim*, *Test encode*, *Clip info*, *Export*.
 - **Output settings (bottom right):** everything about the output of the selected clip, with a summary at the bottom.
-- **Help menu:** this guide (**F1**), the guide as PDF, and *About*.
+- **Help** (right end of the toolbar): this guide (**F1**), the guide as PDF, and *About*.
 
 Each clip has its own settings. **Apply to all clips** copies the output settings of the selected clip to all others (trims and speed sections stay per clip).
 

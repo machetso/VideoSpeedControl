@@ -5,7 +5,7 @@
 #
 # Licensed under the MIT License.
 # See the LICENSE file in the repository root for details.
-"""App icon, start screen, user guide window and About dialog.
+"""App icon, user guide window and About dialog.
 
 The user guide is one Markdown file (vsc/docs/manual.md with its pictures); the same text is
 shown in the app and turned into the PDF by tools/build_docs.py.
@@ -15,10 +15,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap, QTextCursor, QTextDocument
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QListWidget,
-                               QSplashScreen, QSplitter, QTextBrowser, QVBoxLayout, QWidget)
+                               QSplitter, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
 
@@ -27,7 +27,6 @@ DOCS = Path(__file__).resolve().parent.parent / "docs"
 MANUAL = DOCS / "manual.md"
 PDF = DOCS / "VideoSpeedControl_Manual.pdf"
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
-SPLASH_MS = 1800
 
 ATTRIBUTION = ("Concept, architecture, direction, and curation by Alex Vulcu.<br>"
                "Implementation assisted by generative AI tools.")
@@ -45,20 +44,6 @@ def app_icon() -> QIcon:
 def splash_pixmap(width: int) -> QPixmap:
     pix = QPixmap(str(RESOURCES / "splash.webp"))
     return pix.scaledToWidth(width, Qt.SmoothTransformation) if not pix.isNull() else pix
-
-
-def show_splash(app, window) -> QSplashScreen | None:
-    """Start screen for a moment (a click closes it earlier)."""
-    screen = app.primaryScreen()
-    width = min(860, int(screen.availableGeometry().width() * 0.45)) if screen else 860
-    pix = splash_pixmap(width)
-    if pix.isNull():
-        return None
-    splash = QSplashScreen(pix, Qt.WindowStaysOnTopHint)
-    splash.show()
-    app.processEvents()
-    QTimer.singleShot(SPLASH_MS, lambda: splash.finish(window))
-    return splash
 
 
 # --------------------------------------------------------------------------- user guide
