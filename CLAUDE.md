@@ -54,6 +54,11 @@ Read SCOPE.md for the agreed feature set and milestone status.
     time marked as UTC), `com.android.capture.fps` → `slowmo_factor` (phone slow-mo files
     play at ~30 fps), first audio track
   - `formats.py` – catalogue: fps, resolutions, chroma, scalers, interpolation, codecs + UI texts
+    Quality is shown as named levels (`QUALITY_LEVELS`, per-codec values in `QUALITY_VALUES`,
+    "High" = the codec's old default) + "Custom…" (`ui["quality"]`, reset on codec change);
+    presets get descriptions from `preset_label` (CineForm's "preset" is a quality level).
+  - Settings panel must fit ~345 px (half-screen window): drop-downs are `settings_panel.Combo`
+    (shrink, popup shows full texts), side-by-side pairs are stacked, info labels wrap.
   - `encoders.py` – encoder detection, pix_fmt lists, hardware test encodes (cached in
     ~/.config/VideoSpeedControl/encoders.json per FFmpeg version)
   - `job.py` – OutputSettings (per clip), Trim, Job (mode decision, sizes, formats)

@@ -422,6 +422,88 @@ CODECS: list[Codec] = [
 
 CODECS_BY_KEY = {c.key: c for c in CODECS}
 
+# --------------------------------------------------------------------------- quality levels
+
+QUALITY_LEVELS = (
+    ("Visually lossless", "No visible difference even in a still frame. Large files."),
+    ("High", "Hardly any visible loss – good for further editing and archiving."),
+    ("Good", "Streaming quality (YouTube, Netflix): fine for watching."),
+    ("Medium", "Losses visible on a close look, e.g. in fine detail or dark areas."),
+    ("Small file", "Clearly visible losses – for previews or sending quickly."),
+)
+# per codec: the codec's own value for each level above (best → smallest). "High" is the
+# codec's default, so the levels do not change existing behaviour.
+QUALITY_VALUES = {
+    "x264": (14, 18, 23, 28, 34), "x265": (16, 20, 25, 30, 35),
+    "svtav1": (22, 30, 37, 44, 52), "aom": (22, 30, 36, 43, 50),
+    "vp9": (24, 31, 37, 44, 52), "av2": (100, 140, 170, 200, 225),
+    "mjpeg": (2, 3, 5, 8, 12),
+    "h264_nvenc": (17, 21, 25, 29, 34), "hevc_nvenc": (19, 23, 27, 31, 36),
+    "av1_nvenc": (22, 30, 37, 44, 52),
+    "h264_qsv": (18, 23, 27, 31, 36), "hevc_qsv": (20, 25, 29, 33, 38),
+    "av1_qsv": (22, 30, 36, 42, 48),
+    "h264_vaapi": (18, 23, 27, 31, 36), "hevc_vaapi": (20, 25, 29, 33, 38),
+    "h264_amf": (17, 22, 26, 30, 35), "hevc_amf": (19, 24, 28, 32, 37),
+    "av1_amf": (80, 120, 150, 180, 210),
+}
+
+
+def quality_levels(codec: Codec) -> list[tuple[str, str, int]]:
+    """(name, explanation, codec value) for each named quality level of `codec`."""
+    values = QUALITY_VALUES.get(codec.key, ())
+    return [(name, tip, v) for (name, tip), v in zip(QUALITY_LEVELS, values)]
+
+
+# --------------------------------------------------------------------------- preset texts
+
+_NAMED_PRESETS = {
+    "ultrafast": "fastest, largest file", "superfast": "very fast, very large file",
+    "veryfast": "fast, large file", "faster": "faster, larger file",
+    "fast": "a bit faster, a bit larger file", "medium": "balanced",
+    "slow": "slower, smaller file", "slower": "much slower, smaller file",
+    "veryslow": "slowest, smallest file",
+}
+
+
+def _speed_text(f: float) -> str:
+    """0 = slowest / best compression … 1 = fastest."""
+    if f <= 0:
+        return "slowest, smallest file"
+    if f >= 1:
+        return "fastest, largest file"
+    for limit, text in ((0.25, "very slow, very small file"), (0.45, "slow, small file"),
+                        (0.6, "balanced"), (0.8, "fast, larger file")):
+        if f < limit:
+            return text
+    return "very fast, large file"
+
+
+def preset_label(codec: Codec, preset: str) -> str:
+    """Drop-down text for a preset, e.g. 'medium – balanced (default)'."""
+    presets = codec.presets
+    i, n = presets.index(preset), max(1, len(presets) - 1)
+    if codec.key == "cineform":        # its 'preset' is a quality level, best first
+        f = i / n
+        text = ("highest quality, largest file" if f == 0 else
+                "lowest quality, smallest file" if f == 1 else
+                "very high quality" if f < 0.3 else "high quality" if f < 0.6 else
+                "medium quality, smaller file")
+    elif preset in _NAMED_PRESETS:
+        text = _NAMED_PRESETS[preset]
+    elif codec.preset_flag == "-preset" and preset.startswith("p"):   # NVENC p1 fast … p7
+        text = _speed_text(1 - i / n)
+    else:                               # numbers: 0 = slowest (SVT-AV1, libaom, VP9, AV2)
+        text = _speed_text(i / n)
+    if codec.external == "avm" and i == len(presets) - 1:
+        text = "fastest – still about a minute per 1080p frame"
+    return f"{preset} – {text}" + (" (default)" if preset == codec.default_preset else "")
+
+
+PRESET_TIP = ("How long the encoder searches for the best compression.\n"
+              "At the same quality setting a slower preset gives a smaller file and takes\n"
+              "longer; the visible quality hardly changes.")
+CINEFORM_TIP = "CineForm compression level: higher = better picture and larger files."
+
 # Special codec key: keep the source bitstream (lossless retime)
 COPY = "copy"
 

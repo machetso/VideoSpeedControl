@@ -9,7 +9,7 @@ from __future__ import annotations
 from fractions import Fraction
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QSizePolicy, QDoubleSpinBox, QFormLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
@@ -70,6 +70,7 @@ class SettingsPanel(QGroupBox):
 
         form_widget = QWidget()
         form = self.form = QFormLayout(form_widget)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
         # --- processing: lossless / smart / re-encode
         self.proc_lossless = QRadioButton("Lossless")
@@ -89,17 +90,23 @@ class SettingsPanel(QGroupBox):
         self.proc_group = QButtonGroup(self)
         for b in (self.proc_lossless, self.proc_smart, self.proc_reencode):
             self.proc_group.addButton(b)
-        form.addRow("Processing:", _row(self.proc_lossless, self.proc_smart, self.proc_reencode))
+        proc_box = QWidget()            # one below the other – fits a narrow panel
+        proc_layout = QVBoxLayout(proc_box)
+        proc_layout.setContentsMargins(0, 0, 0, 0)
+        proc_layout.setSpacing(2)
+        for b in (self.proc_lossless, self.proc_smart, self.proc_reencode):
+            proc_layout.addWidget(b)
+        form.addRow("Processing:", proc_box)
 
         # --- frame rate
-        self.fps_combo = QComboBox()
+        self.fps_combo = Combo()
         self.fps_combo.setToolTip("Frame rate of the output file.")
-        self.fps_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.fps_edit = QLineEdit()
         self.fps_edit.setPlaceholderText("e.g. 48 or 24000/1001")
         self.fps_edit.setMaximumWidth(140)
-        form.addRow("Frame rate:", _row(self.fps_combo, self.fps_edit))
+        form.addRow("Frame rate:", _row(self.fps_combo, self.fps_edit, grow=self.fps_combo))
         self.original_info = QLabel()
+        self.original_info.setWordWrap(True)
         form.addRow("", self.original_info)
 
         # --- speed
@@ -118,40 +125,43 @@ class SettingsPanel(QGroupBox):
         self.speed_spin.setToolTip("Playback speed relative to real time (0.1 = 10× slower).\n"
                                    "Faster than the lossless speed → frames are skipped (B),\n"
                                    "slower → in-between frames are calculated (C).")
-        self.speed_presets = QComboBox()
+        self.speed_presets = Combo()
         self.speed_presets.addItem("Presets…", None)
         for f in SPEED_PRESETS:
             self.speed_presets.addItem(f"1/{f.denominator}  ({f.denominator}× slower)", str(f))
         self.speed_info = QLabel()
+        self.speed_info.setWordWrap(True)
         form.addRow("Speed:", self.speed_lossless)
-        form.addRow("", _row(self.speed_custom, self.speed_spin, self.speed_presets))
+        form.addRow("", _row(self.speed_custom, self.speed_spin))
+        form.addRow("", self.speed_presets)
         form.addRow("", self.speed_info)
 
         # --- codec
-        self.codec_combo = QComboBox()
-        self.container_combo = QComboBox()
+        self.codec_combo = Combo()
+        self.container_combo = Combo()
         self.container_combo.setToolTip("File format that holds the video stream.")
         form.addRow("Codec:", self.codec_combo)
         form.addRow("Container:", self.container_combo)
-        self.profile_combo = QComboBox()
+        self.profile_combo = Combo()
         self.profile_label = QLabel("Profile:")
         form.addRow(self.profile_label, self.profile_combo)
-        self.preset_combo = QComboBox()
-        self.preset_combo.setToolTip("Encoder speed / efficiency trade-off.\n"
-                                     "Slower presets give smaller files at the same quality.")
+        self.preset_combo = Combo()
+        self.preset_combo.setToolTip(formats.PRESET_TIP)
         self.preset_label = QLabel("Preset:")
         form.addRow(self.preset_label, self.preset_combo)
+        self.quality_combo = Combo()
         self.quality_spin = QSpinBox()
+        self.quality_spin.setToolTip("The codec's own quality number")
         self.quality_label = QLabel("Quality:")
-        form.addRow(self.quality_label, self.quality_spin)
-        self.chroma_combo = QComboBox()
-        self.depth_combo = QComboBox()
-        for combo in (self.chroma_combo, self.depth_combo):
-            combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        form.addRow("Chroma / depth:", _row(self.chroma_combo, self.depth_combo))
+        self.quality_row = _row(self.quality_combo, self.quality_spin, grow=self.quality_combo)
+        form.addRow(self.quality_label, self.quality_row)
+        self.chroma_combo = Combo()
+        self.depth_combo = Combo()
+        form.addRow("Chroma:", self.chroma_combo)
+        form.addRow("Bit depth:", self.depth_combo)
 
         # --- size
-        self.res_combo = QComboBox()
+        self.res_combo = Combo()
         self.res_combo.addItem("Keep source size", "source")
         for r in formats.RESOLUTIONS:
             self.res_combo.addItem(r.label, r.key)
@@ -164,19 +174,20 @@ class SettingsPanel(QGroupBox):
             spin.setSingleStep(2)
         form.addRow("Resolution:", self.res_combo)
         form.addRow("", _row(self.width_spin, QLabel("×"), self.height_spin))
-        self.aspect_combo = QComboBox()
+        self.aspect_combo = Combo()
         self.aspect_combo.addItem("Keep original aspect (fit inside)", "fit")
         self.aspect_combo.setItemData(0, "The picture keeps its proportions and is scaled to fit\n"
                                          "inside the chosen frame size.", Qt.ToolTipRole)
         self.aspect_combo.addItem("Exactly this frame size", "exact")
         for label, _ in formats.ASPECT_PRESETS:
             self.aspect_combo.addItem(f"Aspect ratio {label}", label)
-        self.fit_combo = QComboBox()
+        self.fit_combo = Combo()
         for key, (label, tip) in formats.FIT_MODES.items():
             self.fit_combo.addItem(label, key)
             self.fit_combo.setItemData(self.fit_combo.count() - 1, tip, Qt.ToolTipRole)
-        form.addRow("Aspect:", _row(self.aspect_combo, self.fit_combo))
-        self.scaler_combo = QComboBox()
+        form.addRow("Aspect:", self.aspect_combo)
+        form.addRow("Fit:", self.fit_combo)
+        self.scaler_combo = Combo()
         for s in formats.SCALERS:
             self.scaler_combo.addItem(f"{s.label}  (quality {s.quality}/5, speed {s.speed}/5)",
                                       s.key)
@@ -184,7 +195,7 @@ class SettingsPanel(QGroupBox):
         form.addRow("Scaling:", self.scaler_combo)
 
         # --- interpolation
-        self.interp_combo = QComboBox()
+        self.interp_combo = Combo()
         form.addRow("Interpolation:", self.interp_combo)
 
         # --- summary + apply
@@ -205,7 +216,8 @@ class SettingsPanel(QGroupBox):
         layout.addWidget(self.apply_button)
 
         for combo in (self.fps_combo, self.codec_combo, self.container_combo, self.profile_combo,
-                      self.preset_combo, self.chroma_combo, self.depth_combo, self.res_combo,
+                      self.preset_combo, self.quality_combo, self.chroma_combo, self.depth_combo,
+                      self.res_combo,
                       self.aspect_combo, self.fit_combo, self.scaler_combo, self.interp_combo):
             combo.currentIndexChanged.connect(self._edited)
         for spin in (self.speed_spin, self.quality_spin, self.width_spin, self.height_spin):
@@ -270,12 +282,21 @@ class SettingsPanel(QGroupBox):
         if codec != s.codec:
             s.codec = codec
             s.container = s.profile = s.preset = s.quality = None  # codec defaults
+            ui.pop("quality", None)                                  # other scale
         else:
             s.container = self.container_combo.currentData()
             s.profile = self.profile_combo.currentData()
             s.preset = self.preset_combo.currentData()
             c = formats.CODECS_BY_KEY.get(codec)
-            s.quality = self.quality_spin.value() if c and c.quality else None
+            level = self.quality_combo.currentData()
+            if not (c and c.quality):
+                s.quality = None
+            elif level == CUSTOM:
+                ui["quality"] = CUSTOM
+                s.quality = self.quality_spin.value()
+            else:
+                ui.pop("quality", None)
+                s.quality = int(level) if level is not None else None
             s.chroma = self.chroma_combo.currentData()
             s.depth = self.depth_combo.currentData()
 
@@ -388,8 +409,7 @@ class SettingsPanel(QGroupBox):
 
         # speed
         lossless = float(job.lossless_speed)
-        self.speed_lossless.setText(f"Lossless speed: {lossless:.5g}×  "
-                                    f"({fmt_slowdown(1 / lossless)})")
+        self.speed_lossless.setText(f"Lossless: {lossless:.4g}× ({fmt_slowdown(1 / lossless)})")
         self.speed_lossless.setChecked(s.speed is None)
         self.speed_custom.setChecked(s.speed is not None)
         self.speed_spin.setEnabled(s.speed is not None)
@@ -424,17 +444,17 @@ class SettingsPanel(QGroupBox):
         fill_combo(self.profile_combo, [(p.label, p.key, p.tooltip) for p in profiles],
                    job.profile.key if job.profile else None)
         presets = codec.presets if codec else ()
-        fill_combo(self.preset_combo, [(p, p) for p in presets],
+        fill_combo(self.preset_combo, [(formats.preset_label(codec, p), p) for p in presets],
                    s.preset or (codec.default_preset if codec else None))
+        cineform = bool(codec) and codec.key == "cineform"
+        self.preset_label.setText("Compression:" if cineform else "Preset:")
+        self.preset_combo.setToolTip(formats.CINEFORM_TIP if cineform else formats.PRESET_TIP)
         q = codec.quality if codec else None
         if q:
-            self.quality_spin.setRange(q.minimum, q.maximum)
-            self.quality_spin.setValue(s.quality if s.quality is not None else q.default)
-            self.quality_spin.setToolTip(q.tooltip)
-            self.quality_label.setText(q.label + ":")
+            self._sync_quality(clip, codec, q)
         for widget, visible in ((self.profile_combo, bool(profiles)),
                                 (self.preset_combo, bool(presets)),
-                                (self.quality_spin, bool(q))):
+                                (self.quality_row, bool(q))):
             self.form.setRowVisible(widget, visible)
 
         self._sync_pixel_format(clip)
@@ -476,13 +496,13 @@ class SettingsPanel(QGroupBox):
         locked_speed = (self.speed_custom, self.speed_spin, self.speed_presets)
         if lossless_only:
             for w in (*locked_speed, *locked_size, self.codec_combo, self.profile_combo,
-                      self.preset_combo, self.quality_spin, self.interp_combo):
+                      self.preset_combo, self.quality_combo, self.quality_spin, self.interp_combo):
                 w.setEnabled(False)
         elif process == SMART:
             for w in (*locked_speed, *locked_size, self.codec_combo, self.profile_combo,
                       self.chroma_combo, self.depth_combo):
                 w.setEnabled(False)
-            for w in (self.preset_combo, self.quality_spin, self.interp_combo):
+            for w in (self.preset_combo, self.quality_combo, self.quality_spin, self.interp_combo):
                 w.setEnabled(True)
             self.codec_combo.setToolTip("Smart re-encode always uses the source codec – "
                                         "otherwise the parts could not be joined.")
@@ -490,7 +510,7 @@ class SettingsPanel(QGroupBox):
                                          "their output frame rate.")
         else:
             for w in (self.speed_custom, self.speed_presets, self.codec_combo, self.profile_combo,
-                      self.preset_combo, self.quality_spin, self.res_combo):
+                      self.preset_combo, self.quality_combo, self.quality_spin, self.res_combo):
                 w.setEnabled(True)
 
         # speed sections replace the global speed; lossless they keep every frame's own rate
@@ -517,6 +537,26 @@ class SettingsPanel(QGroupBox):
                                       "sections have their own output frame rate.")
 
         self.summary.setText(self._summary(clip))
+
+    def _sync_quality(self, clip: Clip, codec, q) -> None:
+        """Named levels with the codec's number in brackets; 'Custom…' shows the number box."""
+        value = clip.settings.quality if clip.settings.quality is not None else q.default
+        levels = formats.quality_levels(codec)
+        custom = clip.ui.get("quality") == CUSTOM or value not in [v for _, _, v in levels]
+        direction = "lower = better" if q.lower_is_better else "higher = better"
+        items = [(f"{name} ({q.label} {v})", str(v), f"{tip}\n\n{q.label} {v} ({direction})")
+                 for name, tip, v in levels]
+        items.append(("Custom…", CUSTOM, f"Enter the {q.label} value yourself "
+                                         f"({q.minimum}–{q.maximum}, {direction})."))
+        fill_combo(self.quality_combo, items, CUSTOM if custom else str(value))
+        self.quality_combo.setToolTip(
+            "How much detail is kept: the levels mean about the same for every codec.\n"
+            f"In brackets: this codec's own setting ({q.label}, {direction}).\n"
+            "One level down makes the file roughly 30–50 % smaller.")
+        self.quality_spin.setRange(q.minimum, q.maximum)
+        self.quality_spin.setValue(value)
+        self.quality_spin.setVisible(custom)
+        self.quality_spin.setToolTip(f"{q.label}: {q.tooltip}" if q.tooltip else q.label)
 
     def _fps_items(self, job, rates: list[tuple[str, Fraction]]) -> list[tuple]:
         """Frame rates with the resulting slow-down and length when every frame is kept."""
@@ -741,11 +781,30 @@ def _apply_resolution(clip: Clip) -> None:
     s.width, s.height = w, h
 
 
-def _row(*widgets) -> QWidget:
+def _row(*widgets, grow: QWidget | None = None) -> QWidget:
+    """Widgets side by side; `grow` takes the free width (else it stays on the right)."""
     w = QWidget()
     layout = QHBoxLayout(w)
     layout.setContentsMargins(0, 0, 0, 0)
     for widget in widgets:
-        layout.addWidget(widget)
-    layout.addStretch(1)
+        layout.addWidget(widget, 1 if widget is grow else 0)
+    if grow is None:
+        layout.addStretch(1)
     return w
+
+
+class Combo(QComboBox):
+    """Shrinks with a narrow panel (long texts are cut off); the open list shows them in full."""
+
+    def __init__(self, chars: int = 12):
+        super().__init__()
+        self.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(chars)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def showPopup(self) -> None:
+        view = self.view()
+        wanted = view.sizeHintForColumn(0) + view.verticalScrollBar().sizeHint().width() + 12
+        screen = self.screen().availableGeometry().width() if self.screen() else 1200
+        view.setMinimumWidth(min(max(wanted, self.width()), screen // 2))
+        super().showPopup()

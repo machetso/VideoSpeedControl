@@ -74,7 +74,9 @@ def test_settings_change_mode(window):
     panel.speed_spin.setValue(0.05)
     assert clip.settings.speed == Fraction(1, 20)
     assert clip.job.mode == Mode.INTERPOLATE and panel.interp_combo.isEnabled()
-    assert panel.preset_combo.isVisibleTo(panel) and panel.quality_spin.value() == 18
+    assert panel.preset_combo.isVisibleTo(panel) and panel.quality_combo.currentData() == "18"
+    assert panel.quality_combo.currentText() == "High (CRF 18)"
+    assert panel.preset_combo.currentText() == "medium – balanced (default)"
     assert "C – interpolation" == _cell(window, 0, "Output")
 
     _pick(panel.res_combo, "hd720")
@@ -181,7 +183,7 @@ def test_test_encode_and_estimates(qapp, window):
     assert _cell(window, 1, "Estimate").startswith("≈")
     assert "without estimate" not in window.batch_label.text()
 
-    settings.quality_spin.setValue(30)                            # test is stale now
+    _pick(settings.quality_combo, "28")                          # test is stale now
     assert "changed after this test" in panel.result.text()
     assert _cell(window, 0, "Estimate") == ""
     workdir = test.workdir
@@ -370,7 +372,7 @@ def test_processing_modes_and_smart(qapp, window):
     assert s.smart and s.codec == "x264" and clip.job.mode == Mode.SMART
     assert not settings.codec_combo.isEnabled() and not settings.res_combo.isEnabled()
     assert not settings.fps_combo.isEnabled() and not settings.speed_custom.isEnabled()
-    assert settings.quality_spin.isEnabled() and settings.preset_combo.isEnabled()
+    assert settings.quality_combo.isEnabled() and settings.preset_combo.isEnabled()
     containers = [settings.container_combo.itemData(i) for i in range(settings.container_combo.count())]
     assert containers == ["mp4", "mkv"]
     assert "Apple" in settings.summary.text() and "keyframes" in settings.summary.text()
@@ -392,7 +394,7 @@ def test_processing_modes_and_smart(qapp, window):
     settings.set_process("reencode")
     assert not clip.settings.smart and t.isColumnHidden(4) and settings.codec_combo.isEnabled()
     settings.set_process("lossless")
-    assert clip.settings.codec == "copy" and not settings.quality_spin.isEnabled()
+    assert clip.settings.codec == "copy" and not settings.quality_combo.isEnabled()
 
 
 def test_magnetic_cursor(window):
@@ -515,3 +517,19 @@ def test_section_table_keeps_position_and_out_fps(qapp, window):
     preview.add_section()
     assert clip.segments[-1].out_fps == 25                        # last choice is the default
     QSettings().remove("sections/out_fps")
+
+
+def test_quality_levels_and_custom(window):
+    panel, clip = window.settings, window.current_clip()
+    panel.set_process("reencode")
+    names = [panel.quality_combo.itemText(i) for i in range(panel.quality_combo.count())]
+    assert names[0].startswith("Visually lossless") and names[-1] == "Custom…"
+    assert not panel.quality_spin.isVisibleTo(panel)
+    _pick(panel.quality_combo, "23")
+    assert clip.settings.quality == 23
+    _pick(panel.quality_combo, "custom")
+    assert panel.quality_spin.isVisibleTo(panel)
+    panel.quality_spin.setValue(21)
+    assert clip.settings.quality == 21 and panel.quality_combo.currentData() == "custom"
+    _pick(panel.codec_combo, "svtav1")                          # other scale, own levels
+    assert clip.settings.quality is None and panel.quality_combo.currentText() == "High (CRF 30)"
