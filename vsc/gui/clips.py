@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
-from ..core import testencode
+from ..core import formats, testencode
 from ..core.job import Job, Mode, OutputSettings, Trim
 from ..core.probe import FrameMap, MediaInfo
 
@@ -21,6 +21,7 @@ class Status(Enum):
 
 
 MODE_SHORT = {
+    Mode.SMART: "Smart re-encode",
     Mode.RETIME: "A – lossless retime",
     Mode.REENCODE: "Re-encode",
     Mode.DROP: "B – frame selection",
@@ -40,6 +41,7 @@ class Clip:
     # aspect ratio was picked). Copied together with the settings by "apply to all".
     ui: dict = field(default_factory=dict)
     trim: Trim = field(default_factory=Trim)          # per clip, never copied to other clips
+    segments: list = field(default_factory=list)      # speed sections, per clip like the trim
     thumbs: list = field(default_factory=list)        # [(frame index, QImage)], filled in background
     playhead: int = 0
     test: testencode.TestResult | None = None     # last test encode
@@ -48,9 +50,23 @@ class Clip:
     export: str = ""                                  # export state for the Status column
     removed: bool = False                             # tells background tasks to stop
 
+    proxy: list = field(default_factory=list)         # small JPEG per (step-th) frame
+    proxy_step: int = 1
+    proxy_done: bool = False
+    joins: list | None = None                         # smart re-encode: safe keyframes
+    _smart_frames: FrameMap | None = None
+
     @property
     def job(self) -> Job | None:
-        return Job(self.info, self.settings, self.trim, self.frames) if self.info else None
+        if not self.info:
+            return None
+        frames = self.frames
+        if self.settings.smart and self.joins is not None and frames:
+            # smart re-encode can only cut / join at safe keyframes: snap to those
+            if self._smart_frames is None or self._smart_frames.pts is not frames.pts:
+                self._smart_frames = FrameMap(frames.pts, frames.time_base, self.joins)
+            frames = self._smart_frames
+        return Job(self.info, self.settings, self.trim, frames, self.segments, self.joins)
 
 
 def fmt_rate(r) -> str:
@@ -61,6 +77,29 @@ def fmt_duration(seconds: float) -> str:
     m, s = divmod(seconds, 60)
     h, m = divmod(int(m), 60)
     return f"{h}:{m:02d}:{s:06.3f}" if h else f"{m}:{s:06.3f}"
+
+
+def frame_rate_choices(real_fps) -> list[tuple[str, "Fraction"]]:
+    """The standard rates plus the clip's own rate, marked as original, sorted by rate."""
+    rates = []
+    for label, fps in formats.FRAME_RATES:
+        name, _, extra = label.partition(" ")
+        rates.append((f"{name} fps {extra}".strip(), fps))
+    for i, (label, fps) in enumerate(rates):
+        if fps == real_fps:
+            rates[i] = (f"{label} (original)", fps)
+            return rates
+    rates.append((f"{fmt_rate(real_fps)} fps (original)", real_fps))
+    return sorted(rates, key=lambda r: r[1])
+
+
+def fmt_slowdown(factor: float) -> str:
+    """How much slower (factor > 1) or faster than the original, e.g. '8× slower'."""
+    if abs(factor - 1) < 1e-4:
+        return "real time"
+    if factor > 1:
+        return f"{factor:.3g}× slower"
+    return f"{1 / factor:.3g}× faster"
 
 
 def fmt_seconds(seconds: float) -> str:
@@ -124,7 +163,8 @@ class ClipModel(QAbstractTableModel):
             if col == "FPS" and clip.info and clip.info.slowmo_factor:
                 i = clip.info
                 return (f"Recorded at {fmt_rate(i.capture_fps)} fps, stored at {fmt_rate(i.fps)} fps:\n"
-                        f"the file is already {i.slowmo_factor:.3g}× slow motion.")
+                        f"the file is already {i.slowmo_factor:.3g}× slow motion.\n"
+                        f"{fmt_rate(i.capture_fps)} fps is used as the original frame rate.")
             if col == "Device" and clip.info and clip.info.recorded:
                 return f"Recorded {clip.info.recorded:%Y-%m-%d %H:%M}"
             if col == "Estimate":
@@ -155,9 +195,9 @@ class ClipModel(QAbstractTableModel):
             w, h = i.display_size
             return f"{w}×{h}"
         if col == "FPS":
-            text = fmt_rate(i.fps) + (" (VFR?)" if i.possibly_vfr else "")
+            text = fmt_rate(i.real_fps) + (" (VFR?)" if i.possibly_vfr else "")
             if i.slowmo_factor:
-                text += f" (slow-mo, rec. {fmt_rate(i.capture_fps)})"
+                text += f" (slow-mo, file {fmt_rate(i.fps)})"
             return text
         if col == "Frames":
             job = clip.job
@@ -169,7 +209,13 @@ class ClipModel(QAbstractTableModel):
         if col == "Format":
             return f"{chroma_label(i.chroma)} {i.bit_depth}-bit"
         if col == "Output":
-            return MODE_SHORT[clip.job.mode]
+            job = clip.job
+            if job.mode == Mode.SMART:
+                return "Smart re-encode"
+            if job.has_segments:
+                return ("Sections – lossless (VFR)" if job.mode == Mode.RETIME else
+                        f"Sections → {fmt_rate(job.settings.fps)} fps")
+            return MODE_SHORT[job.mode]
         return ""
 
     # ------------------------------------------------------------------ estimates

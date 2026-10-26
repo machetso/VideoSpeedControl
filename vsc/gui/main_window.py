@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass
 import time
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLab
 from ..core import batch, testencode
 from ..core.command import CommandError
 from ..core.formats import CODECS_BY_KEY
+from ..core.job import Job
 from .clips import Clip, ClipModel, Status, fmt_bytes, fmt_seconds
 from .export_panel import ExportPanel
 from .info_panel import InfoPanel
@@ -23,6 +25,20 @@ from . import workers
 
 VIDEO_FILTER = ("Video files (*.mp4 *.mov *.mkv *.avi *.mts *.m2ts *.mxf *.webm *.m4v *.wmv "
                 "*.flv *.360 *.lrv *.MP4 *.MOV *.MKV *.AVI *.MTS);;All files (*)")
+
+
+@dataclass
+class BatchEntry:
+    clip: Clip
+    job: Job                     # snapshot taken by "Add to batch"
+    label: str
+    pix_fmts: list[str] | None
+
+
+def _snapshot(job: Job) -> Job:
+    """An independent copy: later edits of the clip do not change it."""
+    return Job(job.info, job.settings.clone(), copy.copy(job.trim), job.frames,
+               list(job.segments), job.joins)
 
 
 class MainWindow(QMainWindow):
@@ -47,6 +63,7 @@ class MainWindow(QMainWindow):
         self.info = InfoPanel()
         self.preview = PreviewPanel()
         self.preview.trim_changed.connect(self._trim_changed)
+        self.preview.add_to_batch.connect(self.add_to_batch)
         self.tabs = QTabWidget()
         self.tabs.addTab(self.preview, "Preview && trim")
         self.test_panel = TestPanel()
@@ -58,6 +75,10 @@ class MainWindow(QMainWindow):
         self.export_panel.start.connect(self.start_export)
         self.export_panel.cancel.connect(self._cancel_export)
         self.export_panel.options_changed.connect(self._plan_export)
+        self.export_panel.remove_entries.connect(self._remove_entries)
+        self.export_panel.clear_entries.connect(lambda: self._remove_entries(
+            list(range(len(self.batch_entries)))))
+        self.batch_entries: list[BatchEntry] = []     # snapshots from "Add to batch"
         self.tabs.addTab(self.export_panel, "Export")
         self._batch: batch.Batch | None = None
         self._batch_clips: list[Clip] = []
@@ -102,9 +123,12 @@ class MainWindow(QMainWindow):
         self.clip_signals = workers.ClipSignals(self)
         self.clip_signals.probed.connect(self._probed)
         self.clip_signals.scanned.connect(self._scanned)
+        self.clip_signals.analysed.connect(self._analysed)
         self.clip_signals.failed.connect(self._failed)
         self.thumb_signals = workers.ThumbnailSignals(self)
         self.thumb_signals.thumbnail.connect(self._thumbnail)
+        self.proxy_signals = workers.ProxySignals(self)
+        self.proxy_signals.progress.connect(lambda clip: self.preview.proxy_progress(clip))
         self.test_signals = workers.TestSignals(self)
         self.test_signals.progress.connect(self._test_progress)
         self.test_signals.done.connect(self._test_done)
@@ -166,11 +190,17 @@ class MainWindow(QMainWindow):
     def remove_selected(self) -> None:
         rows = [i.row() for i in self.table.selectionModel().selectedRows()]
         self.model.remove_rows(rows)
+        self._drop_removed_entries()
         self._current_changed(self.table.currentIndex())
 
     def clear(self) -> None:
         self.model.remove_rows(list(range(len(self.model.clips))))
+        self._drop_removed_entries()
         self._current_changed(self.table.currentIndex())
+
+    def _drop_removed_entries(self) -> None:
+        self.batch_entries = [e for e in self.batch_entries if not e.clip.removed]
+        self._plan_export()
 
     # ------------------------------------------------------------------ worker results
 
@@ -189,7 +219,19 @@ class MainWindow(QMainWindow):
             clip.frames, clip.status = frames, Status.READY
             clip.thumbs = [None] * workers.THUMB_COUNT
             workers.start(workers.ThumbnailLoader(clip, self.thumb_signals))
+            workers.start(workers.ProxyLoader(clip, self.proxy_signals))
             self._update(clip)
+
+    def _analysed(self, path, joins) -> None:
+        clip = self._clip(path)
+        if clip:
+            clip.joins = joins
+            if clip.settings.smart:              # only smart output depends on the joins
+                self.model.clip_changed(clip)
+            if clip is self.current_clip():
+                self.settings.refresh()          # enables the "Smart re-encode" option
+                if clip.settings.smart:          # snapping points changed
+                    self.preview.refresh()
 
     def _failed(self, path, message: str) -> None:
         clip = self._clip(path)
@@ -343,32 +385,59 @@ class MainWindow(QMainWindow):
                 ok.append(clip)
         return ok, problems
 
-    def _plan(self) -> tuple[list[Clip], list[batch.Item], list[str]]:
-        clips, problems = self._export_candidates()
-        jobs = []
-        for clip in clips:
-            job = clip.job
-            # snapshot: changes made while the batch runs do not affect it
-            snapshot = type(job)(job.info, job.settings.clone(), copy.copy(job.trim), job.frames)
-            jobs.append((snapshot, self.settings.supported_pix_fmts(clip)))
+    def _plan(self) -> tuple[list[Clip], list[str], list[batch.Item], list[str]]:
+        """(clips, row labels, planned items, problems) for the current export scope."""
         panel = self.export_panel
+        if panel.batch_list():
+            entries = self.batch_entries
+            clips = [e.clip for e in entries]
+            labels = [e.label for e in entries]
+            jobs = [(_snapshot(e.job), e.pix_fmts) for e in entries]
+            problems = [] if entries else [
+                "the batch list is empty – use “Add to batch” in the Preview & trim tab"]
+        else:
+            clips, problems = self._export_candidates()
+            labels = [c.path.name for c in clips]
+            # snapshot: changes made while the batch runs do not affect it
+            jobs = [(_snapshot(c.job), self.settings.supported_pix_fmts(c)) for c in clips]
         items = batch.plan(jobs, panel.output_folder(), panel.pattern_text(), panel.policy_key())
-        return clips, items, problems
+        return clips, labels, items, problems
+
+    def add_to_batch(self, clip: Clip) -> None:
+        """Remember the clip as it is now (mode, settings, trim, sections) for the export."""
+        if clip.status != Status.READY or not clip.info:
+            return
+        job = _snapshot(clip.job)
+        entry = BatchEntry(clip, job, f"{clip.path.name} – {batch.describe(job)}",
+                           self.settings.supported_pix_fmts(clip))
+        self.batch_entries.append(entry)
+        if not self._batch:
+            self.export_panel.show_batch_list()
+        self._plan_export()
+        self.statusBar().showMessage(
+            f"Added to the batch list: {entry.label} ({len(self.batch_entries)} in the list – "
+            "Export tab)", 6000)
+
+    def _remove_entries(self, rows: list[int]) -> None:
+        if self._batch:
+            return
+        self.batch_entries = [e for i, e in enumerate(self.batch_entries) if i not in set(rows)]
+        self._plan_export()
 
     def _plan_export(self, *_) -> None:
         if self._batch or not hasattr(self, "export_panel"):
             return
-        clips, items, problems = self._plan()
+        clips, labels, items, problems = self._plan()
         if self.settings.encoders is None and clips:
             problems.append("waiting for encoder detection")
-        self.export_panel.show_plan([c.path.name for c in clips], items, problems)
+        self.export_panel.show_plan(labels, items, problems)
         if self.settings.encoders is None:
             self.export_panel.start_button.setEnabled(False)
 
     def start_export(self) -> None:
         if self._batch or self.settings.encoders is None:
             return
-        clips, items, problems = self._plan()
+        clips, labels, items, problems = self._plan()
         if not any(it.output for it in items):
             return
         folder = self.export_panel.output_folder()
@@ -378,11 +447,13 @@ class MainWindow(QMainWindow):
             except OSError as e:
                 QMessageBox.warning(self, "Export", f"Cannot create the output folder:\n{e}")
                 return
-        self.export_panel.show_plan([c.path.name for c in clips], items, problems)
+        self.export_panel.show_plan(labels, items, problems)
         self._batch = batch.Batch(items)
         self._batch_clips = clips
-        self._batch_estimates = [e.seconds if (e := self.model.estimate(c)) else None
-                                 for c in clips]
+        # a clip's estimate only fits a batch entry made with the clip's current settings
+        self._batch_estimates = [e.seconds if (e := self.model.estimate(c))
+                                 and it.job.settings == c.settings else None
+                                 for c, it in zip(clips, items)]
         self._batch_done_frames = 0
         self._batch_start = time.monotonic()
         for clip, item in zip(clips, items):

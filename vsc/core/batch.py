@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import runner
 from .command import CommandError
+from .formats import COPY
 from .job import Job, output_path
 
 DEFAULT_PATTERN = "{name}_{speed}x_{fps}fps"
@@ -25,6 +26,7 @@ PATTERN_TOKENS = {
     "{fps}": "output frame rate, e.g. 25",
     "{codec}": "output codec, e.g. x264 or copy",
     "{res}": "output size, e.g. 1920x1080",
+    "{mode}": "processing: lossless, smart or reencode",
     "{n}": "position in the queue, 01, 02 …",
 }
 
@@ -43,6 +45,26 @@ def _num(v: float) -> str:
     return f"{v:.3g}".replace(".", "_")
 
 
+def mode_key(job: Job) -> str:
+    if job.settings.smart:
+        return "smart"
+    return "lossless" if job.settings.codec == COPY else "reencode"
+
+
+def describe(job: Job) -> str:
+    """Short description of what an export of `job` does, e.g. 'Smart, 3 sections (1 re-encoded)'."""
+    n = sum(1 for s in job.segments if s.start < job.trim_end and s.end > job.trim.start)
+    sections = f", {n} section{'s' * (n != 1)}" if n else ""
+    if job.settings.smart:
+        enc = sum(1 for s in job.segments if s.reencode and s.start < job.trim_end
+                  and s.end > job.trim.start)
+        return f"Smart{sections} ({enc} re-encoded)" if n else "Smart (copy)"
+    if job.settings.codec == COPY:
+        return f"Lossless{sections}" if n else \
+            f"Lossless @ {float(job.settings.fps):.5g} fps"
+    return f"Re-encode {job.codec.label.split(' (')[0]} @ {float(job.settings.fps):.5g} fps{sections}"
+
+
 def render_name(pattern: str, job: Job, index: int = 1) -> str:
     """File name (without extension) for `job`; unknown {tokens} are left as they are."""
     w, h = job.output_size() if job.codec else job.info.display_size
@@ -53,6 +75,7 @@ def render_name(pattern: str, job: Job, index: int = 1) -> str:
         "fps": f"{float(job.settings.fps):.5g}".replace(".", "_"),
         "codec": job.settings.codec,
         "res": f"{w}x{h}",
+        "mode": mode_key(job),
         "n": f"{index:02d}",
     }
     name = re.sub(r"\{(\w+)\}", lambda m: values.get(m.group(1), m.group(0)), pattern)

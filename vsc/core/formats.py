@@ -16,6 +16,7 @@ FRAME_RATES: list[tuple[str, Fraction]] = [
     ("50 (PAL)", Fraction(50)),
     ("59.94", Fraction(60000, 1001)),
     ("60", Fraction(60)),
+    ("120", Fraction(120)),
 ]
 DEFAULT_FPS = Fraction(25)
 
@@ -210,6 +211,7 @@ class Codec:
     rgb: bool = False              # works in RGB (image sequences, QuickTime Animation)
     image_sequence: bool = False
     container_args: dict = field(default_factory=dict)
+    external: str | None = None    # encoded by a separate program, e.g. 'avm' (AV2)
 
 
 _X26X_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
@@ -218,6 +220,15 @@ _NVENC_PRESETS = ("p1", "p2", "p3", "p4", "p5", "p6", "p7")
 _QSV_PRESETS = ("veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 _CRF_TIP = "Constant quality. Lower = better quality and bigger files."
 _HVC1 = {"mp4": ("-tag:v", "hvc1"), "mov": ("-tag:v", "hvc1")}
+
+
+AV2_PRESETS = tuple(str(i) for i in range(10))     # --cpu-used: 9 = fastest
+AV2_COST = 2000.0                                   # vs. x264 medium – measured, see CLAUDE.md
+AV2_TIP = ("AV2, the successor of AV1 (AOMedia, spec 1.0 from May 2026), encoded with the\n"
+           "AVM reference software. About 30 % smaller than AV1 – but the reference\n"
+           "encoder is a research tool – measured on a Core i7-8565U (cpu-used 9):\n"
+           "about 75 s per 1080p frame, about 20 s per 360p frame. Only for short clips.\n"
+           "Hardly any player can play AV2 yet (no FFmpeg support, hardware from ~2027).")
 
 
 def _crf(default: int, maximum: int = 51) -> Quality:
@@ -259,6 +270,11 @@ CODECS: list[Codec] = [
     Codec("aom_lossless", "AV1 lossless (libaom)", "libaom-av1", True, ("mkv", "mp4"),
           "AV1 in lossless mode. Very slow.", speed=1, cost=10.0,
           args=("-aom-params", "lossless=1", "-row-mt", "1", "-cpu-used", "6")),
+    Codec("av2_lossless", "AV2 lossless (AVM reference, extremely slow)", "avmenc", True,
+          ("ivf", "webm"), AV2_TIP + "\n\nLossless mode (--lossless=1).", speed=1,
+          cost=AV2_COST, external="avm",
+          preset_flag="--cpu-used", presets=AV2_PRESETS, default_preset="9",
+          args=("--lossless=1",)),
     Codec("qtrle", "QuickTime Animation (lossless, RGB)", "qtrle", True, ("mov",),
           "Old Apple lossless RGB codec, 8-bit only. Huge files; for legacy workflows.",
           speed=4, cost=0.6, rgb=True),
@@ -293,6 +309,12 @@ CODECS: list[Codec] = [
           "Reference AV1 encoder: best compression, very slow. Supports 4:2:2 / 4:4:4.",
           speed=1, cost=8.0, quality=_crf(30, 63), args=("-b:v", "0", "-row-mt", "1"),
           preset_flag="-cpu-used", presets=tuple(str(i) for i in range(9)), default_preset="6"),
+    Codec("av2", "AV2 (AVM reference, extremely slow)", "avmenc", False, ("ivf", "webm"),
+          AV2_TIP, speed=1, cost=AV2_COST, external="avm",
+          quality=Quality("QP", ("--end-usage=q", "--qp={q}"), 0, 255, 140,
+                          tooltip="Constant quality on AV2's 0–255 scale.\n"
+                                  "Lower = better quality and bigger files."),
+          preset_flag="--cpu-used", presets=AV2_PRESETS, default_preset="9"),
     Codec("vp9", "VP9 (libvpx)", "libvpx-vp9", False, ("webm", "mkv", "mp4"),
           "Google's codec (YouTube), between H.264 and AV1 in efficiency. Slow.",
           speed=2, cost=4.0, quality=_crf(31, 63),
@@ -416,7 +438,7 @@ COPY_CONTAINERS = {
 }
 
 CONTAINER_EXT = {"mkv": ".mkv", "mp4": ".mp4", "mov": ".mov", "avi": ".avi",
-                 "mxf": ".mxf", "webm": ".webm",
+                 "mxf": ".mxf", "webm": ".webm", "ivf": ".ivf",
                  "png": ".png", "tiff": ".tif", "dpx": ".dpx", "exr": ".exr"}
 
 

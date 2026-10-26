@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFormLayout, QGroupBox, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ..core import formats
-from .clips import Clip, Status, chroma_label, fmt_duration, fmt_rate
+from .clips import Clip, Status, chroma_label, fmt_duration, fmt_rate, fmt_slowdown
 
 FIELDS = ("File", "Device", "Recorded", "Container", "Codec", "Size", "Frame rate", "Frames",
           "Duration", "Keyframes", "Pixel format", "Colour", "Bitrate", "Audio", "Other streams")
@@ -108,16 +108,15 @@ class InfoPanel(QGroupBox):
             self.values[name].setText(text)
 
         rows = "".join(
-            f"<tr><td>{label.split()[0]}&nbsp;fps</td><td align=right>&nbsp;{float(fps / i.fps):.4f}×</td>"
-            f"<td align=right>&nbsp;({float(i.fps / fps):.3g}× slower)</td></tr>"
+            f"<tr><td>{label.split()[0]}&nbsp;fps</td><td align=right>&nbsp;{float(fps / i.real_fps):.4f}×</td>"
+            f"<td align=right>&nbsp;({fmt_slowdown(float(i.real_fps / fps))})</td></tr>"
             for label, fps in formats.FRAME_RATES)
         self.speeds.setText(f"<table cellspacing=0>{rows}</table>")
 
 
 def slowmo_note(i) -> str:
     """Phone slow motion: the file plays slower than it was recorded."""
-    return (f"<span style='color:#d35400'>⚠ Recorded at {fmt_rate(i.capture_fps)} fps – this "
-            f"file is already {i.slowmo_factor:.3g}× slow motion (phone slow-mo).</span><br>"
-            f"Speeds in this app refer to the file's {fmt_rate(i.fps)} fps: e.g. 0.5× here is "
-            f"{2 * i.slowmo_factor:.3g}× slower than real time. Lossless retime at "
-            f"{fmt_rate(i.capture_fps)} fps would restore real time.")
+    return (f"<span style='color:#d35400'>Phone slow-mo: recorded at {fmt_rate(i.capture_fps)} "
+            f"fps, the file plays at {fmt_rate(i.fps)} fps ({i.slowmo_factor:.3g}× slower).</span><br>"
+            f"The app uses {fmt_rate(i.capture_fps)} fps as the original: speeds and "
+            f"“× slower” refer to real time.")

@@ -9,17 +9,19 @@ from __future__ import annotations
 from fractions import Fraction
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
-from ..core import formats, rife
+from ..core import formats, rife, smart
 from ..core.encoders import EncoderStatus
 from ..core.formats import COPY, CODECS
 from ..core.job import KEYFRAME_TRIM_REASON, MODE_LABELS, Mode, _even
-from .clips import Clip, chroma_label, fmt_duration
+from .clips import (Clip, chroma_label, fmt_duration, fmt_rate, fmt_seconds, fmt_slowdown,
+                    frame_rate_choices)
 
 CUSTOM = "custom"
+LOSSLESS, SMART, REENCODE = "lossless", "smart", "reencode"
 SPEED_PRESETS = [Fraction(1, n) for n in (2, 4, 5, 8, 10, 16, 20, 32)]
 CHROMA_ORDER = {"411": 0, "420": 1, "422": 2, "444": 3}
 RIFE_8BIT = ("RIFE works on 8-bit RGB pictures: the extra precision of 10-bit / HDR footage "
@@ -69,16 +71,36 @@ class SettingsPanel(QGroupBox):
         form_widget = QWidget()
         form = self.form = QFormLayout(form_widget)
 
+        # --- processing: lossless / smart / re-encode
+        self.proc_lossless = QRadioButton("Lossless")
+        self.proc_lossless.setToolTip(
+            "No re-encoding: every frame stays untouched, only its timing changes.\n"
+            "Source codec and size, trim at keyframes. Fast and without any quality loss.")
+        self.proc_smart = QRadioButton("Smart re-encode")
+        self.proc_smart.setToolTip(
+            "Copies the clip and re-encodes only the speed sections you mark for it\n"
+            "(Preview & trim tab), then joins everything into one file.\n"
+            "Uses the source codec so the parts fit together; joins only at keyframes.\n"
+            "Not playable on Apple devices.")
+        self._smart_tip = self.proc_smart.toolTip()
+        self.proc_reencode = QRadioButton("Re-encode")
+        self.proc_reencode.setToolTip("Re-encode the whole clip: any codec, size, speed and "
+                                      "frame rate.")
+        self.proc_group = QButtonGroup(self)
+        for b in (self.proc_lossless, self.proc_smart, self.proc_reencode):
+            self.proc_group.addButton(b)
+        form.addRow("Processing:", _row(self.proc_lossless, self.proc_smart, self.proc_reencode))
+
         # --- frame rate
         self.fps_combo = QComboBox()
         self.fps_combo.setToolTip("Frame rate of the output file.")
-        for label, fps in formats.FRAME_RATES:
-            self.fps_combo.addItem(label, str(fps))   # Qt would turn a Fraction into a float
-        self.fps_combo.addItem("Custom…", CUSTOM)
+        self.fps_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.fps_edit = QLineEdit()
         self.fps_edit.setPlaceholderText("e.g. 48 or 24000/1001")
         self.fps_edit.setMaximumWidth(140)
         form.addRow("Frame rate:", _row(self.fps_combo, self.fps_edit))
+        self.original_info = QLabel()
+        form.addRow("", self.original_info)
 
         # --- speed
         self.speed_lossless = QRadioButton()
@@ -190,6 +212,7 @@ class SettingsPanel(QGroupBox):
             spin.valueChanged.connect(self._edited)
         self.fps_edit.editingFinished.connect(self._edited)
         self.speed_lossless.toggled.connect(self._edited)
+        self.proc_group.buttonClicked.connect(self._edited)
         self.speed_presets.activated.connect(self._speed_preset)
         self.set_clip(None)
 
@@ -242,7 +265,8 @@ class SettingsPanel(QGroupBox):
         else:
             s.speed = Fraction(self.speed_spin.value()).limit_denominator(100000)
 
-        codec = self.codec_combo.currentData()
+        process = self._chosen_process()
+        codec = self.codec_combo.currentData() if process == REENCODE else s.codec
         if codec != s.codec:
             s.codec = codec
             s.container = s.profile = s.preset = s.quality = None  # codec defaults
@@ -270,8 +294,53 @@ class SettingsPanel(QGroupBox):
         if interp:
             s.interpolation = interp
 
+        self._apply_process(process)
+
         self._sync()
         self.changed.emit()
+
+    def _chosen_process(self) -> str:
+        if self.proc_smart.isChecked():
+            return SMART
+        return REENCODE if self.proc_reencode.isChecked() else LOSSLESS
+
+    def _apply_process(self, process: str) -> None:
+        """Force the settings each processing mode requires."""
+        clip = self.clip
+        s, ui, info = clip.settings, clip.ui, clip.info
+        if process == REENCODE:
+            s.smart = False
+            if s.codec == COPY:
+                s.codec = "x264"
+                s.container = s.profile = s.preset = s.quality = None
+            return
+        if process == LOSSLESS:
+            if s.codec != COPY or s.smart:
+                s.codec, s.smart = COPY, False
+                s.container = s.profile = s.preset = s.quality = None
+        else:  # SMART: the source codec, so that copied and re-encoded parts fit together
+            key = smart.SMART_CODECS[info.codec][0]
+            if not s.smart or s.codec != key:
+                s.codec, s.smart = key, True
+                s.container = s.profile = s.preset = s.quality = None
+            s.chroma = s.depth = None
+        s.speed = None
+        ui["res"] = "source"
+        _apply_resolution(clip)
+        if clip.frames:
+            clip.trim = clip.job.snapped_trim()
+
+    def _process(self, clip: Clip) -> str:
+        s = clip.settings
+        if s.smart:
+            return SMART
+        return LOSSLESS if s.codec == COPY else REENCODE
+
+    def set_process(self, process: str) -> None:
+        """Choose a processing mode (as a click on its button would)."""
+        {LOSSLESS: self.proc_lossless, SMART: self.proc_smart,
+         REENCODE: self.proc_reencode}[process].setChecked(True)
+        self._edited()
 
     # ------------------------------------------------------------------ settings → widgets
 
@@ -290,9 +359,28 @@ class SettingsPanel(QGroupBox):
         s, ui, info = clip.settings, clip.ui, clip.info
         job = clip.job
 
+        # processing mode
+        process = self._process(clip)
+        lossless_only = process == LOSSLESS
+        {LOSSLESS: self.proc_lossless, SMART: self.proc_smart,
+         REENCODE: self.proc_reencode}[process].setChecked(True)
+        reason = smart.unavailable_reason(info)
+        if reason is None and clip.joins is None:
+            reason = "Analysing the keyframes of this clip …"
+        elif reason is None and not clip.joins:
+            reason = "No keyframe found where the parts could be joined."
+        self.proc_smart.setEnabled(reason is None or process == SMART)
+        self.proc_smart.setToolTip(reason or self._smart_tip)
+
         # frame rate
-        custom_fps = ui.get("fps") == CUSTOM or s.fps not in [f for _, f in formats.FRAME_RATES]
-        self.fps_combo.setCurrentIndex(self.fps_combo.findData(CUSTOM if custom_fps else str(s.fps)))
+        rates = frame_rate_choices(info.real_fps)
+        custom_fps = ui.get("fps") == CUSTOM or s.fps not in [f for _, f in rates]
+        fill_combo(self.fps_combo, self._fps_items(job, rates), CUSTOM if custom_fps else str(s.fps))
+        self.original_info.setText(
+            f"Original: {job.source_frame_count} frames at {fmt_rate(info.real_fps)} fps = "
+            f"{fmt_seconds(job.source_frame_count / float(info.real_fps))}"
+            + (f" (recorded slow-mo, the file plays at {fmt_rate(info.fps)} fps)"
+               if info.slowmo_factor else ""))
         self.fps_edit.setVisible(custom_fps)
         if custom_fps and parse_fps(self.fps_edit.text()) != s.fps:
             self.fps_edit.setText(f"{s.fps.numerator}/{s.fps.denominator}"
@@ -301,14 +389,22 @@ class SettingsPanel(QGroupBox):
         # speed
         lossless = float(job.lossless_speed)
         self.speed_lossless.setText(f"Lossless speed: {lossless:.5g}×  "
-                                    f"({1 / lossless:.3g}× slower)")
+                                    f"({fmt_slowdown(1 / lossless)})")
         self.speed_lossless.setChecked(s.speed is None)
         self.speed_custom.setChecked(s.speed is not None)
         self.speed_spin.setEnabled(s.speed is not None)
         self.speed_spin.setValue(float(job.speed))
         sp = float(job.speed)
-        self.speed_info.setText(f"{sp:.5g}× = {sp * 100:.4g} % of real time → "
-                                f"{1 / sp:.3g}× slower, output {fmt_duration(job.output_duration)}")
+        if job.has_segments:
+            mode = ("lossless, variable frame rate" if s.codec == COPY
+                    else f"re-encoded to a constant {fmt_rate(s.fps)} fps")
+            self.speed_info.setText(f"<b>Output length {fmt_seconds(job.output_duration)}</b> – "
+                                    f"speed sections ({mode})")
+        else:
+            self.speed_info.setText(f"<b>Output length {fmt_seconds(job.output_duration)}</b> – "
+                                    f"{fmt_slowdown(1 / sp)} than the original" if abs(sp - 1) > 1e-4
+                                    else f"<b>Output length {fmt_seconds(job.output_duration)}</b> – "
+                                         "real time, like the original")
 
         # codec
         fill_combo(self.codec_combo, self._codec_items(), s.codec)
@@ -316,7 +412,9 @@ class SettingsPanel(QGroupBox):
         self.codec_combo.setToolTip(codec.description if codec else
                                     "Keeps the original video stream untouched; only the\n"
                                     "timestamps are changed. Fastest, no quality loss.")
-        if codec is None:
+        if process == SMART:
+            containers = list(smart.CONTAINERS)
+        elif codec is None:
             containers = formats.copy_containers(info.codec)
         else:
             containers = list(codec.containers)
@@ -372,13 +470,83 @@ class SettingsPanel(QGroupBox):
         self.interp_combo.setToolTip(current.tooltip if interpolating else
                                      "Only used when the speed is slower than the lossless speed.")
 
+        # each processing mode enables only what it can use
+        locked_size = (self.res_combo, self.width_spin, self.height_spin, self.aspect_combo,
+                       self.fit_combo, self.scaler_combo)
+        locked_speed = (self.speed_custom, self.speed_spin, self.speed_presets)
+        if lossless_only:
+            for w in (*locked_speed, *locked_size, self.codec_combo, self.profile_combo,
+                      self.preset_combo, self.quality_spin, self.interp_combo):
+                w.setEnabled(False)
+        elif process == SMART:
+            for w in (*locked_speed, *locked_size, self.codec_combo, self.profile_combo,
+                      self.chroma_combo, self.depth_combo):
+                w.setEnabled(False)
+            for w in (self.preset_combo, self.quality_spin, self.interp_combo):
+                w.setEnabled(True)
+            self.codec_combo.setToolTip("Smart re-encode always uses the source codec – "
+                                        "otherwise the parts could not be joined.")
+            self.interp_combo.setToolTip("Used by re-encoded sections that play slower than "
+                                         "their output frame rate.")
+        else:
+            for w in (self.speed_custom, self.speed_presets, self.codec_combo, self.profile_combo,
+                      self.preset_combo, self.quality_spin, self.res_combo):
+                w.setEnabled(True)
+
+        # speed sections replace the global speed; lossless they keep every frame's own rate
+        sections = job.has_segments and process != SMART
+        self.speed_lossless.setEnabled(not sections)
+        if sections:
+            for w in (self.speed_custom, self.speed_spin, self.speed_presets):
+                w.setEnabled(False)
+        self.speed_info.setToolTip("Speed sections (Preview & trim tab) set the speed of this clip."
+                                   if sections else "")
+        copy_sections = sections and s.codec == COPY
+        self.fps_combo.setEnabled(not copy_sections)
+        self.fps_edit.setEnabled(not copy_sections)
+        self.fps_combo.setToolTip(
+            "Not used: without re-encoding every frame keeps its own duration (variable frame "
+            "rate). Choose a codec to re-encode to one constant frame rate."
+            if copy_sections else
+            "Constant frame rate of the output; each section is converted to it."
+            if sections else "Frame rate of the output file.")
+        if process == SMART:
+            for w in (self.speed_lossless, self.fps_combo, self.fps_edit):
+                w.setEnabled(False)
+            self.fps_combo.setToolTip("Not used: copied parts keep their timing, re-encoded "
+                                      "sections have their own output frame rate.")
+
         self.summary.setText(self._summary(clip))
+
+    def _fps_items(self, job, rates: list[tuple[str, Fraction]]) -> list[tuple]:
+        """Frame rates with the resulting slow-down and length when every frame is kept."""
+        src, frames = job.info.real_fps, job.source_frame_count
+        if job.has_segments:     # the sections decide the speed; this is only the output rate
+            return [(label, str(fps), "Constant output frame rate") for label, fps in rates] + [
+                ("Custom…", CUSTOM, "Enter any frame rate.")]
+        items = []
+        for label, fps in rates:
+            length = fmt_seconds(frames / float(fps))
+            slowdown = fmt_slowdown(float(src / fps))
+            tip = (f"Every source frame shown once: {frames} frames at {fmt_rate(fps)} fps = "
+                   f"{length}, {slowdown} than the original.\n"
+                   "(With a custom speed the length follows the speed instead.)")
+            items.append((f"{label} – {slowdown}, {length}", str(fps), tip))
+        items.append(("Custom…", CUSTOM, "Enter any frame rate."))
+        return items
 
     def _interp_items(self) -> list[tuple]:
         items = []
         for i in formats.INTERPOLATIONS:
             label, tip, enabled = f"{i.label}  (quality {i.quality}/5)", i.tooltip, True
-            if i.needs_gpu:
+            job = self.clip.job if self.clip and self.clip.info else None
+            if i.needs_gpu and job and job.has_segments:
+                label += "  (not with speed sections)"
+                tip, enabled = tip + "\n\nRIFE cannot be combined with speed sections.", False
+            elif i.needs_gpu and job and job.codec and job.codec.external:
+                label += "  (not with AV2)"
+                tip, enabled = tip + "\n\nRIFE cannot be combined with AV2.", False
+            elif i.needs_gpu:
                 r = self.rife
                 if r is None:
                     tip, enabled = tip + "\n\nChecking for a Vulkan GPU…", False
@@ -396,8 +564,7 @@ class SettingsPanel(QGroupBox):
 
     def _codec_items(self) -> list[tuple]:
         items = [("Keep source codec – lossless retime", COPY,
-                  "Keeps the original video stream untouched; only the timestamps\n"
-                  "are changed. Fastest, no quality loss.", True)]
+                  "Choose “Lossless” under Processing to keep the source stream.", False)]
         groups = (("Lossless", lambda c: c.lossless), ("Lossy", lambda c: not c.lossless and not c.hw),
                   ("Hardware", lambda c: c.hw))
         for group, match in groups:
@@ -414,6 +581,33 @@ class SettingsPanel(QGroupBox):
                     items.append((f"{group}: {c.label}  (unavailable)", c.key,
                                   f"{c.description}\n\nNot available: {reason}", False))
         return items
+
+    def _smart_summary(self, clip: Clip) -> list[str]:
+        job = clip.job
+        if clip.joins is None:
+            return ["Analysing the keyframes of this clip …"]
+        parts = job.smart_parts()
+        encoded = [p for p in parts if p.kind == "encode"]
+        lines = [f"Codec: {job.codec.label} – always the source codec, so the parts can be "
+                 "joined."]
+        if not encoded:
+            lines.append("No section is marked “Re-encode” (Preview & trim tab) – the whole "
+                         "clip is copied.")
+        else:
+            n_copy = sum(p.frames for p in parts if p.kind == "copy")
+            n_enc = sum(p.frames for p in encoded)
+            lines.append(f"{len(parts)} parts: {n_copy} frames copied, {n_enc} frames "
+                         f"re-encoded in {len(encoded)} part(s).")
+        lines.append(f"Parts can only be joined at keyframes (here every "
+                     f"{_key_interval(job.frames)} frames): in / out points snap to them and "
+                     "re-encoded sections are widened to the nearest ones – the extra frames "
+                     "are re-encoded at the speed they have anyway.")
+        lines.append(f"<span style='color:#d35400'>⚠ {smart.APPLE_WARNING}</span>")
+        lines.append(f"{job.source_frame_count} → {job.output_frame_count} frames, "
+                     f"{fmt_duration(job.output_duration)}")
+        ext = formats.CONTAINER_EXT[job.container]
+        lines.append(f"File: {job.default_output_name()}{ext}")
+        return lines
 
     def supported_pix_fmts(self, clip: Clip) -> list[str] | None:
         codec = clip.job.codec
@@ -458,6 +652,34 @@ class SettingsPanel(QGroupBox):
     def _summary(self, clip: Clip) -> str:
         job = clip.job
         lines = [f"<b>{MODE_LABELS[job.mode]}</b>"]
+        if job.mode == Mode.SMART:
+            return "<br>".join(lines + self._smart_summary(clip))
+        if job.has_segments:
+            n = sum(1 for g in job.segments if g.start < job.trim_end and g.end > job.trim.start)
+            if job.mode == Mode.RETIME:
+                lines.append(f"{n} speed section(s), rest in real time – every frame keeps its "
+                             "own duration (variable frame rate). Plays in all common players; "
+                             "editing programs prefer a constant frame rate (choose a codec).")
+                fastest = max(p.rate for p in job.pieces())
+                if fastest > clip.info.real_fps:
+                    lines.append(
+                        f"<span style='color:#d35400'>Fast sections keep every frame: a player "
+                        f"has to decode {fmt_rate(fastest)} frames per second there, which most "
+                        "computers can't – it will stutter. For smooth playback choose a codec: "
+                        "the constant frame rate then skips the extra frames.</span>")
+            else:
+                lines.append(f"{n} speed section(s), rest in real time – re-encoded to a constant "
+                             f"{fmt_rate(job.settings.fps)} fps.")
+                if rife.MODELS and job.settings.interpolation in rife.MODELS:
+                    lines.append("<span style='color:#c0392b'>RIFE cannot be combined with speed "
+                                 "sections – choose another interpolation.</span>")
+        if (job.codec and job.codec.external and job.mode == Mode.INTERPOLATE
+                and job.settings.interpolation in rife.MODELS):
+            lines.append("<span style='color:#c0392b'>RIFE cannot be combined with AV2 – "
+                         "choose another interpolation.</span>")
+        if job.codec and job.codec.external:
+            lines.append("<span style='color:#d35400'>AV2 reference encoder: ~75 s per 1080p "
+                         "frame – test encodes use at most 5 frames.</span>")
         if rife.is_rife(job) and (clip.info.bit_depth > 8 or clip.info.is_hdr):
             lines.append(f"<span style='color:#d35400'>{RIFE_8BIT}</span>")
         if job.mode == Mode.RETIME:
@@ -470,8 +692,10 @@ class SettingsPanel(QGroupBox):
             else:
                 lines.append("Trimming is only possible at keyframes. "
                              f"<span title='{KEYFRAME_TRIM_REASON}'>(why?)</span>")
+        rate = ("variable frame rate" if job.has_segments and job.mode == Mode.RETIME
+                else f"{float(job.settings.fps):.5g} fps")
         lines.append(f"{job.source_frame_count} → {job.output_frame_count} frames, "
-                     f"{fmt_duration(job.output_duration)} at {float(job.settings.fps):.5g} fps")
+                     f"{fmt_duration(job.output_duration)} at {rate}")
         if job.codec:
             w, h = job.output_size()
             try:
@@ -486,6 +710,11 @@ class SettingsPanel(QGroupBox):
         ext = formats.CONTAINER_EXT[job.container]
         lines.append(f"File: {job.default_output_name()}{ext}")
         return "<br>".join(lines)
+
+
+def _key_interval(frames) -> int:
+    gaps = sorted(b - a for a, b in zip(frames.keyframes, frames.keyframes[1:]))
+    return gaps[len(gaps) // 2] if gaps else frames.count
 
 
 def _apply_resolution(clip: Clip) -> None:

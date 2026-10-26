@@ -47,6 +47,38 @@ def grab_frame(info: MediaInfo, frames: FrameMap, index: int, size: tuple[int, i
     return res.stdout
 
 
+PROXY_SIZE = (384, 216)
+PROXY_MAX_FRAMES = 12000      # ~8 KB each → at most ~100 MB per clip; longer clips: every n-th
+
+
+def proxy_step(frames: FrameMap) -> int:
+    return max(1, -(-frames.count // PROXY_MAX_FRAMES))
+
+
+def proxy_args(info: MediaInfo, frames: FrameMap) -> list[str]:
+    """Every (step-th) frame, small, as a stream of JPEG images – for instant scrubbing."""
+    w, h = fit_size(info, *PROXY_SIZE)
+    step = proxy_step(frames)
+    chain = [f"select='not(mod(n\\,{step}))'"] if step > 1 else []
+    chain += [f"scale={w}:{h}:flags=fast_bilinear", "setsar=1"]
+    return [ffmpeg_bin.ffmpeg(), "-hide_banner", "-v", "error", "-nostdin",
+            "-flags2", "fast", "-skip_loop_filter", "all",
+            "-i", str(info.path), "-map", f"0:{info.stream_index}", "-an", "-sn", "-dn",
+            "-vf", ",".join(chain), "-fps_mode", "passthrough",
+            "-c:v", "mjpeg", "-q:v", "6", "-f", "image2pipe", "-"]
+
+
+def split_jpegs(buffer: bytearray) -> list[bytes]:
+    """Remove and return the complete JPEG images at the start of `buffer`."""
+    out = []
+    while True:
+        end = buffer.find(b"\xff\xd9")     # end-of-image; can't occur inside JPEG data
+        if end < 0:
+            return out
+        out.append(bytes(buffer[:end + 2]))
+        del buffer[:end + 2]
+
+
 def thumbnail_frames(frames: FrameMap, count: int) -> list[int]:
     """`count` evenly spread keyframes (thumbnails use fast keyframe seeking)."""
     if frames.count == 0:

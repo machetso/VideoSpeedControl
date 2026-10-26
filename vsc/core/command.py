@@ -5,7 +5,7 @@ import math
 from fractions import Fraction
 from pathlib import Path
 
-from . import ffmpeg_bin
+from . import ffmpeg_bin, segments as seg
 from .encoders import hw_filter_suffix, hw_input_args
 from .formats import COPY
 from .job import Job, Mode
@@ -70,14 +70,23 @@ def _build_copy(job: Job, output: Path) -> list[str]:
     blockers = job.retime_blockers()
     if blockers:
         raise CommandError("Lossless retime not possible: " + "; ".join(blockers))
+    return copy_args(job, output, "setts" if job.has_segments else "itsscale")
+
+
+def copy_args(job: Job, output: Path, timing: str) -> list[str]:
+    """Stream copy of the trim range; timing 'setts' (per frame, sections) or 'itsscale'."""
     args = _base_args()
     if job.trim.start:
         args += ["-ss", _copy_seek(job, job.trim.start)]
-    # -itsscale stretches every timestamp: 240 fps played at 25 fps -> factor 9.6.
-    # ffmpeg truncates scaled timestamps, so a tiny upward bias avoids losing one tick.
-    scale = float(job.info.fps / Fraction(job.settings.fps)) * (1 + 1e-11)
-    args += ["-itsscale", f"{scale:.17g}", "-i", str(job.info.path)]
-    args += _stream_args(job) + ["-c:v", "copy"]
+    if timing == "setts":
+        args += ["-i", str(job.info.path)] + _stream_args(job) + ["-c:v", "copy"]
+        args += ["-bsf:v", _setts(job)]
+    else:
+        # -itsscale stretches every timestamp: 240 fps played at 25 fps -> factor 9.6.
+        # ffmpeg truncates scaled timestamps, so a tiny upward bias avoids losing one tick.
+        scale = float(job.info.fps / Fraction(job.settings.fps)) * (1 + 1e-11)
+        args += ["-itsscale", f"{scale:.17g}", "-i", str(job.info.path)]
+        args += _stream_args(job) + ["-c:v", "copy"]
     if job.trim.start or job.trim.end is not None:
         # frames are counted in decode order; a GOP is complete, so this ends on its boundary
         args += ["-frames:v", str(job.source_frame_count)]
@@ -85,6 +94,22 @@ def _build_copy(job: Job, output: Path) -> list[str]:
         args += ["-tag:v", "hvc1"]
     args += ["-avoid_negative_ts", "make_zero", str(output)]
     return args
+
+
+def _setts(job: Job) -> str:
+    """Speed sections without re-encoding: rewrite every packet's timestamps (VFR output)."""
+    fm = job.frames
+    if not fm:
+        raise CommandError("Frame map required for speed sections")
+    ps = job.pieces()
+    # the last frame's own length in the file (for the end of the last piece)
+    last = fm.pts[-1] - fm.pts[-2] if fm.count > 1 else 1
+    end_pts = fm.pts[-1] + last
+
+    def f(var):
+        return seg.setts_expr(ps, fm.pts, fm.time_base, var, end_pts)
+    return (f"setts=pts='{f('PTS')}':dts='{f('DTS')}'"
+            f":duration='{f('(PTS+DURATION)')}-({f('PTS')})'")
 
 
 def scale_filters(job: Job) -> list[str]:
@@ -113,8 +138,14 @@ def scale_filters(job: Job) -> list[str]:
 def _time_filters(job: Job) -> list[str]:
     out_fps = Fraction(job.settings.fps)
     # Re-time by frame number so that slightly irregular source timestamps cannot cause jitter
-    rate = job.info.fps * job.speed  # source frames per output second
-    chain = [f"setpts=N/({_num(rate)})/TB"]
+    if job.has_segments:
+        if job.settings.interpolation not in ("dup", "blend", "mci"):
+            raise CommandError("RIFE cannot be combined with speed sections – "
+                               "choose another interpolation")
+        chain = [f"setpts='({seg.setpts_expr(job.pieces())})/TB'"]   # quoted: commas inside
+    else:
+        rate = job.info.real_fps * job.speed  # source frames per output second
+        chain = [f"setpts=N/({_num(rate)})/TB"]
     mode = job.mode
     if mode in (Mode.REENCODE, Mode.DROP):
         chain.append(f"fps={out_fps}")
@@ -170,8 +201,15 @@ def _build_encode(job: Job, output: Path, supported: list[str] | None) -> list[s
     codec = job.codec
     if codec is None:
         raise CommandError(f"Unknown codec '{job.settings.codec}'")
+    if codec.external:
+        raise CommandError(f"{codec.label} runs outside FFmpeg (see runner.create)")
     chroma, depth, pix_fmt = job.output_format(supported)
+    return decode_args(job, pix_fmt) + encode_args(job, output)
 
+
+def decode_args(job: Job, pix_fmt: str) -> list[str]:
+    """ffmpeg input, trimming, retiming and scaling up to the encoder (without it)."""
+    codec = job.codec
     filters: list[str] = []
     if job.trim.end is not None:
         filters.append(f"trim=end_frame={job.source_frame_count}")
@@ -188,7 +226,7 @@ def _build_encode(job: Job, output: Path, supported: list[str] | None) -> list[s
         args += ["-ss", _num(seek_time(job, job.trim.start))]
     args += ["-i", str(job.info.path)] + _stream_args(job)
     args += ["-vf", ",".join(filters), "-frames:v", str(job.output_frame_count)]
-    return args + encode_args(job, output)
+    return args
 
 
 def shrinks(job: Job) -> bool:

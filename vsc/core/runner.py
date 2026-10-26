@@ -97,6 +97,14 @@ class Runner:
 def create(job: Job, output: Path, supported_pix_fmts: list[str] | None = None):
     """The right runner for a job: RIFE interpolation runs its own pipeline."""
     from . import rife   # rife imports this module
+    if job.settings.smart:
+        from . import smart
+        return smart.SmartRunner(job, output, job.joins, supported_pix_fmts)
+    if job.codec and job.codec.external == "avm":
+        if rife.is_rife(job):
+            raise command.CommandError("RIFE cannot be combined with AV2")
+        from . import avm
+        return avm.AvmRunner(job, output, supported_pix_fmts)
     if rife.is_rife(job):
         return rife.RifeRunner(job, output, supported_pix_fmts)
     return Runner(job, output, supported_pix_fmts)

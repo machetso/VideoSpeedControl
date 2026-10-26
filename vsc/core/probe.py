@@ -108,6 +108,14 @@ class MediaInfo:
         return None
 
     @property
+    def real_fps(self) -> Fraction:
+        """Frames per second of real time: the capture rate for phone slow-mo, else the file rate.
+
+        Speeds ("× slower") refer to this rate; timestamps / seeking still use `fps`.
+        """
+        return self.capture_fps if self.slowmo_factor else self.fps
+
+    @property
     def display_size(self) -> tuple[int, int]:
         """Size as shown to the viewer (SAR and rotation applied)."""
         w = round(self.width * self.sar) if self.sar != 1 else self.width

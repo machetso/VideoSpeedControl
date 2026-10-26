@@ -113,7 +113,7 @@ def detect(refresh: bool = False) -> RifeStatus:
 
 def grid_ratio(job: Job) -> Fraction:
     """Output frames per source frame, rounded to the smallest denominator within tolerance."""
-    exact = Fraction(job.settings.fps) / (job.speed * job.info.fps)
+    exact = Fraction(job.settings.fps) / (job.speed * job.info.real_fps)
     for q in range(1, 1001):
         r = Fraction(round(exact * q), q)
         if r > 0 and abs(float(r / exact) - 1) <= RATIO_TOLERANCE:
@@ -332,4 +332,5 @@ class _Failed(Exception):
 
 
 def is_rife(job: Job) -> bool:
-    return job.mode == Mode.INTERPOLATE and job.settings.interpolation in MODELS
+    return (job.mode == Mode.INTERPOLATE and job.settings.interpolation in MODELS
+            and not job.has_segments)

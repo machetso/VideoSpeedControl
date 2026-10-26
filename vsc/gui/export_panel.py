@@ -22,6 +22,8 @@ class ExportPanel(QWidget):
     start = Signal()
     cancel = Signal()
     options_changed = Signal()
+    remove_entries = Signal(list)    # rows of the batch list to remove
+    clear_entries = Signal()
 
     def __init__(self, settings: QSettings | None = None, parent=None):
         super().__init__(parent)
@@ -63,6 +65,19 @@ class ExportPanel(QWidget):
         self.scope = QComboBox()
         self.scope.addItem("All clips", "all")
         self.scope.addItem("Selected clips only", "selected")
+        self.scope.addItem("Batch list (added in Preview & trim)", "batch")
+        self.scope.setItemData(2, "Snapshots added with “Add to batch” – the same clip can be in "
+                                  "the list several times, e.g. lossless and smart.",
+                               Qt.ToolTipRole)
+        self.remove_button = QPushButton("Remove from list")
+        self.remove_button.setToolTip("Remove the selected entries from the batch list")
+        self.remove_button.clicked.connect(self._remove_selected)
+        self.clear_button = QPushButton("Clear list")
+        self.clear_button.clicked.connect(self.clear_entries)
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(self.scope, 1)
+        scope_row.addWidget(self.remove_button)
+        scope_row.addWidget(self.clear_button)
 
         form = QFormLayout()
         form.addRow("Save to", self.next_to_source)
@@ -70,12 +85,13 @@ class ExportPanel(QWidget):
         form.addRow("File name", self.pattern)
         form.addRow("", pattern_help)
         form.addRow("If the file exists", self.policy)
-        form.addRow("Export", self.scope)
+        form.addRow("Export", scope_row)
 
         self.queue = QTreeWidget()
         self.queue.setColumnCount(3)
         self.queue.setHeaderLabels(["Clip", "Output file", "Status"])
         self.queue.setRootIsDecorated(False)
+        self.queue.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.queue.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.queue.header().setSectionResizeMode(1, QHeaderView.Stretch)
         self.queue.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -131,6 +147,24 @@ class ExportPanel(QWidget):
     def selected_only(self) -> bool:
         return self.scope.currentData() == "selected"
 
+    def batch_list(self) -> bool:
+        return self.scope.currentData() == "batch"
+
+    def show_batch_list(self) -> None:
+        self.scope.setCurrentIndex(self.scope.findData("batch"))
+
+    def _remove_selected(self) -> None:
+        rows = sorted({self.queue.indexOfTopLevelItem(i) for i in self.queue.selectedItems()})
+        if rows:
+            self.remove_entries.emit(rows)
+
+    def _update_list_buttons(self) -> None:
+        on = self.batch_list() and not self.running
+        self.remove_button.setVisible(self.batch_list())
+        self.clear_button.setVisible(self.batch_list())
+        self.remove_button.setEnabled(on and self.queue.topLevelItemCount() > 0)
+        self.clear_button.setEnabled(on and self.queue.topLevelItemCount() > 0)
+
     def _changed(self) -> None:
         self.folder.setEnabled(self.to_folder.isChecked())
         self.store.setValue("export/folder", self.folder.text())
@@ -173,6 +207,7 @@ class ExportPanel(QWidget):
             self._outputs.append(item.output)
         runnable = sum(it.output is not None for it in items)
         self.start_button.setEnabled(runnable > 0)
+        self._update_list_buttons()
         text = f"{runnable} clip(s) will be exported." if items else "No clips to export."
         if problems:
             text += "  Not included: " + "; ".join(problems)
@@ -191,6 +226,7 @@ class ExportPanel(QWidget):
         for w in (self.next_to_source, self.to_folder, self.folder, self.pattern, self.policy,
                   self.scope):
             w.setEnabled(not running)
+        self._update_list_buttons()
         if not running:
             self.folder.setEnabled(self.to_folder.isChecked())
         else:

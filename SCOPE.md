@@ -21,13 +21,16 @@ Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
 
 ## Input
 - Any FFmpeg-readable file, any resolution / frame rate / codec. Multiple files (dialog, drag & drop).
+- Phone slow-mo (`com.android.capture.fps`): the capture rate counts as the original frame rate.
 - Clip info: container, codec + profile, resolution, SAR/DAR, rotation, frame rate (nominal / average,
   CFR / VFR warning), frame count, duration, keyframe interval, pixel format, chroma, bit depth,
   colour space / transfer (SDR / HLG / PQ), bitrate, other streams.
 - Multi-clip import shows a list with the codec info next to each file.
 
 ## Output
-- Frame rates: 23.976, 24, 25, 29.97, 30, 50, 59.94, 60, custom.
+- Frame rates: 23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 120, the source rate ("original"), custom;
+  each entry shows "N× slower / faster" and the output length when every frame is kept.
+- "Lossless only" switch: locks everything that needs re-encoding (mode A), only fps / container stay.
 - Speed: free value + presets; shown as factor, percent and "× slower"; output duration live.
 - Resolution presets (480p … DCI 4K, 9:16, 1:1) + custom + keep source.
 - Aspect ratio: keep original (fit inside box) or manual ratio with fit mode pad / crop / stretch.
@@ -39,20 +42,32 @@ Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
   RIFE high quality – each with quality and time estimate.
 - Codecs:
   - lossless: FFV1, Ut Video (native FFmpeg encoder), MagicYUV, HuffYUV / FFVHuff, H.264 / HEVC /
-    VP9 / AV1 lossless, QuickTime Animation, PNG / TIFF / DPX / EXR sequences.
+    VP9 / AV1 lossless, AV2 lossless, QuickTime Animation, PNG / TIFF / DPX / EXR sequences.
     (Lagarith: FFmpeg can only decode it – not offered.)
   - lossy: H.264, HEVC, AV1 (SVT-AV1, libaom), VP9, ProRes (Proxy … 4444 XQ), DNxHR (LB … 444),
-    CineForm, MJPEG; GPU encoders NVENC / Quick Sync / VAAPI / AMF where they really work.
+    CineForm, MJPEG, AV2 (AVM reference software – extremely slow, short clips only, no
+    FFmpeg support yet); GPU encoders NVENC / Quick Sync / VAAPI / AMF where they really work.
 - Must run on machines without a dedicated GPU (software encoders always available; hardware
   encoders are test-encoded at startup and only offered if they work).
 
 ## Timeline, trim, test encode
+- Speed sections: mark frame ranges ([ / ]) that play at their own frame rate – slower or up to
+  8× faster than the original; the rest stays real time. Without re-encoding → one variable-frame-rate file (sections start at any frame);
+  with a codec → re-encoded to a chosen constant frame rate.
+- Processing: Lossless / Smart re-encode / Re-encode – only the matching settings are enabled.
+  Smart: sections marked "Re-encode" are encoded with the source codec at their own constant
+  frame rate, everything else is copied, all joined into one file (H.264 / HEVC; joins only
+  at safe keyframes, sections widened automatically; not playable on Apple devices).
+- Play preview (Space): output timing at reduced size, no encoding; interpolation shown as blending.
 - Simple timeline with thumbnails, playhead, keyframe markers, in/out points
   (mode A: snap to keyframes, B/C: frame-exact).
 - Test encode of N frames (default 100) from the playhead with the exact output settings;
   side-by-side / wipe comparison; measured speed → reliable time estimate for clip and batch.
 
 ## Batch
+- "Add to batch" in Preview & trim: snapshot of the clip (mode, settings, trim, sections) into a
+  batch list; the same clip can be added several times (e.g. lossless + smart). "Clear
+  sections" with undo.
 - Individual settings per clip, "apply to all" button.
 - Output folder, file name pattern, overwrite policy, queue with per-clip and overall progress,
   cancel.
@@ -63,5 +78,6 @@ Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
 3. Timeline + trimming ✅
 4. Test encode, comparison view, time estimates ✅
 5. Interpolation: RIFE integration ✅; 1:1 zoom in preview + comparison (zoom confirmed by user)
-6. Batch queue ✅ (committed, awaiting user test)
+6. Batch queue ✅ (committed, awaiting user test); extensions after it: speed sections, smart
+   re-encode, AV2, batch list, fast scrubbing (committed 2026-10-26, awaiting user test)
 7. Packaging (PyInstaller) for Windows and Linux

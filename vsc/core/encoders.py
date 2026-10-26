@@ -108,6 +108,17 @@ def _test_hw(codec: Codec, pix_fmts: list[str]) -> EncoderStatus:
 
 def detect(use_cache: bool = True) -> dict[str, EncoderStatus]:
     """Status for every codec of the catalogue, keyed by Codec.key."""
+    result = _detect_ffmpeg(use_cache)
+    external = [c for c in CODECS if c.external]
+    if external:
+        from . import avm    # not cached: installing AVM later must show up immediately
+        status = avm.detect()
+        for c in external:
+            result[c.key] = status
+    return result
+
+
+def _detect_ffmpeg(use_cache: bool) -> dict[str, EncoderStatus]:
     version = ffmpeg_version()
     cache_file = config_dir() / "encoders.json"
     if use_cache and cache_file.is_file():
@@ -126,6 +137,8 @@ def detect(use_cache: bool = True) -> dict[str, EncoderStatus]:
     result: dict[str, EncoderStatus] = {}
     hw_codecs = []
     for c in CODECS:
+        if c.external:
+            continue
         if c.encoder not in compiled:
             result[c.key] = EncoderStatus(False, [], "Not included in this FFmpeg build")
         elif c.hw:

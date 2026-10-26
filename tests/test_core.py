@@ -348,3 +348,16 @@ def test_recording_metadata(tmp_path):
     g = probe(gopro)
     assert g.device == "GoPro HERO12 (firmware H23.01.02.32.00)"
     assert g.slowmo_factor is None and g.audio is None
+
+
+def test_playback_plan_real_fps(h264_clip):
+    from vsc.core import playback
+    from vsc.core.job import Job, OutputSettings
+    from vsc.core.probe import probe
+    info = probe(h264_clip)
+    info.capture_fps = info.fps * 8          # pretend phone slow-mo: file plays 8× slower
+    job = Job(info, OutputSettings(fps=info.fps))
+    assert job.lossless_speed == Fraction(1, 8) and job.is_lossless_speed
+    plan = playback.plan(job, 0, (320, 180))
+    assert plan.frame_ratio == pytest.approx(1) and plan.source_frame(10) == 10
+    assert any("fps=" in a for a in plan.args)

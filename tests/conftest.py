@@ -38,3 +38,12 @@ def hevc10_clip() -> Path:
 @pytest.fixture(scope="session")
 def encoder_status():
     return encoders.detect()
+
+
+@pytest.fixture(scope="session")
+def hevc_closed_clip() -> Path:
+    """HEVC with closed GOPs (IDR keyframes) – like phone footage; smart re-encode can join it."""
+    return _make("hevc_closed_240.mp4", [
+        "-f", "lavfi", "-i", "testsrc2=s=640x360:r=240:d=1", "-c:v", "libx265",
+        "-preset", "ultrafast", "-x265-params", "keyint=24:min-keyint=24:open-gop=0:log-level=error",
+        "-pix_fmt", "yuv420p", "-tag:v", "hvc1"])

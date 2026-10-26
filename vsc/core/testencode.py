@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,7 @@ from .job import Job, OutputSettings, Trim, output_path
 from . import runner
 
 DEFAULT_FRAMES = 100
+EXTERNAL_MAX_FRAMES = 5     # AV2 reference encoder: minutes per frame
 
 
 @dataclass
@@ -37,6 +39,7 @@ class TestResult:
     cancelled: bool = False
     error: str = ""
     commands: list[list[str]] = field(default_factory=list)   # for display
+    preview: Path | None = None   # readable copy when FFmpeg cannot decode the output (AV2)
 
     def source_frame(self, out_frame: int) -> int:
         """Source frame shown at (or nearest to) output frame `out_frame` of the test."""
@@ -74,7 +77,10 @@ class TestEncode:
     def __init__(self, job: Job, playhead: int, n_frames: int = DEFAULT_FRAMES,
                  supported_pix_fmts: list[str] | None = None):
         self.settings = job.settings.clone()
-        self.job = Job(job.info, self.settings, test_trim(job, playhead, n_frames), job.frames)
+        if job.codec and job.codec.external:
+            n_frames = min(n_frames, EXTERNAL_MAX_FRAMES)
+        self.job = Job(job.info, self.settings, test_trim(job, playhead, n_frames), job.frames,
+                       list(job.segments), job.joins)
         self.workdir = Path(tempfile.mkdtemp(prefix="vsc-test-"))
         self.output = output_path(self.job, self.workdir, "test")
         self.runner = runner.create(self.job, self.output, supported_pix_fmts)
@@ -90,6 +96,14 @@ class TestEncode:
     def run(self, on_progress=None) -> TestResult:
         res = self.runner.run(on_progress)
         frames = res.frames or (self.job.output_frame_count if res.ok else 0)
+        preview = None
+        if res.ok and self.job.codec and self.job.codec.external == "avm":
+            from . import avm
+            preview = self.workdir / "preview.mkv"
+            try:
+                avm.decode_for_preview(self.output, preview)
+            except (ValueError, OSError, subprocess.TimeoutExpired):
+                preview = None
         out_files = [self.output] if self.output.is_file() else list(self.workdir.rglob("*.*"))
         return TestResult(
             settings=self.settings, output=self.output, workdir=self.workdir,
@@ -98,7 +112,7 @@ class TestEncode:
             fps=frames / res.elapsed if res.elapsed > 0 else 0.0,
             bytes=sum(f.stat().st_size for f in out_files if f.is_file()),
             src_pixels=pixels(self.job)[0], out_pixels=pixels(self.job)[1], ok=res.ok, cancelled=res.cancelled,
-            error=res.error, commands=self.commands)
+            error=res.error, commands=self.commands, preview=preview)
 
 
 def discard(result: TestResult | None) -> None:

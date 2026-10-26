@@ -7,7 +7,7 @@ from enum import Enum
 from fractions import Fraction
 from pathlib import Path
 
-from . import formats
+from . import formats, segments as seg
 from .formats import COPY, CODECS_BY_KEY
 from .probe import FrameMap, MediaInfo
 
@@ -17,6 +17,7 @@ class Mode(Enum):
     REENCODE = "reencode"        # every source frame used once, but re-encoded (resize, codec ...)
     DROP = "drop"                # B: frame selection
     INTERPOLATE = "interpolate"  # C: new in-between frames
+    SMART = "smart"              # copy, re-encode only marked sections, join (smart.py)
 
 
 MODE_LABELS = {
@@ -24,6 +25,7 @@ MODE_LABELS = {
     Mode.REENCODE: "Re-encode, every frame used once",
     Mode.DROP: "Frame selection (frames are skipped)",
     Mode.INTERPOLATE: "Interpolation (in-between frames are calculated)",
+    Mode.SMART: "Smart re-encode (only marked sections are re-encoded)",
 }
 
 KEYFRAME_TRIM_REASON = (
@@ -33,6 +35,7 @@ KEYFRAME_TRIM_REASON = (
 )
 
 SPEED_EPS = 1e-6
+MKV_MAX_FPS = 500      # 1 ms timestamps: faster frames would collide / jitter
 
 
 @dataclass
@@ -53,6 +56,7 @@ class OutputSettings:
     fit: str = "pad"                       # for 'exact': 'pad' | 'crop' | 'stretch'
     scaler: str = formats.DEFAULT_SCALER
     interpolation: str = formats.DEFAULT_INTERPOLATION
+    smart: bool = False                    # smart re-encode (codec = the source's encoder)
 
     def clone(self) -> "OutputSettings":
         return copy.deepcopy(self)
@@ -71,24 +75,59 @@ class Job:
     settings: OutputSettings = field(default_factory=OutputSettings)
     trim: Trim = field(default_factory=Trim)
     frames: FrameMap | None = None   # needed for keyframe snapping and exact cuts
+    segments: list[seg.Segment] = field(default_factory=list)   # speed sections (per clip)
+    joins: list[int] | None = None   # smart re-encode: safe keyframes (None = not analysed)
+
+    # ------------------------------------------------------------------ speed sections
+
+    @property
+    def trim_end(self) -> int:
+        total = self.total_frames
+        return min(self.trim.end, total) if self.trim.end is not None else total
+
+    @property
+    def has_segments(self) -> bool:
+        """Sections inside the trim range: they replace the global speed."""
+        return any(s.start < self.trim_end and s.end > self.trim.start for s in self.segments)
+
+    def pieces(self, start: int | None = None) -> list[seg.Piece]:
+        """The trim range (from `start`) as runs of one rate; outside sections: real time."""
+        first = self.trim.start if start is None else start
+        return seg.pieces(self.segments, first, self.trim_end, self.info.real_fps)
+
+    def output_time(self, frame: int) -> float:
+        """Time in the output at which source frame `frame` appears."""
+        if self.has_segments:
+            return float(seg.output_time(self.pieces(), frame))
+        return (frame - self.trim.start) / float(self.info.real_fps * self.speed)
 
     # ------------------------------------------------------------------ speed
 
     @property
     def lossless_speed(self) -> Fraction:
-        return Fraction(self.settings.fps) / self.info.fps
+        return Fraction(self.settings.fps) / self.info.real_fps
 
     @property
     def speed(self) -> Fraction:
+        if self.settings.smart or self.has_segments:   # average speed over the whole output
+            real = Fraction(self.source_frame_count) / self.info.real_fps
+            out = Fraction(self.output_duration).limit_denominator(10**9) or Fraction(1)
+            return (real / out).limit_denominator(100000)
         return self.settings.speed if self.settings.speed is not None else self.lossless_speed
 
     @property
     def frame_ratio(self) -> float:
         """Output frames per source frame (1 = every frame used once)."""
-        return float(Fraction(self.settings.fps) / (self.speed * self.info.fps))
+        if self.settings.smart or self.has_segments:
+            return self.output_frame_count / max(1, self.source_frame_count)
+        return float(Fraction(self.settings.fps) / (self.speed * self.info.real_fps))
 
     @property
     def is_lossless_speed(self) -> bool:
+        if self.settings.smart:
+            return True        # untouched parts are copied; sections bring their own timing
+        if self.has_segments:
+            return self.settings.codec == COPY
         return abs(self.frame_ratio - 1) < SPEED_EPS
 
     # ------------------------------------------------------------------ mode
@@ -99,8 +138,16 @@ class Job:
 
     @property
     def mode(self) -> Mode:
+        if self.settings.smart:
+            return Mode.SMART
         if self.settings.codec == COPY:
             return Mode.RETIME
+        if self.has_segments:
+            out = Fraction(self.settings.fps)
+            rates = {p.rate for p in self.pieces()}
+            if any(r < out for r in rates):
+                return Mode.INTERPOLATE
+            return Mode.DROP if any(r > out for r in rates) else Mode.REENCODE
         r = self.frame_ratio
         if abs(r - 1) < SPEED_EPS:
             return Mode.REENCODE
@@ -110,7 +157,7 @@ class Job:
         """Why lossless retime (stream copy) is impossible with the current settings."""
         s = self.settings
         reasons = []
-        if not self.is_lossless_speed:
+        if not self.has_segments and not self.is_lossless_speed:
             reasons.append(
                 f"Speed {float(self.speed):.4g}× differs from the lossless speed "
                 f"{float(self.lossless_speed):.4g}× at {float(s.fps):.5g} fps")
@@ -118,6 +165,10 @@ class Job:
             reasons.append("Resizing requires re-encoding")
         if self.frames and not self.trim_on_keyframes():
             reasons.append("Trim points are not on keyframes")
+        if (self.has_segments and self.container == "mkv"
+                and max(p.rate for p in self.pieces()) > MKV_MAX_FPS):
+            reasons.append("Matroska stores timestamps in milliseconds – too coarse for sections "
+                           f"above {MKV_MAX_FPS} fps; choose MP4 or MOV")
         return reasons
 
     def trim_on_keyframes(self) -> bool:
@@ -136,7 +187,7 @@ class Job:
     @property
     def snaps_to_keyframes(self) -> bool:
         """Mode A can only cut at keyframes (see KEYFRAME_TRIM_REASON)."""
-        return self.mode == Mode.RETIME and self.frames is not None
+        return self.mode in (Mode.RETIME, Mode.SMART) and self.frames is not None
 
     def trim_with_in(self, frame: int) -> Trim:
         """Trim with a new in-point (first frame); the out-point is dropped if it is before."""
@@ -172,12 +223,26 @@ class Job:
         end = min(self.trim.end, total) if self.trim.end is not None else total
         return max(0, end - self.trim.start)
 
+    def smart_parts(self) -> list:
+        from . import smart
+        return smart.plan(self, self.joins or [])
+
     @property
     def output_frame_count(self) -> int:
+        if self.settings.smart:
+            return max(1, sum(p.frames for p in self.smart_parts()))
+        if self.has_segments:
+            if self.settings.codec == COPY:      # every frame kept, each with its own duration
+                return self.source_frame_count
+            return max(1, round(seg.duration(self.pieces()) * Fraction(self.settings.fps)))
         return max(1, round(self.source_frame_count * self.frame_ratio))
 
     @property
     def output_duration(self) -> float:
+        if self.settings.smart:
+            return float(sum(p.duration for p in self.smart_parts()))
+        if self.has_segments:
+            return float(seg.duration(self.pieces()))
         return self.output_frame_count / float(self.settings.fps)
 
     # ------------------------------------------------------------------ output format
@@ -185,6 +250,8 @@ class Job:
     @property
     def container(self) -> str:
         s = self.settings
+        if s.smart:
+            return s.container if s.container in ("mp4", "mkv") else "mp4"
         if s.codec == COPY:
             allowed = formats.copy_containers(self.info.codec)
             if s.container in allowed:
@@ -234,6 +301,12 @@ class Job:
         return _even(w), _even(h)
 
     def default_output_name(self) -> str:
+        if self.settings.smart:
+            return f"{self.info.path.stem}_smart"
+        if self.has_segments:
+            rate = ("vfr" if self.settings.codec == COPY
+                    else f"{float(self.settings.fps):.5g}fps".replace(".", "_"))
+            return f"{self.info.path.stem}_sections_{rate}"
         sp = f"{float(self.speed):.3g}".replace(".", "_")
         fps = f"{float(self.settings.fps):.5g}".replace(".", "_")
         return f"{self.info.path.stem}_{sp}x_{fps}fps"

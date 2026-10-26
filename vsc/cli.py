@@ -47,8 +47,8 @@ def cmd_info(args) -> None:
             print(f"  Slow-mo   : recorded at {_fmt_rate(i.capture_fps)} fps – the file is already "
                   f"{i.slowmo_factor:.3g}× slow motion")
         for fps_label, fps in formats.FRAME_RATES:
-            print(f"    lossless @ {fps_label:9}: {float(fps / i.fps):.5f}×"
-                  f"  ({float(i.fps / fps):.3g}× slower)")
+            print(f"    lossless @ {fps_label:9}: {float(fps / i.real_fps):.5f}×"
+                  f"  ({float(i.real_fps / fps):.3g}× slower)")
 
 
 def cmd_encoders(args) -> None:

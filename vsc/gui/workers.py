@@ -5,13 +5,16 @@ delivered to the receiving widgets on the UI thread.
 """
 from __future__ import annotations
 
+import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QImage
 
-from ..core import encoders, preview, rife
+from ..core import encoders, ffmpeg_bin, playback, preview, rife, smart
 from ..core.probe import probe, scan_frames
 
 
@@ -27,6 +30,7 @@ def _emit(signal, *args) -> bool:
 class ClipSignals(QObject):
     probed = Signal(object, object)    # path, MediaInfo
     scanned = Signal(object, object)   # path, FrameMap
+    analysed = Signal(object, object)  # path, safe join keyframes for smart re-encode (list)
     failed = Signal(object, str)       # path, message
 
 
@@ -46,6 +50,12 @@ class ClipLoader(QRunnable):
             _emit(self.signals.scanned, self.path, frames)
         except Exception as e:  # noqa: BLE001 – any failure is shown on the clip row
             _emit(self.signals.failed, self.path, str(e))
+            return
+        if smart.unavailable_reason(info) is None:
+            try:     # reads the whole bitstream – after the clip is usable
+                _emit(self.signals.analysed, self.path, smart.join_points(self.path, info, frames))
+            except Exception:  # noqa: BLE001 – smart re-encode just stays unavailable
+                _emit(self.signals.analysed, self.path, [])
 
 
 class EncoderSignals(QObject):
@@ -116,6 +126,11 @@ class FrameFetcher(QObject):
         self._wanted = None
         self.shown = None
 
+    def supersede(self) -> None:
+        """Another picture is on screen now: drop the pending request, deliver again later."""
+        self._wanted = None
+        self.shown = None
+
     def _next(self) -> None:
         if self._busy or self._wanted is None or self._key(self._wanted) == self.shown:
             return
@@ -165,8 +180,9 @@ class TestEncodeTask(QRunnable):
         media = None
         if result.ok:
             try:
-                info = probe(result.output)
-                media = TestMedia(result.output, info, scan_frames(result.output, info.stream_index))
+                path = result.preview or result.output     # AV2: decoded copy
+                info = probe(path)
+                media = TestMedia(path, info, scan_frames(path, info.stream_index))
             except Exception:  # noqa: BLE001 – comparison is optional (e.g. image sequences)
                 media = None
         _emit(self.signals.done, self.clip, result, media)
@@ -223,5 +239,126 @@ class ThumbnailLoader(QRunnable):
                 return
 
 
+class ProxySignals(QObject):
+    progress = Signal(object)        # clip (more of its preview copy is ready)
+
+
+_proxy_lock = threading.Lock()       # one preview copy at a time – they are CPU heavy
+
+
+class ProxyLoader(QRunnable):
+    """Small JPEG copy of every frame (clip.proxy), so scrubbing shows pictures at once."""
+
+    def __init__(self, clip, signals: ProxySignals):
+        super().__init__()
+        self.clip, self.signals = clip, signals
+
+    def run(self) -> None:
+        with _proxy_lock:
+            clip = self.clip
+            if clip.removed:
+                return
+            step = preview.proxy_step(clip.frames)
+            clip.proxy_step = step
+            clip.proxy = [None] * -(-clip.frames.count // step)
+            proc = subprocess.Popen(preview.proxy_args(clip.info, clip.frames),
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    stdin=subprocess.DEVNULL, **ffmpeg_bin.POPEN_FLAGS)
+            buffer, n, last = bytearray(), 0, time.monotonic()
+            try:
+                while not clip.removed:
+                    block = proc.stdout.read(1 << 16)
+                    if not block:
+                        break
+                    buffer += block
+                    for jpeg in preview.split_jpegs(buffer):
+                        if n < len(clip.proxy):
+                            clip.proxy[n] = jpeg
+                        n += 1
+                    if time.monotonic() - last > 0.5:
+                        last = time.monotonic()
+                        if not _emit(self.signals.progress, clip):
+                            break
+            finally:
+                proc.kill()
+                proc.wait()
+            clip.proxy_done = True
+            _emit(self.signals.progress, clip)
+
+
 def start(task: QRunnable) -> None:
     QThreadPool.globalInstance().start(task)
+
+
+class Player(QObject):
+    """Plays a PlayPlan: ffmpeg decodes into a pipe, a thread shows each frame on time.
+
+    If decoding is too slow, late frames are skipped (but at least ~25 pictures per second
+    are shown) and `behind` reports that playback runs slower than the export will.
+    """
+    frame = Signal(object, int, bool)   # QImage, source frame, behind
+    finished = Signal(str)               # "" or an error message
+
+    MIN_SHOW = 0.04       # show a late frame if the last one is older than this
+    BEHIND = 0.25         # seconds of delay that count as "can't keep up"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._proc = None
+        self._generation = 0
+
+    @property
+    def playing(self) -> bool:
+        return self._proc is not None
+
+    def play(self, plan: playback.PlayPlan) -> None:
+        self.stop()
+        self._generation += 1
+        self._proc = subprocess.Popen(plan.args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      stdin=subprocess.DEVNULL, **ffmpeg_bin.POPEN_FLAGS)
+        threading.Thread(target=self._run, args=(self._proc, plan, self._generation),
+                         daemon=True).start()
+
+    def stop(self) -> None:
+        proc, self._proc = self._proc, None
+        self._generation += 1
+        if proc:
+            proc.kill()
+
+    def _run(self, proc, plan: playback.PlayPlan, generation: int) -> None:
+        w, h = plan.size
+        size = w * h * 3
+        period = 1 / float(plan.fps)
+        t0 = last_shown = None
+        n = 0
+        while generation == self._generation:
+            data = proc.stdout.read(size)
+            if len(data) < size:
+                break
+            now = time.monotonic()
+            if t0 is None:
+                t0 = now           # the clock starts with the first decoded frame
+            due = t0 + n * period
+            late = now - due
+            if late < 0:
+                time.sleep(-late)
+            elif late > period and last_shown is not None and now - last_shown < self.MIN_SHOW:
+                n += 1
+                continue
+            if generation != self._generation:
+                break
+            image = QImage(data, w, h, w * 3, QImage.Format_RGB888).copy()
+            last_shown = time.monotonic()
+            if not _emit(self.frame, image, plan.source_frame(n), late > self.BEHIND):
+                break
+            n += 1
+        proc.wait()
+        message = ""
+        if proc.returncode not in (0, None) and generation == self._generation:
+            message = proc.stderr.read().decode("utf-8", "replace").strip() or "ffmpeg failed"
+        proc.stderr.close()
+        proc.stdout.close()
+        if generation == self._generation:
+            self._generation += 1
+            self._proc = None
+            _emit(self.finished, message)
