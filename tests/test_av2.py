@@ -34,7 +34,7 @@ def test_detected():
 def test_encode_and_decode(h264_clip, tmp_path, container):
     job = _job(h264_clip, codec="av2", container=container, quality=200)
     run = runner.create(job, output_path(job, tmp_path))
-    assert isinstance(run, avm.AvmRunner)
+    assert isinstance(getattr(run, "inner", run), avm.AvmRunner)    # inside the sound step
     progress = []
     res = run.run(progress.append)
     assert res.ok, res.error

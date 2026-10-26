@@ -64,6 +64,7 @@ class OutputSettings:
     scaler: str = formats.DEFAULT_SCALER
     interpolation: str = formats.DEFAULT_INTERPOLATION
     smart: bool = False                    # smart re-encode (codec = the source's encoder)
+    audio: bool = True                     # keep the sound (stretched, pitch preserved)
 
     def clone(self) -> "OutputSettings":
         return copy.deepcopy(self)

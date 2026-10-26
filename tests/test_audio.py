@@ -1,0 +1,95 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
+"""Sound: stretched to the video length with the pitch preserved (pure tones, zero crossings)."""
+from __future__ import annotations
+
+import array
+import subprocess
+from fractions import Fraction
+
+import pytest
+
+from vsc.core import audio, ffmpeg_bin, runner, segments as seg
+from vsc.core.formats import COPY
+from vsc.core.job import Job, OutputSettings, Trim, output_path
+from vsc.core.probe import probe, scan_frames
+
+
+def _durations(path) -> dict[str, float]:
+    out = subprocess.run([ffmpeg_bin.ffprobe(), "-v", "error", "-show_entries",
+                          "stream=codec_type,duration", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True, check=True).stdout.split()
+    return {kind: float(d) for kind, d in (line.split(",") for line in out)}
+
+
+def _frequency(path, start: float, length: float) -> float:
+    """Main frequency of the sound from start to start+length (mono, zero crossings)."""
+    pcm = subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-ss", str(start), "-t", str(length),
+                          "-i", str(path), "-map", "0:a", "-ac", "1", "-ar", "48000",
+                          "-f", "s16le", "-"], capture_output=True, check=True).stdout
+    samples = array.array("h", pcm)
+    crossings = sum(1 for a, b in zip(samples, samples[1:]) if (a < 0) != (b < 0))
+    return crossings / 2 / (len(samples) / 48000)
+
+
+def _job(clip, **settings) -> Job:
+    return Job(probe(clip), OutputSettings(**settings), Trim(), scan_frames(clip))
+
+
+def test_slower_keeps_pitch_and_length(h264_clip, tmp_path):
+    job = _job(h264_clip, codec=COPY, fps=Fraction(25))         # 240 → 25 fps: 9.6× slower
+    assert audio.wanted(job)
+    out = output_path(job, tmp_path)
+    res = runner.create(job, out).run()
+    assert res.ok, res.error
+    d = _durations(out)
+    assert d["audio"] == pytest.approx(job.output_duration, abs=0.05)
+    assert d["video"] == pytest.approx(job.output_duration, abs=0.1)
+    assert _frequency(out, 10, 5) == pytest.approx(440, rel=0.02)   # the source tone
+
+
+def test_sections_follow_the_video(h264_clip, tmp_path):
+    job = _job(h264_clip, codec="x264", fps=Fraction(50), preset="ultrafast")
+    real = job.info.real_fps
+    job.segments = [seg.Segment(0, 240, real * 4), seg.Segment(480, 720, Fraction(30))]
+    out = output_path(job, tmp_path)
+    res = runner.create(job, out).run()
+    assert res.ok, res.error
+    assert _durations(out)["audio"] == pytest.approx(job.output_duration, abs=0.05)
+    slow_start = float(seg.output_time(job.pieces(), 480))
+    assert _frequency(out, slow_start + 1, 4) == pytest.approx(440, rel=0.02)   # 8× slower part
+
+
+def test_phone_slowmo_sound_is_restored(tmp_path):
+    """A phone stores slow motion like a slowed tape: 440 Hz becomes 55 Hz at 8× slow-mo."""
+    clip = tmp_path / "phone.mp4"
+    subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
+                    "testsrc2=s=320x180:r=30:d=8", "-f", "lavfi", "-i", "sine=f=55:d=8",
+                    "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                    "-movflags", "use_metadata_tags",
+                    "-metadata", "com.android.capture.fps=240.000000", "-shortest", str(clip)],
+                   check=True)
+    job = _job(clip, codec=COPY, fps=Fraction(240))             # real time
+    assert job.info.slowmo_factor == pytest.approx(8, rel=0.01)
+    out = output_path(job, tmp_path / "out")
+    res = runner.create(job, out).run()
+    assert res.ok, res.error
+    assert _durations(out)["audio"] == pytest.approx(1.0, abs=0.05)
+    assert _frequency(out, 0.2, 0.6) == pytest.approx(440, rel=0.03)   # original pitch again
+
+
+def test_no_sound_when_off_or_impossible(h264_clip, hevc10_clip, tmp_path):
+    job = _job(h264_clip, codec=COPY, fps=Fraction(240), audio=False)
+    assert not audio.wanted(job)
+    res = runner.create(job, output_path(job, tmp_path)).run()
+    assert res.ok and "audio" not in _durations(res.output)
+    assert "no sound" in audio.unavailable_reason(_job(hevc10_clip))
+    assert "Image sequences" in audio.unavailable_reason(_job(h264_clip, codec="png_seq"))
+    assert "AV2" in audio.unavailable_reason(_job(h264_clip, codec="av2", container="webm"))
+    webm = _job(h264_clip, codec="vp9", container="webm")
+    assert audio.wanted(webm) and audio.CODEC_ARGS["webm"][1] == "libopus"

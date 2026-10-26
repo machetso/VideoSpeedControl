@@ -102,7 +102,16 @@ class Runner:
 
 
 def create(job: Job, output: Path, supported_pix_fmts: list[str] | None = None):
-    """The right runner for a job: RIFE interpolation runs its own pipeline."""
+    """The right runner for a job; with sound, the video goes to a temporary file first."""
+    from . import audio   # audio imports this module
+    if audio.wanted(job):
+        video = audio.temp_video_path(output)
+        return audio.AudioRunner(_create_video(job, video, supported_pix_fmts), job, video, output)
+    return _create_video(job, output, supported_pix_fmts)
+
+
+def _create_video(job: Job, output: Path, supported_pix_fmts: list[str] | None):
+    """The video runner: RIFE interpolation, AV2 and smart re-encode run their own pipelines."""
     from . import rife   # rife imports this module
     if job.settings.smart:
         from . import smart

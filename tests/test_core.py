@@ -312,7 +312,7 @@ def test_rife_encode(h264_clip, tmp_path, encoder_status):
                    fps=Fraction(24000, 1001), speed=Fraction(1, 20), interpolation=method,
                    resize="exact", width=320, height=180, trim=Trim(100, 130))
         runner = runners.create(job, output_path(job, tmp_path, method), supported)
-        assert isinstance(runner, rife.RifeRunner) == (method == "rife")
+        assert isinstance(getattr(runner, "inner", runner), rife.RifeRunner) == (method == "rife")
         res = runner.run()
         assert res.ok, res.error
         assert int(_stream(res.output)[0]["nb_read_frames"]) == job.output_frame_count == 60

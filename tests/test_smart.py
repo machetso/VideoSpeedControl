@@ -75,7 +75,7 @@ def test_smart_export(request, tmp_path, fixture, container):
     assert [p.kind for p in parts] == ["encode", "copy", "encode", "copy"]
     out = output_path(job, tmp_path)
     run = runner.create(job, out)
-    assert isinstance(run, smart.SmartRunner)
+    assert isinstance(getattr(run, "inner", run), smart.SmartRunner)    # inside the sound step
     res = run.run()
     assert res.ok, res.error
 

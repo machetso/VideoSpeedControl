@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QSizePolicy, 
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
-from ..core import formats, rife, smart
+from ..core import audio, formats, rife, smart
 from ..core.encoders import EncoderStatus
 from ..core.formats import COPY, CODECS
 from ..core.job import KEYFRAME_TRIM_REASON, MODE_LABELS, Mode, _even
@@ -29,6 +29,10 @@ from .clips import (Clip, chroma_label, fmt_duration, fmt_rate, fmt_seconds, fmt
 
 CUSTOM = "custom"
 LOSSLESS, SMART, REENCODE = "lossless", "smart", "reencode"
+AUDIO_TIP = ("The original sound, stretched or compressed to the new length of the video.\n"
+             "The pitch stays the same – no deep or squeaky voices. Very strong slow motion\n"
+             "makes speech hard to understand (it is 10× slower), but it keeps its pitch.\n"
+             "Phone slow-mo sound (stored lowered) is first brought back to its real pitch.")
 PANEL_MIN_WIDTH = 330   # the form needs ~300 px (see CLAUDE.md) + the vertical scrollbar
 SMART_DETAILS = ("Smart re-encode joins copied and re-encoded parts only at keyframes: in / out "
                  "points snap to them,\nand sections marked “Re-encode” are widened to the "
@@ -109,6 +113,12 @@ class SettingsPanel(QGroupBox):
         for b in (self.proc_lossless, self.proc_smart, self.proc_reencode):
             proc_layout.addWidget(b)
         form.addRow("Processing:", proc_box)
+
+        # --- sound: one click to keep or leave it out
+        self.audio_button = QPushButton()
+        self.audio_button.setCheckable(True)
+        self.audio_button.clicked.connect(self._edited)
+        form.addRow("Sound:", _row(self.audio_button))
 
         # --- frame rate
         self.fps_combo = Combo()
@@ -327,6 +337,8 @@ class SettingsPanel(QGroupBox):
         interp = self.interp_combo.currentData()
         if interp:
             s.interpolation = interp
+        if self.audio_button.isEnabled():
+            s.audio = self.audio_button.isChecked()
 
         self._apply_process(process)
 
@@ -549,6 +561,15 @@ class SettingsPanel(QGroupBox):
             self.fps_combo.setToolTip("Not used: copied parts keep their timing, re-encoded "
                                       "sections have their own output frame rate.")
 
+        # sound
+        reason = audio.unavailable_reason(job)
+        on = s.audio and reason is None
+        self.audio_button.setChecked(on)
+        self.audio_button.setText("🔊 Sound on – pitch preserved" if on else "🔇 Sound off")
+        self.audio_button.setEnabled(reason is None)
+        self.audio_button.setToolTip(reason or AUDIO_TIP + "\n\nClick to switch the sound "
+                                     + ("off." if on else "on."))
+
         self.summary.setText(self._summary(clip))
         self.summary.setToolTip(SMART_DETAILS.format(apple=smart.APPLE_WARNING)
                                 if process == SMART else "")
@@ -657,6 +678,7 @@ class SettingsPanel(QGroupBox):
                      "(hover for details).</span>")
         lines.append(f"{job.source_frame_count} → {job.output_frame_count} frames, "
                      f"{fmt_duration(job.output_duration)}")
+        lines.append(_sound_line(job))
         ext = formats.CONTAINER_EXT[job.container]
         lines.append(f"File: {job.default_output_name()}{ext}")
         return lines
@@ -759,9 +781,24 @@ class SettingsPanel(QGroupBox):
         else:
             w, h = clip.info.display_size
             lines.append(f"{w}×{h}, {clip.info.pix_fmt} (unchanged)")
+        lines.append(_sound_line(job))
         ext = formats.CONTAINER_EXT[job.container]
         lines.append(f"File: {job.default_output_name()}{ext}")
         return "<br>".join(lines)
+
+
+def _sound_line(job) -> str:
+    if not audio.wanted(job):
+        return "Sound: none" + ("" if job.info.has_audio else " (the clip has none)")
+    restored = " – phone slow-mo sound back at its real pitch" if audio.slowmo_factor(job) > 1.001 \
+        else ""
+    if job.has_segments or job.settings.smart:
+        return f"Sound: follows the speed sections, pitch preserved{restored}"
+    real = sum(b - a for a, b, _ in audio.pieces(job))
+    factor = job.output_duration / real if real > 0 else 1
+    change = ("unchanged length" if abs(factor - 1) < 1e-3 else
+              f"{factor:.3g}× longer" if factor > 1 else f"{1 / factor:.3g}× shorter")
+    return f"Sound: {change}, pitch preserved{restored}"
 
 
 def _key_interval(frames) -> int:

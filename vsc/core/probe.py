@@ -104,6 +104,7 @@ class MediaInfo:
     recorded: datetime | None = None          # aware (local time of the camera if known)
     capture_fps: Fraction | None = None       # phones: rate the sensor recorded at
     audio: str | None = None                  # first audio track, e.g. "aac stereo 48 kHz"
+    audio_rate: int | None = None             # its sample rate in Hz
 
     @property
     def slowmo_factor(self) -> float | None:
@@ -285,6 +286,12 @@ def _audio(streams: list[dict]) -> str | None:
     return " ".join(parts)
 
 
+def _audio_rate(streams: list[dict]) -> int | None:
+    a = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    rate = str(a.get("sample_rate", "")) if a else ""
+    return int(rate) if rate.isdigit() else None
+
+
 def _recording(fmt_tags: dict, streams: list[dict], v: dict) -> dict:
     tags = _tags(fmt_tags)
     device = _device(tags, _tags(v.get("tags", {})))
@@ -294,7 +301,8 @@ def _recording(fmt_tags: dict, streams: list[dict], v: dict) -> dict:
     return {"device": device,
             "recorded": _recorded(tags, bool(device and device.startswith("GoPro"))),
             "capture_fps": capture,
-            "audio": _audio(streams)}
+            "audio": _audio(streams),
+            "audio_rate": _audio_rate(streams)}
 
 
 @dataclass

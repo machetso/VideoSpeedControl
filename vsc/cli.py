@@ -49,7 +49,7 @@ def cmd_info(args) -> None:
         print(f"  Other     : {', '.join(i.extra_streams) or '–'}")
         print(f"  Device    : {i.device or '–'}")
         print(f"  Recorded  : {i.recorded:%Y-%m-%d %H:%M:%S}" if i.recorded else "  Recorded  : –")
-        print(f"  Audio     : {i.audio or '–'} (not exported)")
+        print(f"  Audio     : {i.audio or '–'}" + (" (exported, pitch preserved)" if i.audio else ""))
         if i.slowmo_factor:
             print(f"  Slow-mo   : recorded at {_fmt_rate(i.capture_fps)} fps – the file is already "
                   f"{i.slowmo_factor:.3g}× slow motion")

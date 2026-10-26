@@ -7,7 +7,7 @@ into it.
 
 | Component | Used for | Licence | Source |
 |---|---|---|---|
-| **FFmpeg / FFprobe** (static "gpl" build by BtbN, incl. x264, x265, SVT-AV1, libaom, libvpx …) | decoding, encoding, filtering, analysis | **GNU GPL version 3** (`--enable-gpl --enable-version3`) – licence text in `vendor/ffmpeg/<platform>/LICENSE.txt` | https://ffmpeg.org, https://github.com/BtbN/FFmpeg-Builds |
+| **FFmpeg / FFprobe** (static "gpl" build by BtbN, incl. x264, x265, SVT-AV1, libaom, libvpx, Rubber Band …) | decoding, encoding, filtering, sound time-stretching, analysis | **GNU GPL version 3** (`--enable-gpl --enable-version3`) – licence text in `vendor/ffmpeg/<platform>/LICENSE.txt` | https://ffmpeg.org, https://github.com/BtbN/FFmpeg-Builds |
 | **Qt 6 / PySide6** (6.12) | user interface | GNU LGPL version 3 | https://www.qt.io, https://doc.qt.io/qtforpython/ |
 | **rife-ncnn-vulkan** (20221029) with the RIFE v4.6 model | AI frame interpolation | MIT – `vendor/rife/<platform>/LICENSE` | https://github.com/nihui/rife-ncnn-vulkan, https://github.com/hzwer/Practical-RIFE |
 | **AVM** (AV2 reference software, v1.0.0) | AV2 encoding / decoding | BSD-3-Clause-Clear plus the Alliance for Open Media patent licence – `vendor/avm/<platform>/LICENSE`, `PATENTS` | https://github.com/AOMediaCodec/avm |

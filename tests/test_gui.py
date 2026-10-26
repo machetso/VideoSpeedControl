@@ -247,7 +247,8 @@ def test_rife_in_gui(qapp, window):
     _wait(qapp, lambda: not first.testing, timeout=120)
     assert first.test.ok, first.test.error
     assert first.test.frames >= 10
-    assert len(first.test.commands) == 3 and "rife-ncnn-vulkan" in first.test.commands[1][0]
+    # extract, rife, encode + adding the sound
+    assert len(first.test.commands) == 4 and "rife-ncnn-vulkan" in first.test.commands[1][0]
     assert "Estimate for the whole clip" in panel.result.text()
 
 
@@ -561,3 +562,17 @@ def test_help_about_and_icons(qapp, window):
     about = help.AboutDialog(window)
     assert any("MIT License" in label.text() for label in about.findChildren(QLabel))
     h.close()
+
+
+def test_sound_button(window):
+    panel = window.settings
+    first, second = window.model.clips                     # h264 with sound, hevc10 without
+    b = panel.audio_button
+    assert b.isEnabled() and b.isChecked() and b.text().startswith("🔊")
+    b.click()
+    assert first.settings.audio is False and b.text().startswith("🔇")
+    assert "Sound: none" in panel.summary.text()
+    b.click()
+    assert first.settings.audio is True and "pitch preserved" in panel.summary.text()
+    window._select(second)
+    assert not b.isEnabled() and "no sound" in b.toolTip()

@@ -108,8 +108,10 @@ class InfoPanel(QGroupBox):
             "Colour": f"{i.transfer_label}; space {i.color_space or '?'}, "
                       f"primaries {i.color_primaries or '?'}, range {i.color_range or '?'}",
             "Bitrate": f"{bitrate / 1e6:.1f} Mbit/s" if bitrate else "unknown",
-            "Audio": f"{i.audio}  (not exported)" if i.audio else "none",
-            "Other streams": ", ".join(i.extra_streams) + "  (discarded)" if i.extra_streams else "–",
+            "Audio": f"{i.audio}  (exported, pitch preserved – see Audio in the output settings)"
+                     if i.audio else "none",
+            "Other streams": ", ".join(i.extra_streams) + "  (only the first audio track is "
+                             "exported)" if i.extra_streams else "–",
         }
         for name, text in values.items():
             self.values[name].setText(text)

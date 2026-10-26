@@ -135,6 +135,14 @@ Used when the speed is slower than the lossless speed and new in-between picture
 - **Motion interpolation (minterpolate)** – calculates real in-between pictures on the CPU; good for slow, even motion. Very slow.
 - **RIFE (AI)** – neural network on the graphics card (Vulkan, also integrated graphics); clearly better motion. Works on 8-bit RGB. Not available together with speed sections or AV2.
 
+### Sound
+
+The **Sound** button right under *Processing* switches the sound on or off with one click: **🔊 Sound on – pitch preserved** (default) or **🔇 Sound off**. With sound on, the app takes the first audio track of the clip and stretches or compresses it to the new length of the video – the **pitch stays the same**, so there are no deep or squeaky voices. Speed sections get their own stretch factor each, so the sound follows every section. Very strong slow motion makes speech hard to understand (it is simply 10× slower), but it keeps its pitch.
+
+**Phone slow motion:** phones store the sound of a slow-motion clip slowed down like a tape – it sounds deep. VideoSpeedControl first brings it back to its real pitch and real-time length, then stretches it to the video.
+
+The sound is added after the video is finished, so a **lossless** video stays lossless; only the audio track is encoded (AAC in MP4 / MOV / MKV, Opus in WebM, PCM in AVI / MXF). Image sequences and AV2 files (FFmpeg cannot handle AV2 yet) stay without sound – the button is greyed out then, and its tooltip says why.
+
 ## 6. Speed sections
 
 Speed sections give parts of a clip their own frame rate – for example the jump in slow motion, the run-up in real time, the landing 8× faster.
@@ -215,10 +223,11 @@ AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30
 - **The preview stutters:** very high frame rates (240 fps real time) need more decoding power than many laptops have – the export is not affected.
 - **No hardware encoder:** hardware encoders are only offered when a test encode on your computer works; software encoders always work.
 - **RIFE is slow or unavailable:** RIFE needs a Vulkan-capable graphics card; on integrated graphics it is slow, without Vulkan it is not offered.
+- **The sound is hard to understand:** that is normal for strong slow motion – 10× slower speech keeps its pitch but is stretched. Switch the sound off (🔇) or add music later.
 - **Smart re-encode is greyed out:** the clip is not H.264 / HEVC, the keyframe analysis is still running, or no keyframe allows a join.
 
 ## 13. Licence and credits
 
 Copyright © 2026 Alex Vulcu. Concept, architecture, direction, and curation by Alex Vulcu. Implementation assisted by generative AI tools. Licensed under the MIT License – see the LICENSE file.
 
-VideoSpeedControl uses other open-source software with its own licence: **FFmpeg** (GPL build, includes x264 / x265), **Qt / PySide6** (LGPL), **rife-ncnn-vulkan** with the RIFE model (MIT) and **AVM**, the AV2 reference software (BSD-3-Clause-Clear). Details are in THIRD_PARTY_NOTICES.md.
+VideoSpeedControl uses other open-source software with its own licence: **FFmpeg** (GPL build, includes x264 / x265 and the Rubber Band time-stretching library), **Qt / PySide6** (LGPL), **rife-ncnn-vulkan** with the RIFE model (MIT) and **AVM**, the AV2 reference software (BSD-3-Clause-Clear). Details are in THIRD_PARTY_NOTICES.md.

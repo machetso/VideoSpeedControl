@@ -94,6 +94,13 @@ Read SCOPE.md for the agreed feature set and milestone status.
     demuxer with exact `duration` lines → MP4 tag hev1 / avc3 (Apple can't play) or MKV.
     Encoded parts: source codec, `-noautorotate`, one closed GOP, repeat-headers; rotation
     is set again on the join (`-display_rotation`, same sign as probe).
+  - `audio.py` – sound (toggle button "🔊 Sound on / 🔇 Sound off" under Processing, setting
+    `OutputSettings.audio`): `runner.create` wraps any video runner in `AudioRunner` when
+    `audio.wanted(job)` (setting `audio`, clip has sound, container takes it, not AV2): video →
+    temp file, then one ffmpeg pass adds the sound (video copied, MP4 tag kept – hvc1 / hev1).
+    Phone slow-mo sound is stored like a slowed tape (Pixel: nothing above ~3 kHz) →
+    `asetrate` × slow-mo factor first; then per speed piece `atrim` + rubberband (pitch kept),
+    concat, apad/atrim to the video length. Tests check pitch with pure tones (zero crossings).
   - `testencode.py` – TestEncode (N output frames from the playhead into a temp dir), steady
     fps = frames / elapsed (see Hard-won details), Estimate for a clip: own test if settings
     are equal, else scaled by pixel count from another clip's test with equal settings
