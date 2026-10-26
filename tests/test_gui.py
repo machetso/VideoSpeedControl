@@ -486,3 +486,32 @@ def test_clear_sections_asks_first(window, monkeypatch):
     assert len(clip.segments) == 1                       # cancelled
     preview.clear_sections_button.click()
     assert not clip.segments and preview.undo_button.isVisibleTo(preview)
+
+
+def test_section_table_keeps_position_and_out_fps(qapp, window):
+    from PySide6.QtCore import QSettings
+    QSettings().remove("sections/out_fps")
+    preview, settings = window.preview, window.settings
+    clip = window.current_clip()
+    _wait(qapp, lambda: clip.joins is not None)
+    settings.set_process("smart")
+    for i in range(8):                                   # more rows than the table shows
+        preview.seek(10 + i * 40); preview.section_start()
+        preview.seek(30 + i * 40); preview.section_end()
+        preview.add_section()
+    t = preview.sections_table
+
+    def fully_visible(row):
+        qapp.processEvents()
+        rect = t.visualRect(t.model().index(row, 0))
+        return t.viewport().rect().contains(rect)
+    assert t.verticalScrollBar().maximum() > 0
+    assert fully_visible(7) and not fully_visible(0)            # newest (last) row in view
+    preview._set_section(7, reencode=True)
+    assert fully_visible(7)                                      # stays down
+    assert clip.segments[7].out_fps == 30                         # built-in default
+    preview._set_section(7, out_fps=Fraction(25))
+    preview.seek(400); preview.section_start(); preview.seek(420); preview.section_end()
+    preview.add_section()
+    assert clip.segments[-1].out_fps == 25                        # last choice is the default
+    QSettings().remove("sections/out_fps")

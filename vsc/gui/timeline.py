@@ -314,6 +314,7 @@ class PreviewPanel(QWidget):
         self._play_note = ""
         self._labels_at = 0.0
         self._table_key = None
+        self._show_row: int | None = None     # section row to scroll into view after a rebuild
         self._exact_size = (0, 0)
         self._exact_timer = QTimer(self, singleShot=True, interval=EXACT_DELAY_MS,
                                    timeout=self._request_exact)
@@ -715,10 +716,20 @@ class PreviewPanel(QWidget):
         a, b = self.timeline.pending
         if not self._ready() or a is None or b is None or self.sec_fps.currentData() is None:
             return
-        new = seg.Segment(min(a, b), max(a, b) + 1, Fraction(self.sec_fps.currentData()))
+        new = seg.Segment(min(a, b), max(a, b) + 1, Fraction(self.sec_fps.currentData()),
+                          out_fps=self._default_out_fps())
         self.clip.segments[:] = seg.add(self.clip.segments, new)
         self.timeline.pending = (None, None)
+        self._show_row = self.clip.segments.index(new)    # scroll the table to the new row
         self._sections_changed()
+
+    def _default_out_fps(self) -> Fraction:
+        """The output frame rate chosen last – the default for further sections."""
+        value = QSettings().value("sections/out_fps", "")
+        try:
+            return Fraction(str(value)) if value else smart.DEFAULT_OUT_FPS
+        except (ValueError, ZeroDivisionError):
+            return smart.DEFAULT_OUT_FPS
 
     def remove_section(self, index: int) -> None:
         del self.clip.segments[index]
@@ -729,7 +740,12 @@ class PreviewPanel(QWidget):
 
     def _set_section(self, index: int, **changes) -> None:
         if self.clip and index < len(self.clip.segments):
+            if "out_fps" in changes:
+                QSettings().setValue("sections/out_fps", str(changes["out_fps"]))
+            elif changes.get("reencode") and self.clip.segments[index].out_fps is None:
+                changes["out_fps"] = self._default_out_fps()
             self.clip.segments[index] = replace(self.clip.segments[index], **changes)
+            self._show_row = index            # keep the edited row in view
             self._sections_changed()
 
     def _seek_section(self, row: int) -> None:
@@ -789,6 +805,7 @@ class PreviewPanel(QWidget):
         if key == self._table_key:          # rebuild only on change (refresh runs on every seek)
             return
         self._table_key = key
+        scroll = t.verticalScrollBar().value()      # a rebuild would jump to the top
         t.clearContents()
         t.setRowCount(len(clip.segments))
         for row, s in enumerate(clip.segments):
@@ -815,7 +832,7 @@ class PreviewPanel(QWidget):
             out = QComboBox()
             for label, fps in formats.FRAME_RATES:
                 out.addItem(f"{label} fps", str(fps))
-            current = str(s.out_fps or smart.DEFAULT_OUT_FPS)
+            current = str(s.out_fps or self._default_out_fps())
             if out.findData(current) < 0:
                 out.addItem(f"{fmt_rate(Fraction(current))} fps", current)
             out.setCurrentIndex(out.findData(current))
@@ -829,6 +846,12 @@ class PreviewPanel(QWidget):
             remove.clicked.connect(lambda _=False, row=row: QTimer.singleShot(
                 0, lambda: self.remove_section(row)))
             t.setCellWidget(row, 6, remove)
+        t.verticalScrollBar().setValue(scroll)
+        if self._show_row is not None and self._show_row < t.rowCount():
+            index = t.model().index(self._show_row, 0)
+            t.scrollTo(index)
+            QTimer.singleShot(0, lambda: t.scrollTo(index))   # again once the rows are laid out
+        self._show_row = None
 
     # ------------------------------------------------------------------ playback
 

@@ -98,6 +98,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
     snapshot, label from `batch.describe`) – the same clip can be added several times;
     export scope "Batch list" exports those snapshots (list kept after export; entries of
     removed clips are dropped). `{mode}` name token = lossless / smart / reencode.
+    Section table: rebuilt on change, keeps its scroll position; new / edited row is scrolled
+    into view (`_show_row`). Last chosen output fps = default for new sections
+    (QSettings "sections/out_fps", else 30).
     "Clear sections" (right edge, asks first) keeps the old list for "↶ Undo" / Ctrl+Z until
     sections are edited.
   - Export: jobs are snapshots taken at start (settings / trim edits don't affect a running
