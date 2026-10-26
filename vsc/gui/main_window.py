@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Main window: clip table on top; below, preview / clip info tabs next to the output settings."""
 from __future__ import annotations
 
@@ -21,7 +28,7 @@ from .info_panel import InfoPanel
 from .settings_panel import SettingsPanel
 from .test_panel import TestPanel
 from .timeline import PreviewPanel
-from . import workers
+from . import help, workers
 
 VIDEO_FILTER = ("Video files (*.mp4 *.mov *.mkv *.avi *.mts *.m2ts *.mxf *.webm *.m4v *.wmv "
                 "*.flv *.360 *.lrv *.MP4 *.MOV *.MKV *.AVI *.MTS);;All files (*)")
@@ -112,6 +119,16 @@ class MainWindow(QMainWindow):
         for action in (add, remove, clear):
             toolbar.addAction(action)
 
+        menu = self.menuBar().addMenu("&Help")
+        menu.addAction(QAction("User guide", self, shortcut=QKeySequence.HelpContents,
+                               triggered=self.show_help))
+        pdf = QAction("User guide (PDF)", self, triggered=self._open_pdf)
+        pdf.setEnabled(help.PDF.is_file())
+        menu.addAction(pdf)
+        menu.addSeparator()
+        menu.addAction(QAction("About VideoSpeedControl", self, triggered=self.show_about))
+        self._help: help.HelpWindow | None = None
+
         self.batch_label = QLabel()
         self.statusBar().addPermanentWidget(self.batch_label)
         for sig in (self.model.dataChanged, self.model.rowsInserted, self.model.rowsRemoved):
@@ -161,6 +178,20 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     # ------------------------------------------------------------------ import
+
+    def show_help(self) -> None:
+        if self._help is None:
+            self._help = help.HelpWindow(self)
+        self._help.show()
+        self._help.raise_()
+        self._help.activateWindow()
+
+    def _open_pdf(self) -> None:
+        if not help.open_pdf():
+            self.statusBar().showMessage("The PDF user guide could not be opened", 5000)
+
+    def show_about(self) -> None:
+        help.AboutDialog(self).exec()
 
     def add_dialog(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "Add video files", "", VIDEO_FILTER)

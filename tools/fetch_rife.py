@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Download rife-ncnn-vulkan (MIT, nihui) into vendor/rife/<platform>/ – binary + RIFE v4.6 model.
 
 The release archive contains every model (~430 MB); only what the app uses is kept.

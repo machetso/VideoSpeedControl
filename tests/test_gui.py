@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """GUI tests – run headless with the Qt 'offscreen' platform."""
 from __future__ import annotations
 
@@ -8,9 +15,10 @@ from fractions import Fraction
 
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6.QtCore import QSettings  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # never real windows (desktop may set wayland)
+from PySide6.QtCore import QSettings, QUrl  # noqa: E402
+from PySide6.QtGui import QTextDocument  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from vsc.core.job import Mode  # noqa: E402
 from vsc.gui.clips import Status  # noqa: E402
@@ -533,3 +541,23 @@ def test_quality_levels_and_custom(window):
     assert clip.settings.quality == 21 and panel.quality_combo.currentData() == "custom"
     _pick(panel.codec_combo, "svtav1")                          # other scale, own levels
     assert clip.settings.quality is None and panel.quality_combo.currentText() == "High (CRF 30)"
+
+
+def test_help_about_and_icons(qapp, window):
+    from vsc.gui import help
+    icon = help.app_icon()
+    assert {s.width() for s in icon.availableSizes()} >= {16, 32, 48, 256}
+    assert not help.splash_pixmap(400).isNull() and help.ICON_SIZES
+    assert help.MANUAL.is_file() and help.PDF.is_file()
+    window.show_help()
+    h = window._help
+    titles = [t for _, t in h.headings]
+    assert "7. Smart re-encode" in titles and "13. Licence and credits" in titles
+    h.toc.setCurrentRow(titles.index("9. Export and the batch list"))
+    assert h.browser.textCursor().block().text() == "9. Export and the batch list"
+    doc = h.browser.document()
+    for name in ("overview", "sections", "export"):                 # pictures are loaded
+        assert doc.resource(QTextDocument.ImageResource, QUrl(f"images/{name}.png")) is not None
+    about = help.AboutDialog(window)
+    assert any("MIT License" in label.text() for label in about.findChildren(QLabel))
+    h.close()

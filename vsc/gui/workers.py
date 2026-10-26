@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Background work (ffprobe, frame scans, encoder detection) – never on the UI thread.
 
 Each task runs in the global QThreadPool and reports back through Qt signals, which are

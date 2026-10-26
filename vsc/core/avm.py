@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """AV2 with the AVM reference software (avmenc / avmdec) – FFmpeg cannot encode or decode AV2.
 
 Pipeline: ffmpeg decodes, trims, retimes and scales exactly as for any other codec and pipes

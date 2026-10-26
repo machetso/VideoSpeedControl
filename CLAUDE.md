@@ -20,6 +20,13 @@ Read SCOPE.md for the agreed feature set and milestone status.
   - AV2 via AVM reference software (`core/avm.py`, `tools/fetch_avm.py`), Linux only.
   - Batch list ("➕ Add to batch" snapshots), "Clear sections" with confirmation + undo.
   - Desktop launcher (see Setup).
+- 2026-10-26: artwork, docs, open source (user request): `assets/*.webp` (user's artwork; the
+  .jpeg / .psd next to them in the root are the user's and not committed) → `tools/make_icons.py`
+  → `vsc/gui/resources/` (icons 16–512, icon.ico, splash.webp). Splash at start, Help menu
+  (F1 guide, PDF, About) in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
+  `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
+  MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
+  Version in `vsc/__init__.py` (0.9.0).
 - Next: milestone 7 – packaging. Windows exe: the user asked, then paused before choosing the
   build route (script on a Windows PC / Wine here / GitHub Actions) and whether AV2 is
   included (needs an AVM build for Windows: Visual Studio or mingw-w64).
@@ -130,7 +137,8 @@ Read SCOPE.md for the agreed feature set and milestone status.
   - Clip.trim / Clip.playhead are per clip and never copied by "apply to all".
   - Workers emit via `_emit()` – the window may be gone; Clip.removed stops thumbnail loaders.
   - Combo item data must not be a `Fraction` (Qt turns it into a float) – stored as `str`.
-  - GUI tests run headless (`QT_QPA_PLATFORM=offscreen`, set in tests/test_gui.py); QSettings
+  - GUI tests and tools run headless: `QT_QPA_PLATFORM=offscreen` is FORCED (the desktop session
+    sets `wayland;xcb` – setdefault would open real windows on the user's screen). QSettings
     are redirected to a temp dir there.
 
 ## Hard-won details

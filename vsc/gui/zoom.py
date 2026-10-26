@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Fit / 1:1 / 2:1 zoom with panning, shared by the preview and the comparison view.
 
 At 100 % one image pixel is one screen pixel (HiDPI scaling taken into account), so footage

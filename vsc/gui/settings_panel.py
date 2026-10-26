@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Output settings of the selected clip, plus a live summary of what will happen.
 
 Every edit is written straight into the clip's OutputSettings; afterwards all widgets are
@@ -22,6 +29,11 @@ from .clips import (Clip, chroma_label, fmt_duration, fmt_rate, fmt_seconds, fmt
 
 CUSTOM = "custom"
 LOSSLESS, SMART, REENCODE = "lossless", "smart", "reencode"
+PANEL_MIN_WIDTH = 330   # the form needs ~300 px (see CLAUDE.md) + the vertical scrollbar
+SMART_DETAILS = ("Smart re-encode joins copied and re-encoded parts only at keyframes: in / out "
+                 "points snap to them,\nand sections marked “Re-encode” are widened to the "
+                 "nearest ones – the extra frames are re-encoded\nat the speed they have "
+                 "anyway.\n\n{apple}")
 SPEED_PRESETS = [Fraction(1, n) for n in (2, 4, 5, 8, 10, 16, 20, 32)]
 CHROMA_ORDER = {"411": 0, "420": 1, "422": 2, "444": 3}
 RIFE_8BIT = ("RIFE works on 8-bit RGB pictures: the extra precision of 10-bit / HDR footage "
@@ -206,7 +218,8 @@ class SettingsPanel(QGroupBox):
         self.apply_button.setToolTip("Copy these output settings to every clip in the list.")
         self.apply_button.clicked.connect(self.apply_to_all)
 
-        scroll = QScrollArea()
+        scroll = self._scroll = QScrollArea()
+        scroll.setMinimumWidth(PANEL_MIN_WIDTH)   # the splitter shrinks the preview instead
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
         scroll.setWidget(form_widget)
@@ -537,6 +550,8 @@ class SettingsPanel(QGroupBox):
                                       "sections have their own output frame rate.")
 
         self.summary.setText(self._summary(clip))
+        self.summary.setToolTip(SMART_DETAILS.format(apple=smart.APPLE_WARNING)
+                                if process == SMART else "")
 
     def _sync_quality(self, clip: Clip, codec, q) -> None:
         """Named levels with the codec's number in brackets; 'Custom…' shows the number box."""
@@ -628,8 +643,7 @@ class SettingsPanel(QGroupBox):
             return ["Analysing the keyframes of this clip …"]
         parts = job.smart_parts()
         encoded = [p for p in parts if p.kind == "encode"]
-        lines = [f"Codec: {job.codec.label} – always the source codec, so the parts can be "
-                 "joined."]
+        lines = [f"Codec: {job.codec.label} – the source codec, so the parts fit together."]
         if not encoded:
             lines.append("No section is marked “Re-encode” (Preview & trim tab) – the whole "
                          "clip is copied.")
@@ -638,11 +652,9 @@ class SettingsPanel(QGroupBox):
             n_enc = sum(p.frames for p in encoded)
             lines.append(f"{len(parts)} parts: {n_copy} frames copied, {n_enc} frames "
                          f"re-encoded in {len(encoded)} part(s).")
-        lines.append(f"Parts can only be joined at keyframes (here every "
-                     f"{_key_interval(job.frames)} frames): in / out points snap to them and "
-                     "re-encoded sections are widened to the nearest ones – the extra frames "
-                     "are re-encoded at the speed they have anyway.")
-        lines.append(f"<span style='color:#d35400'>⚠ {smart.APPLE_WARNING}</span>")
+        lines.append(f"Joins only at keyframes (every {_key_interval(job.frames)} frames).")
+        lines.append("<span style='color:#d35400'>⚠ Does not play on Apple devices "
+                     "(hover for details).</span>")
         lines.append(f"{job.source_frame_count} → {job.output_frame_count} frames, "
                      f"{fmt_duration(job.output_duration)}")
         ext = formats.CONTAINER_EXT[job.container]

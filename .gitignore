@@ -4,3 +4,7 @@ tests/media/
 .pytest_cache/
 __pycache__/
 *.pyc
+
+# the author's working artwork (not part of the repository)
+VideoSpeedControl.jpeg
+VideoSpeedControl.psd

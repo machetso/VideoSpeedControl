@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """PySide6 user interface."""
 from __future__ import annotations
 
@@ -6,9 +13,9 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
-    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
+    from . import help
     from .main_window import MainWindow
 
     argv = sys.argv if argv is None else argv
@@ -16,8 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("VideoSpeedControl")
     app.setOrganizationName("VideoSpeedControl")   # QSettings → ~/.config/VideoSpeedControl/
     app.setDesktopFileName("videospeedcontrol")   # Wayland: matches the launcher entry's icon
-    app.setWindowIcon(QIcon(str(Path(__file__).with_name("icon.svg"))))
+    app.setWindowIcon(help.app_icon())
     window = MainWindow()
+    splash = help.show_splash(app, window)
     window.add_files([Path(a) for a in argv[1:]])
     window.show()
+    if splash:
+        splash.raise_()
     return app.exec()

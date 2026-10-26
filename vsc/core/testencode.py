@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Test encode: N output frames from the playhead with the clip's exact settings.
 
 The measured speed and size give the time / size estimates for the whole clip and the batch.

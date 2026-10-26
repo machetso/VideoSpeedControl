@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Alex Vulcu
+#
+# Concept, architecture, direction, and curation by Alex Vulcu.
+# Implementation assisted by generative AI tools.
+#
+# Licensed under the MIT License.
+# See the LICENSE file in the repository root for details.
 """Catalogue of everything the user can choose: frame rates, resolutions, chroma,
 scalers, interpolation methods and codecs, each with UI texts."""
 from __future__ import annotations

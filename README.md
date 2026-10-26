@@ -1,8 +1,16 @@
 # VideoSpeedControl
 
-Turn high-frame-rate footage (e.g. GoPro 240 fps) into slow-motion video – losslessly by
-retiming when possible, otherwise by re-encoding with frame selection or interpolation.
-Windows and Linux. See [SCOPE.md](SCOPE.md).
+![VideoSpeedControl](vsc/gui/resources/icon_256.png)
+
+Turn high-frame-rate footage (e.g. GoPro 240 fps, phone slow motion) into slow-motion video –
+losslessly by retiming when possible, otherwise by re-encoding with frame selection or
+interpolation. Speed sections (slower and faster parts in one clip), smart re-encode (only
+the marked parts are re-encoded), batch export, a test encode with comparison and time
+estimates, AV2 (experimental). Windows and Linux.
+
+- **User guide:** [vsc/docs/manual.md](vsc/docs/manual.md) – also in the app (Help → User
+  guide, F1) and as [PDF](vsc/docs/VideoSpeedControl_Manual.pdf)
+- Feature set and milestones: [SCOPE.md](SCOPE.md)
 
 ## Setup
 
@@ -11,6 +19,14 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip
 .venv/bin/python tools/fetch_ffmpeg.py          # downloads the bundled FFmpeg
 .venv/bin/python tools/fetch_rife.py            # RIFE AI interpolation (Vulkan GPU, ~430 MB download)
+.venv/bin/python tools/fetch_avm.py             # optional: AV2 (builds AVM, needs cmake + nasm)
+```
+
+Artwork and documentation:
+
+```bash
+.venv/bin/python tools/make_icons.py            # icons + start screen from assets/*.webp
+.venv/bin/python tools/build_docs.py [--screenshots]   # PDF user guide (and new screenshots)
 ```
 
 ## GUI
@@ -31,7 +47,13 @@ python3 -m venv .venv
 .venv/bin/python -m vsc encoders
 ```
 
-## Licence note
+## License & Attribution
 
-The bundled FFmpeg build is GPL (contains x264 / x265). rife-ncnn-vulkan is MIT licensed. Fine for private use; distributing the
-app requires GPL compliance.
+- **Concept, Architecture & Design:** Alex Vulcu
+- **Implementation:** Developed and curated by Alex Vulcu with AI-assisted code generation.
+- **License:** Distributed under the [MIT License](LICENSE).
+
+The bundled tools keep their own licences – FFmpeg (GPL v3 build), Qt / PySide6 (LGPL v3),
+rife-ncnn-vulkan (MIT), AVM (BSD-3-Clause-Clear). See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), including what distributing a package with
+them requires.
