@@ -28,9 +28,15 @@ Read SCOPE.md for the agreed feature set and milestone status.
   `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
   MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
   Version in `vsc/__init__.py` (0.9.0).
-- Next: milestone 7 – packaging. Windows exe: the user asked, then paused before choosing the
-  build route (script on a Windows PC / Wine here / GitHub Actions) and whether AV2 is
-  included (needs an AVM build for Windows: Visual Studio or mingw-w64).
+- Milestone 7 – packaging (in progress, 2026-10-26). User decisions: GitHub Actions, private
+  repo, Inno Setup installer (per-user install, admin optional), build on tag `v*` + manual,
+  AV2 NOT on Windows yet (later: build AVM with MSVC in the workflow).
+  - `packaging/VideoSpeedControl.spec` (one-folder, data + vendor/<tool>/<platform>-x64 into
+    `_internal/`, AVM only if present), `packaging/launch.py` (entry; `VSC_SMOKE_TEST=<file>`
+    = headless self-check → report file, used by CI), `packaging/installer.iss`,
+    `.github/workflows/windows.yml` (tests on Windows are report-only for now).
+  - Linux bundle built + smoke-tested locally (563 MB incl. AVM). Linux packaging format
+    (AppImage / tar.gz) not decided yet.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
 ## Setup

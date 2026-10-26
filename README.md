@@ -47,6 +47,18 @@ Artwork and documentation:
 .venv/bin/python -m vsc encoders
 ```
 
+## Packaging
+
+```bash
+.venv/bin/pip install pyinstaller
+.venv/bin/python -m PyInstaller packaging/VideoSpeedControl.spec --noconfirm   # → dist/VideoSpeedControl/
+```
+
+The bundle contains FFmpeg, RIFE and (if built) AVM from `vendor/`. Windows installers are built
+by GitHub Actions (`.github/workflows/windows.yml`). Pushing a tag `vX.Y.Z` that matches
+`vsc/__init__.py` creates a release with `VideoSpeedControl-X.Y.Z-setup.exe`. A test build can
+be started by hand under Actions → "Windows build" → Run workflow.
+
 ## License & Attribution
 
 - **Concept, Architecture & Design:** Alex Vulcu

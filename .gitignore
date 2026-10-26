@@ -8,3 +8,7 @@ __pycache__/
 # the author's working artwork (not part of the repository)
 VideoSpeedControl.jpeg
 VideoSpeedControl.psd
+
+# PyInstaller / Inno Setup output
+build/
+dist/

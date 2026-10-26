@@ -1,0 +1,97 @@
+# Windows build: PyInstaller bundle + Inno Setup installer.
+# Runs on a version tag (v0.9.0 → GitHub Release with the setup.exe) or by hand
+# (Actions → "Windows build" → Run workflow → setup.exe under the run's Artifacts).
+name: Windows build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the release on a tag
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Python packages
+        run: python -m pip install -r requirements.txt "pyinstaller==6.22.3"
+
+      - name: Version
+        shell: bash
+        run: |
+          version=$(python -c "import vsc; print(vsc.__version__)")
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match vsc.__version__ $version"
+            exit 1
+          fi
+
+      # FFmpeg and RIFE are downloads (~430 MB for RIFE) – kept between runs
+      - name: Cache vendor tools
+        id: vendor
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/ffmpeg/windows-x64
+            vendor/rife/windows-x64
+          key: vendor-windows-${{ hashFiles('tools/fetch_ffmpeg.py', 'tools/fetch_rife.py') }}
+
+      - name: Fetch FFmpeg and RIFE
+        if: steps.vendor.outputs.cache-hit != 'true'
+        run: |
+          python tools/fetch_ffmpeg.py windows
+          python tools/fetch_rife.py windows
+
+      # Report only for now: the first Windows runs show what still needs porting.
+      # RIFE tests are skipped (no Vulkan GPU on the runner).
+      - name: Tests
+        continue-on-error: true
+        run: python -m pytest tests -q -rs
+
+      - name: PyInstaller bundle
+        run: python -m PyInstaller packaging/VideoSpeedControl.spec --noconfirm
+
+      - name: Smoke test (starts the bundled exe headless)
+        shell: pwsh
+        run: |
+          $report = "$env:RUNNER_TEMP\smoke.txt"
+          $env:VSC_SMOKE_TEST = $report
+          $p = Start-Process dist\VideoSpeedControl\VideoSpeedControl.exe -PassThru
+          $null = $p.Handle   # keeps the exit code readable after the process ends
+          if (-not $p.WaitForExit(120000)) {
+            Stop-Process $p -Force
+            throw "Smoke test hung – probably an error dialog of the bundle"
+          }
+          Get-Content $report
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed (exit code $($p.ExitCode))" }
+
+      - name: Inno Setup installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$env:VERSION" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoSpeedControl-${{ env.VERSION }}-windows
+          path: dist/VideoSpeedControl-${{ env.VERSION }}-setup.exe
+          retention-days: 30
+
+      - name: Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/VideoSpeedControl-${{ env.VERSION }}-setup.exe
+          generate_release_notes: true
