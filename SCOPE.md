@@ -68,7 +68,14 @@ Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
 ## Batch
 - "Add to batch" in Preview & trim: snapshot of the clip (mode, settings, trim, sections) into a
   batch list; the same clip can be added several times (e.g. lossless + smart). "Clear
-  sections" with undo.
+  sections"; undo / redo of every section edit (200 steps per clip).
+- Batch list entries exported successfully are marked done and skipped by later exports
+  (again after editing the entry or deleting its file).
+- Double-click a batch entry: loads it into the editor – "Another encoding" (new entry) or
+  "Edit this entry" (update it). Adding a clip that is already in the list asks first and
+  offers name additions (checkboxes codec / preset / quality / resolution, name preview).
+- Clip speed treatment files (.cst, JSON): sections + trim + output settings of one clip;
+  bound to the video by content fingerprint – loads only onto that video (any file name).
 - Individual settings per clip, "apply to all" button.
 - Output folder, file name pattern, overwrite policy, queue with per-clip and overall progress,
   cancel.

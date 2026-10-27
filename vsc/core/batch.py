@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import runner
+from . import formats, runner
 from .command import CommandError
 from .formats import COPY
 from .job import Job, output_path
@@ -46,6 +46,14 @@ POLICIES = (
 )
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+# Name additions for further encodings of the same clip ("Add to batch" asks for them)
+ADDITIONS = (
+    ("codec", "Codec"),
+    ("preset", "Preset"),
+    ("quality", "Quality"),
+    ("res", "Resolution"),
+)
 
 
 def _num(v: float) -> str:
@@ -90,6 +98,38 @@ def render_name(pattern: str, job: Job, index: int = 1) -> str:
     return name or job.info.path.stem
 
 
+def addition_parts(job: Job) -> dict[str, str | None]:
+    """Value of each name addition for `job`; None = the setting does not apply."""
+    codec = job.codec
+    parts: dict[str, str | None] = dict.fromkeys(k for k, _ in ADDITIONS)
+    if job.settings.smart:
+        parts["codec"] = f"smart-{job.settings.codec}"
+    elif codec is None:
+        parts["codec"] = "copy"
+    else:
+        parts["codec"] = codec.key
+        if codec.profiles:
+            parts["codec"] += f"-{job.settings.profile or codec.default_profile}"
+        if codec.presets:
+            parts["preset"] = job.settings.preset or codec.default_preset
+        if codec.quality:
+            q = job.settings.quality if job.settings.quality is not None else codec.quality.default
+            named = [name for name, _, v in formats.quality_levels(codec) if v == q]
+            parts["quality"] = (named[0].lower().replace(" ", "") if named
+                                else f"{codec.quality.label.lower()}{q}")
+    if codec is not None:
+        w, h = job.output_size()
+        parts["res"] = f"{w}x{h}"
+    return parts
+
+
+def addition(job: Job, keys) -> str:
+    """'_x265_slow_high_1920x1080' for the chosen keys (in the fixed order of ADDITIONS)."""
+    parts = addition_parts(job)
+    chosen = [parts[k] for k, _ in ADDITIONS if k in set(keys or ()) and parts[k]]
+    return _UNSAFE.sub("_", "".join(f"_{p}" for p in chosen))
+
+
 def _target(path: Path) -> Path:
     """What has to be free on disk: the file, or the folder of an image sequence."""
     return path.parent if "%" in path.name else path
@@ -101,6 +141,7 @@ class Item:
     output: Path | None               # None = skipped
     supported_pix_fmts: list[str] | None = None
     note: str = ""                    # why skipped / renamed / overwritten
+    done: bool = False                # exported by an earlier run: shown, not run again
 
     @property
     def target(self) -> Path | None:
@@ -108,9 +149,10 @@ class Item:
 
 
 def plan(jobs: list[tuple[Job, list[str] | None]], folder: Path | None, pattern: str,
-         policy: str) -> list[Item]:
+         policy: str, additions: list | None = None) -> list[Item]:
     """Output path for every job. `folder` None = next to each source file.
 
+    `additions`: per job the name addition keys (see ADDITIONS) appended to the pattern.
     Names are unique within the batch too, and a source file is never overwritten.
     """
     items: list[Item] = []
@@ -119,6 +161,8 @@ def plan(jobs: list[tuple[Job, list[str] | None]], folder: Path | None, pattern:
     for index, (job, pix_fmts) in enumerate(jobs, 1):
         out_dir = folder or job.info.path.parent
         name = render_name(pattern, job, index)
+        if additions and additions[index - 1]:
+            name += addition(job, additions[index - 1])
         path, note, n = output_path(job, out_dir, name), "", 1
         # Another output of this batch or a source file: always renamed, whatever the policy.
         while _target(path) in taken or _target(path) in sources:
@@ -175,7 +219,7 @@ class Batch:
 
     @property
     def total_frames(self) -> int:
-        return sum(it.job.output_frame_count for it in self.items if it.output)
+        return sum(it.job.output_frame_count for it in self.items if it.output and not it.done)
 
     def cancel(self) -> None:
         with self._lock:
@@ -194,6 +238,8 @@ class Batch:
                 on_done(r)
 
         for index, item in enumerate(self.items):
+            if item.done:
+                continue
             if item.output is None:
                 finish(ItemResult(index, "skipped", None, error=item.note))
                 continue

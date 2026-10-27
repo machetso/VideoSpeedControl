@@ -36,6 +36,9 @@ MODE_SHORT = {
 }
 
 
+HISTORY = 200        # undo steps kept per clip
+
+
 @dataclass
 class Clip:
     path: Path
@@ -62,6 +65,34 @@ class Clip:
     proxy_done: bool = False
     joins: list | None = None                         # smart re-encode: safe keyframes
     _smart_frames: FrameMap | None = None
+    # section edits: [(description, sections before the edit)], newest last
+    undo_steps: list = field(default_factory=list)
+    redo_steps: list = field(default_factory=list)
+
+    def edit_segments(self, segments: list, what: str) -> bool:
+        """Replace the speed sections; the old list can be brought back with undo()."""
+        if list(segments) == self.segments:
+            return False
+        self.undo_steps.append((what, list(self.segments)))
+        del self.undo_steps[:-HISTORY]
+        self.redo_steps.clear()
+        self.segments[:] = segments
+        return True
+
+    def undo(self) -> str | None:
+        """Step back one section edit; returns its description (None = nothing to undo)."""
+        return self._step(self.undo_steps, self.redo_steps)
+
+    def redo(self) -> str | None:
+        return self._step(self.redo_steps, self.undo_steps)
+
+    def _step(self, source: list, target: list) -> str | None:
+        if not source:
+            return None
+        what, segments = source.pop()
+        target.append((what, list(self.segments)))
+        self.segments[:] = segments
+        return what
 
     @property
     def job(self) -> Job | None:

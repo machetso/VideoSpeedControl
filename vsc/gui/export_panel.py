@@ -31,12 +31,14 @@ class ExportPanel(QWidget):
     options_changed = Signal()
     remove_entries = Signal(list)    # rows of the batch list to remove
     clear_entries = Signal()
+    open_entry = Signal(int)         # row of the batch list double-clicked
 
     def __init__(self, settings: QSettings | None = None, parent=None):
         super().__init__(parent)
         self.store = settings or QSettings()
         self.running = False
         self._outputs: list[Path | None] = []
+        self._done_rows: set[int] = set()
 
         self.next_to_source = QRadioButton("Next to each source file")
         self.to_folder = QRadioButton("Folder:")
@@ -102,6 +104,7 @@ class ExportPanel(QWidget):
         self.queue.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.queue.header().setSectionResizeMode(1, QHeaderView.Stretch)
         self.queue.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.queue.itemDoubleClicked.connect(self._double_clicked)
 
         self.start_button = QPushButton("Start export")
         self.start_button.setDefault(True)
@@ -165,6 +168,10 @@ class ExportPanel(QWidget):
         if rows:
             self.remove_entries.emit(rows)
 
+    def _double_clicked(self, item) -> None:
+        if self.batch_list() and not self.running:
+            self.open_entry.emit(self.queue.indexOfTopLevelItem(item))
+
     def _update_list_buttons(self) -> None:
         on = self.batch_list() and not self.running
         self.remove_button.setVisible(self.batch_list())
@@ -205,17 +212,28 @@ class ExportPanel(QWidget):
         self._outputs = []
         for name, item in zip(names, items):
             row = QTreeWidgetItem([name, self._out_text(item.output), item.note])
-            if item.output is None:
+            if item.done:
+                row.setText(2, "Done – exported earlier, not exported again")
+                row.setForeground(2, QColor(STATUS_COLOR["done"]))
+            elif item.output is None:
                 row.setForeground(2, QColor(STATUS_COLOR["skipped"]))
             elif item.note.startswith("overwrites"):
                 row.setForeground(2, QColor(STATUS_COLOR["cancelled"]))
             row.setToolTip(1, str(item.output or ""))
+            if self.batch_list():
+                row.setToolTip(0, "Double-click: open this entry in Preview & trim – edit it or "
+                                  "add another encoding of the clip")
             self.queue.addTopLevelItem(row)
             self._outputs.append(item.output)
-        runnable = sum(it.output is not None for it in items)
+        runnable = sum(it.output is not None and not it.done for it in items)
+        done = sum(it.done for it in items)
+        self._done_rows = {i for i, it in enumerate(items) if it.done}
         self.start_button.setEnabled(runnable > 0)
         self._update_list_buttons()
         text = f"{runnable} clip(s) will be exported." if items else "No clips to export."
+        if done:
+            text += (f"  {done} already exported (kept in the list, not exported again – "
+                     "edit an entry or delete its file to export it again).")
         if problems:
             text += "  Not included: " + "; ".join(problems)
         self.message.setText(text)
@@ -238,7 +256,7 @@ class ExportPanel(QWidget):
             self.folder.setEnabled(self.to_folder.isChecked())
         else:
             for i in range(self.queue.topLevelItemCount()):
-                if self._outputs[i] is not None:
+                if self._outputs[i] is not None and i not in self._done_rows:
                     self.set_status(i, "queued")
             self._reset_progress()
 

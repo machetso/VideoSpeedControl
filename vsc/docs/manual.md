@@ -154,7 +154,14 @@ Speed sections give parts of a clip their own frame rate – for example the jum
 Sections appear as blue bands in the timeline and in the table below it, where you can change their frame rate, jump to them (click) or remove them (✕). Everything outside sections plays in **real time**. A new section that overlaps an existing one wins.
 
 - **Magnetic cursor 🧲:** when you drag near a section, the cursor snaps to the frame right after it (to continue seamlessly) or – while you mark an end – to the frame right before the next section. Click 🧲 to switch it off.
-- **Clear sections** (right) removes all sections after asking; **↶ Undo** (**Ctrl+Z**) brings them back.
+- **Clear sections** (right) removes all sections after asking.
+- **↶ Undo** (**Ctrl+Z**) and **↷ Redo** (**Ctrl+Shift+Z** or **Ctrl+Y**) step back and forward through every change to the sections – adding, changing, removing, clearing, loading – up to 200 steps, separately for each clip. Hover over the button to see which change it undoes.
+
+### Saving and loading a treatment (.cst)
+
+**Save treatment…** in the toolbar (**Ctrl+S**) saves the current clip's sections, trim and output settings as a *clip speed treatment* file (`.cst`, next to the clip by default). **Load treatment…** (**Ctrl+L**) – or dropping a `.cst` onto the window – loads it again.
+
+A treatment belongs to exactly one video: it stores a fingerprint of the file's content and only loads onto that video. The file name does not matter – a renamed or moved copy still matches. If the video is not in the list yet but is still where it was when you saved, it is added automatically. A treatment never loads onto a different video, because its frame numbers would not fit.
 
 How sections are exported depends on the processing mode:
 
@@ -195,7 +202,14 @@ Estimates also appear in the clip list. Clips with the same settings share a tes
 
 ### Batch list
 
-**➕ Add to batch** (Preview & trim tab) saves the clip exactly as it is at that moment – processing mode, settings, trim and all sections – as an entry in the batch list. The sections stay in place, so you can add the same clip several times, e.g. once *Lossless* and once *Smart re-encode*. Later changes to the clip do not change entries already in the list. The list stays after the export; **Remove from list** and **Clear list** manage it. Use `{mode}` in the file name to tell the versions apart.
+**➕ Add to batch** (Preview & trim tab) saves the clip exactly as it is at that moment – processing mode, settings, trim and all sections – as an entry in the batch list. The sections stay in place, so you can add the same clip several times, e.g. once *Lossless* and once *Smart re-encode*. Later changes to the clip do not change entries already in the list. The list stays after the export; **Remove from list** and **Clear list** manage it. Entries that were exported successfully are marked **Done** and are not exported again when you click **Start export** later – only entries added (or failed / cancelled) since then run. To export a done entry again, change it with *Edit this entry*, or delete its output file. Use `{mode}` in the file name to tell the versions apart.
+
+**Double-click an entry** in the batch list to open it again: its sections, trim and settings are loaded into Preview & trim (the clip's previous sections can be brought back with ↶ Undo). You are asked what you want to do:
+
+- **Another encoding** – change codec, preset, quality or size and click **➕ Add to batch**: a new entry is added, the old one stays.
+- **Edit this entry** – change it and click **✔ Update batch entry**: the entry is replaced.
+
+Whenever you add a clip that is already in the batch list, VideoSpeedControl asks whether you want another encoding and offers **name additions** with checkboxes – codec, preset, quality and resolution, e.g. `jump_x265_slow_high_1920x1080.mp4`. A preview shows the resulting file name; your choice of boxes is remembered.
 
 ## 10. AV2 (experimental)
 
@@ -214,7 +228,10 @@ AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30
 | Home / End | First / last frame |
 | I / O | Set in / out point |
 | [ / ] | Section start / end |
-| Ctrl+Z | Undo "Clear sections" |
+| Ctrl+Z | Undo the last change to the sections |
+| Ctrl+Shift+Z / Ctrl+Y | Redo |
+| Ctrl+S | Save treatment (.cst) |
+| Ctrl+L | Load treatment (.cst) |
 
 ## 12. Tips and troubleshooting
 

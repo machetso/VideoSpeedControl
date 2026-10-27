@@ -308,6 +308,7 @@ class FrameView(QWidget):
 class PreviewPanel(QWidget):
     trim_changed = Signal()
     add_to_batch = Signal(object)    # clip – export it later as it is now
+    update_entry = Signal(object)    # clip – replace the batch entry being edited
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -415,7 +416,8 @@ class PreviewPanel(QWidget):
                 (Qt.Key_Home, lambda: self.seek(0)), (Qt.Key_End, lambda: self.seek(10**9)),
                 (Qt.Key_Space, self.toggle_play),
                 (Qt.Key_BracketLeft, self.section_start), (Qt.Key_BracketRight, self.section_end),
-                (QKeySequence.Undo, self.undo_clear),
+                (QKeySequence.Undo, self.undo), (QKeySequence.Redo, self.redo),
+                (Qt.CTRL | Qt.Key_Y, self.redo),
                 (Qt.Key_I, lambda: self.set_in(self.clip.playhead)),
                 (Qt.Key_O, lambda: self.set_out(self.clip.playhead)))
         for key, slot in keys:
@@ -649,21 +651,35 @@ class PreviewPanel(QWidget):
             "sections – to the batch list (Export tab). The sections stay here, so you can add\n"
             "the same clip again, e.g. once lossless and once with smart re-encode.")
         self.batch_button.clicked.connect(lambda: self.clip and self.add_to_batch.emit(self.clip))
+        self.update_button = QPushButton("✔ Update batch entry")
+        self.update_button.setToolTip("Replace the batch entry you opened with this clip as it "
+                                      "is now")
+        self.update_button.clicked.connect(
+            lambda: self.clip and self.update_entry.emit(self.clip))
+        self.update_button.hide()
         self.clear_sections_button = QPushButton("Clear sections")
         self.clear_sections_button.setToolTip("Remove all speed sections of this clip "
                                               "(can be undone)")
         self.clear_sections_button.clicked.connect(self._confirm_clear)
         self.undo_button = QPushButton("↶ Undo")
-        self.undo_button.setToolTip("Bring back the sections that were just cleared (Ctrl+Z)")
-        self.undo_button.clicked.connect(self.undo_clear)
-        self.undo_button.hide()
-        self._cleared: tuple[Clip, list] | None = None
+        self.undo_button.clicked.connect(self.undo)
+        self.redo_button = QPushButton("↷ Redo")
+        self.redo_button.clicked.connect(self.redo)
         row = QHBoxLayout()
         row.addWidget(self.batch_button)
+        row.addWidget(self.update_button)
         row.addStretch(1)                # far from "Add to batch" – no accidental clicks
         row.addWidget(self.undo_button)
+        row.addWidget(self.redo_button)
         row.addWidget(self.clear_sections_button)
         return row
+
+    def set_editing(self, label: str | None) -> None:
+        """Show "Update batch entry" while a batch entry is open for editing (None = not)."""
+        self.update_button.setVisible(label is not None)
+        if label is not None:
+            self.update_button.setToolTip(f"Replace the batch entry “{label}” with this clip "
+                                          "as it is now")
 
     def _confirm_clear(self) -> None:
         if not self._ready() or not self.clip.segments:
@@ -672,7 +688,7 @@ class PreviewPanel(QWidget):
         answer = QMessageBox.question(
             self, "Clear sections",
             f"Remove all {n} speed section{'s' * (n != 1)} of {self.clip.path.name}?\n\n"
-            "You can bring them back with “Undo” (Ctrl+Z).",
+            "You can bring them back with “↶ Undo” (Ctrl+Z).",
             QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
         if answer == QMessageBox.Yes:
             self.clear_sections()
@@ -680,19 +696,23 @@ class PreviewPanel(QWidget):
     def clear_sections(self) -> None:
         if not self._ready() or not self.clip.segments:
             return
-        self._cleared = (self.clip, list(self.clip.segments))
-        self.clip.segments.clear()
+        n = len(self.clip.segments)
+        self.clip.edit_segments([], f"clear {n} section{'s' * (n != 1)}")
         self.timeline.pending = (None, None)
         self._sections_changed()
-        self.undo_button.show()          # after _sections_changed, which hides it
 
-    def undo_clear(self) -> None:
-        if not self._cleared or self._cleared[0] is not self.clip:
-            return
-        clip, segments = self._cleared
-        clip.segments[:] = segments
-        self._cleared = None
-        self._sections_changed()
+    def undo(self) -> None:
+        if self.clip and (what := self.clip.undo()):
+            self._sections_changed()
+            self._note(f"Undone: {what}")
+
+    def redo(self) -> None:
+        if self.clip and (what := self.clip.redo()):
+            self._sections_changed()
+            self._note(f"Redone: {what}")
+
+    def _note(self, text: str) -> None:
+        self.sec_label.setText(text)
 
     def _set_magnetic(self, on: bool) -> None:
         self.timeline.magnetic = on
@@ -725,7 +745,8 @@ class PreviewPanel(QWidget):
             return
         new = seg.Segment(min(a, b), max(a, b) + 1, Fraction(self.sec_fps.currentData()),
                           out_fps=self._default_out_fps())
-        self.clip.segments[:] = seg.add(self.clip.segments, new)
+        self.clip.edit_segments(seg.add(self.clip.segments, new),
+                                f"add section {new.start}–{new.end - 1}")
         self.timeline.pending = (None, None)
         self._show_row = self.clip.segments.index(new)    # scroll the table to the new row
         self._sections_changed()
@@ -739,7 +760,9 @@ class PreviewPanel(QWidget):
             return smart.DEFAULT_OUT_FPS
 
     def remove_section(self, index: int) -> None:
-        del self.clip.segments[index]
+        s = self.clip.segments[index]
+        self.clip.edit_segments(self.clip.segments[:index] + self.clip.segments[index + 1:],
+                                f"remove section {s.start}–{s.end - 1}")
         self._sections_changed()
 
     def _set_section_fps(self, index: int, value: str) -> None:
@@ -751,7 +774,10 @@ class PreviewPanel(QWidget):
                 QSettings().setValue("sections/out_fps", str(changes["out_fps"]))
             elif changes.get("reencode") and self.clip.segments[index].out_fps is None:
                 changes["out_fps"] = self._default_out_fps()
-            self.clip.segments[index] = replace(self.clip.segments[index], **changes)
+            s = self.clip.segments[index]
+            new = list(self.clip.segments)
+            new[index] = replace(s, **changes)
+            self.clip.edit_segments(new, f"change section {s.start}–{s.end - 1}")
             self._show_row = index            # keep the edited row in view
             self._sections_changed()
 
@@ -759,9 +785,12 @@ class PreviewPanel(QWidget):
         if self.clip and row < len(self.clip.segments):
             self.seek(self.clip.segments[row].start)
 
+    def sections_replaced(self) -> None:
+        """The clip's sections (or trim) were replaced from outside, e.g. by loading a file."""
+        self.timeline.pending = (None, None)
+        self._sections_changed(emit=False)
+
     def _sections_changed(self, emit: bool = True) -> None:
-        if emit and self._cleared and (self._cleared[0] is not self.clip or self.clip.segments):
-            self._cleared = None          # sections edited since: nothing to undo any more
         self._stop_playback()
         self._update_sections()
         self._update_labels()
@@ -775,7 +804,13 @@ class PreviewPanel(QWidget):
         for w in (self.sec_start_button, self.sec_end_button, self.sec_fps, self.batch_button):
             w.setEnabled(ready)
         self.clear_sections_button.setEnabled(ready and bool(clip and clip.segments))
-        self.undo_button.setVisible(bool(self._cleared) and self._cleared[0] is clip)
+        for button, steps, verb in ((self.undo_button, clip.undo_steps if clip else [], "Undo"),
+                                    (self.redo_button, clip.redo_steps if clip else [], "Redo")):
+            button.setEnabled(bool(steps))
+            key = "Ctrl+Z" if verb == "Undo" else "Ctrl+Shift+Z / Ctrl+Y"
+            button.setToolTip(f"{verb}: {steps[-1][0]} ({key}, {len(steps)} step"
+                              f"{'s' * (len(steps) != 1)})" if steps
+                              else f"Nothing to {verb.lower()} ({key})")
         if not ready:
             self.sec_add.setEnabled(False)
             self.sec_label.clear()

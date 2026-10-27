@@ -37,6 +37,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
     `.github/workflows/windows.yml` (tests on Windows are report-only for now).
   - Linux bundle built + smoke-tested locally (563 MB incl. AVM). Linux packaging format
     (AppImage / tar.gz) not decided yet.
+- 2026-10-27: Windows build confirmed working by the user. New (user request, NOT committed
+  yet, awaiting their test): .cst treatments, multi-step undo / redo of sections, batch entry
+  double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
 ## Setup
@@ -127,8 +130,23 @@ Read SCOPE.md for the agreed feature set and milestone status.
     Section table: rebuilt on change, keeps its scroll position; new / edited row is scrolled
     into view (`_show_row`). Last chosen output fps = default for new sections
     (QSettings "sections/out_fps", else 30).
-    "Clear sections" (right edge, asks first) keeps the old list for "↶ Undo" / Ctrl+Z until
-    sections are edited.
+    "Clear sections" (right edge, asks first). Every section edit goes through
+    `Clip.edit_segments(new, what)` → per-clip `undo_steps` / `redo_steps` (200), buttons
+    "↶ Undo" / "↷ Redo" (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y) with the step in the tooltip.
+    Double-click in the batch list (`ExportPanel.open_entry`) → `MainWindow._open_entry`:
+    `batch_dialogs.ask_entry_action` NEW / EDIT, loads settings + `BatchEntry.ui` + trim +
+    sections; EDIT shows "✔ Update batch entry" (`_editing`, ends on clip switch / removal).
+    "Add to batch" for a clip already in the list → `AdditionDialog` (checkboxes from
+    `batch.ADDITIONS`, stored in QSettings "batch/additions") → `BatchEntry.additions`,
+    appended to the pattern name by `batch.plan(..., additions)`.
+    Successful batch-list exports set `BatchEntry.exported`; `done` = that file still exists.
+    `_plan` plans only not-done entries; done ones become `Item(done=True)` (shown green,
+    skipped by `Batch.run` without a result); "Update batch entry" clears `exported`.
+  - Treatments (.cst): `core/treatment.py` (JSON; fingerprint = size + SHA-256 of first /
+    middle / last MiB; `check()` also compares the frame count). Toolbar "Load / Save
+    treatment…" (Ctrl+L / Ctrl+S), .cst via drop / Add files → `MainWindow.open_treatment`:
+    current clip, any clip in the list, else the saved path / same name next to the .cst
+    (added, applied in `_scanned` via `_pending`). Mismatch → refused.
   - Export: jobs are snapshots taken at start (settings / trim edits don't affect a running
     batch); Remove / Clear are disabled while it runs; Clip.export is shown in the Status
     column; the plan is refreshed on any change and when a tab is switched.

@@ -443,7 +443,10 @@ def test_quick_preview_picture(qapp, window):
     assert (panel.view.image.width(), panel.view.image.height()) == panel._exact_size
 
 
-def test_batch_list_and_clear_sections(qapp, window, tmp_path):
+def test_batch_list_and_clear_sections(qapp, window, tmp_path, monkeypatch):
+    from vsc.gui.batch_dialogs import AdditionDialog
+    monkeypatch.setattr(AdditionDialog, "exec", lambda d: True)     # "another encoding": yes
+    monkeypatch.setattr(AdditionDialog, "keys", lambda d: ())       # no name additions
     preview, settings, export = window.preview, window.settings, window.export_panel
     clip = window.current_clip()
     _wait(qapp, lambda: clip.joins is not None)
@@ -464,13 +467,14 @@ def test_batch_list_and_clear_sections(qapp, window, tmp_path):
     assert window.batch_entries[0].job.settings.codec == "copy"   # snapshot, not live
 
     preview.clear_sections()
-    assert not clip.segments and preview.undo_button.isVisibleTo(preview)
-    preview.undo_clear()
-    assert len(clip.segments) == 2 and not preview.undo_button.isVisibleTo(preview)
+    assert not clip.segments and preview.undo_button.isEnabled()
+    preview.undo()
+    assert len(clip.segments) == 2 and preview.redo_button.isEnabled()
 
     export.to_folder.setChecked(True)
     export.folder.setText(str(tmp_path))
     export.pattern.setText("{name}_{mode}")
+    _pick(export.policy, "rename")
     names = [export.queue.topLevelItem(i).text(1) for i in range(2)]
     assert names == ["h264_240_lossless.mp4", "h264_240_smart.mp4"]
     export.start_button.click()
@@ -478,6 +482,26 @@ def test_batch_list_and_clear_sections(qapp, window, tmp_path):
     assert (tmp_path / "h264_240_lossless.mp4").stat().st_size > 1000
     assert (tmp_path / "h264_240_smart.mp4").stat().st_size > 1000
     assert len(window.batch_entries) == 2                         # list kept after export
+    assert all(e.done for e in window.batch_entries)
+
+    # entries added later: only they run, the exported ones are kept but not run again
+    settings.set_process("lossless")
+    preview.batch_button.click()
+    window._plan_export()
+    status = [export.queue.topLevelItem(i).text(2) for i in range(3)]
+    assert status[0].startswith("Done") and status[1].startswith("Done") and status[2] == "renamed (_2)"
+    assert "1 clip(s) will be exported" in export.message.text()
+    before = {f: f.stat().st_mtime_ns for f in tmp_path.iterdir()}
+    export.start_button.click()
+    _wait(qapp, lambda: window._batch is None, timeout=120)
+    after = {f: f.stat().st_mtime_ns for f in tmp_path.iterdir()}
+    assert all(after[f] == t for f, t in before.items())          # earlier files untouched
+    assert len(after) == 3 and window.batch_entries[2].done
+    assert "1 done" in export.message.text()
+    window.batch_entries[1].exported.unlink()                     # file gone → export again
+    window._plan_export()
+    assert "1 clip(s) will be exported" in export.message.text()
+    window._remove_entries([2])
 
     export.queue.topLevelItem(0).setSelected(True)
     export.remove_button.click()
@@ -496,7 +520,7 @@ def test_clear_sections_asks_first(window, monkeypatch):
     preview.clear_sections_button.click()
     assert len(clip.segments) == 1                       # cancelled
     preview.clear_sections_button.click()
-    assert not clip.segments and preview.undo_button.isVisibleTo(preview)
+    assert not clip.segments and preview.undo_button.isEnabled()
 
 
 def test_section_table_keeps_position_and_out_fps(qapp, window):
@@ -576,3 +600,128 @@ def test_sound_button(window):
     assert first.settings.audio is True and "pitch preserved" in panel.summary.text()
     window._select(second)
     assert not b.isEnabled() and "no sound" in b.toolTip()
+
+
+def _add_sections(preview, ranges):
+    for a, b, fps in ranges:
+        preview.seek(a); preview.section_start()
+        preview.seek(b); preview.section_end()
+        _pick(preview.sec_fps, fps); preview.add_section()
+
+
+def test_section_undo_redo_many_steps(window):
+    preview, clip = window.preview, window.current_clip()
+    assert not preview.undo_button.isEnabled() and not preview.redo_button.isEnabled()
+    _add_sections(preview, ((10, 20, "25"), (30, 40, "25"), (50, 60, "60")))
+    preview._set_section(0, fps=Fraction(60))
+    preview.remove_section(1)
+    preview.clear_sections()
+    assert not clip.segments and len(clip.undo_steps) == 6
+    assert "clear 2 sections" in preview.undo_button.toolTip()
+    states = []
+    while clip.undo_steps:
+        preview.undo()
+        states.append([(s.start, s.fps) for s in clip.segments])
+    assert states == [[(10, 60), (50, 60)],
+                      [(10, 60), (30, 25), (50, 60)],
+                      [(10, 25), (30, 25), (50, 60)],
+                      [(10, 25), (30, 25)], [(10, 25)], []]
+    assert not preview.undo_button.isEnabled()
+    for _ in range(3):
+        preview.redo()
+    assert [s.start for s in clip.segments] == [10, 30, 50]
+    _add_sections(preview, ((70, 80, "25"),))               # a new edit drops the redo steps
+    assert not clip.redo_steps and not preview.redo_button.isEnabled()
+    other = window.model.clips[1]                           # history is per clip
+    window._select(other)
+    assert not preview.undo_button.isEnabled()
+    window._select(clip)
+    assert preview.undo_button.isEnabled()
+
+
+def test_treatment_save_and_load(qapp, window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+    preview, settings = window.preview, window.settings
+    clip = window.current_clip()
+    _add_sections(preview, ((24, 71, "25"), (72, 119, "60")))
+    settings.set_process("reencode")
+    clip.settings.preset = "slow"
+    clip.trim = type(clip.trim)(0, 192)
+    cst = tmp_path / "h264.cst"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(cst), ""))
+    window.save_treatment()
+    assert cst.is_file()
+
+    saved = [(s.start, s.end, s.fps) for s in clip.segments]
+    preview.clear_sections()
+    settings.set_process("lossless")
+    clip.trim = type(clip.trim)()
+    window.add_files([cst])                         # dropping / opening a .cst loads it
+    assert [(s.start, s.end, s.fps) for s in clip.segments] == saved
+    assert clip.settings.codec == "x264" and clip.settings.preset == "slow"
+    assert clip.trim.end == 192 and window.current_clip() is clip
+
+    other = window.model.clips[1]                   # wrong clip selected: still finds its clip
+    window._select(other)
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: asked.append(1) or QMessageBox.Yes)
+    window.open_treatment(cst)                      # clip has sections → asks before replacing
+    assert asked and window.current_clip() is clip and not other.segments
+    assert "load h264.cst" in clip.undo_steps[-1][0]
+
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warnings.append(a[2]))
+    window._apply_treatment(other, cst, __import__("vsc.core.treatment").core.treatment.load(cst))
+    assert warnings and "another video" in warnings[0] and not other.segments
+
+
+def test_batch_entry_edit_and_another_encoding(qapp, window, tmp_path, monkeypatch):
+    from vsc.gui import batch_dialogs
+    from vsc.gui.batch_dialogs import AdditionDialog
+    preview, settings, export = window.preview, window.settings, window.export_panel
+    clip = window.current_clip()
+    export.to_folder.setChecked(True)
+    export.folder.setText(str(tmp_path))
+    export.pattern.setText("{name}")
+    _add_sections(preview, ((24, 71, "25"),))
+    settings.set_process("reencode")
+    preview.batch_button.click()
+    assert len(window.batch_entries) == 1           # first one: no question
+
+    preview.clear_sections()
+    settings.set_process("lossless")
+    monkeypatch.setattr(batch_dialogs, "ask_entry_action", lambda *a: batch_dialogs.EDIT)
+    monkeypatch.setattr("vsc.gui.main_window.ask_entry_action", lambda *a: batch_dialogs.EDIT)
+    window._open_entry(0)                           # the entry comes back into the editor
+    assert [s.start for s in clip.segments] == [24] and clip.settings.codec == "x264"
+    assert preview.update_button.isVisibleTo(preview)
+    clip.settings.preset = "veryslow"
+    preview.update_button.click()
+    assert window.batch_entries[0].job.settings.preset == "veryslow"
+    assert len(window.batch_entries) == 1 and not preview.update_button.isVisibleTo(preview)
+
+    monkeypatch.setattr("vsc.gui.main_window.ask_entry_action", lambda *a: batch_dialogs.NEW)
+    window._open_entry(0)
+    assert not preview.update_button.isVisibleTo(preview)
+    clip.settings.codec = "x265"
+    seen = {}
+
+    def fake_exec(dialog):
+        seen["boxes"] = {k: b.text() for k, b in dialog.boxes.items()}
+        for key, box in dialog.boxes.items():
+            box.setChecked(key in ("codec", "res"))
+        seen["preview"] = dialog.preview.text()
+        dialog.accept()
+        return True
+    monkeypatch.setattr(AdditionDialog, "exec", fake_exec)
+    preview.batch_button.click()
+    assert len(window.batch_entries) == 2
+    assert seen["boxes"]["codec"] == "Codec: x265" and seen["boxes"]["preset"] == "Preset: veryslow"
+    assert "h264_240_x265_1280x720.mp4" in seen["preview"]
+    names = [export.queue.topLevelItem(i).text(1) for i in range(2)]
+    assert names == ["h264_240.mp4", "h264_240_x265_1280x720.mp4"]
+
+    monkeypatch.setattr(AdditionDialog, "exec", lambda dialog: False)   # cancelled
+    preview.batch_button.click()
+    assert len(window.batch_entries) == 2
