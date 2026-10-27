@@ -41,6 +41,72 @@ Read SCOPE.md for the agreed feature set and milestone status.
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
+- ANDROID – RESUME HERE (paused 2026-10-27 by the user): milestone 5 (re-encode) in progress.
+  Next steps: (1) try the new Export card (Lossless / Re-encode switch, fps / speed / codec /
+  quality / resolution) on the phone – install with `./gradlew installDebug`, open a synthetic
+  clip via the VIEW intent (see below), take screenshots with `adb exec-out screencap -p`;
+  (2) let the user re-test the real-time stutter with a Re-encode export; (3) milestone 6
+  smart export. Speed status: re-encode of the 30 s Pixel clip ≈ 20 s (sound ≈ 5 s in an
+  optimised build, 10 s in debug); `./gradlew installRelease` = optimised build signed with the
+  debug key (debug builds are much slower at sound / pixel loops). Status table: android/PLAN.md.
+- 2026-10-27: Android version started in `android/` – fully native (Kotlin + Compose, Media3 /
+  MediaCodec / MediaMuxer), no FFmpeg / Python on the phone; `vsc/core` is the reference whose
+  rules are ported. Plan, decisions and milestones: `android/PLAN.md`. Milestone 1 (skeleton,
+  clip info, `Segments` port + unit tests) done and checked on the user's Pixel 10 Pro
+  (Android 17 / API 37) against desktop ffprobe values.
+  Build: `cd android && JAVA_HOME=~/Android/jdk ./gradlew testDebugUnitTest assembleDebug`.
+  On-device tests: `android/tools/device_test.sh [CLIP…]` (pushes clips to /data/local/tmp/vsc,
+  `TestClips` copies them into the app cache; missing clips are skipped). The user's clips are
+  private: copy to the laptop only with permission, delete afterwards. A copy of
+  PXL_20261025_152730266.mp4 (120 fps slow-mo) stays in /data/local/tmp/vsc on the phone.
+  Synthetic clips: `android/tools/make_test_clips.sh` (desktop FFmpeg → /tmp/opencode/vsc-test);
+  exports of them land in the app cache `cache/out/` → pull with
+  `adb exec-out run-as com.alexvulcu.videospeedcontrol cat cache/out/X.mp4 > X.mp4`.
+- Android milestone 2 (lossless retime + sections, video only) done 2026-10-27: verified with
+  desktop ffprobe – packets bit-identical, borders exact, no jitter. Details:
+  MediaExtractor → MediaMuxer (90 kHz MP4 time scale, ≤ 1 tick rounding); MediaExtractor
+  gives µs → `FrameMap.exactTimes` uses the exact fps grid when every frame is on it (else
+  1–11 µs jitter after scaling), phone clips with real jitter keep their own times.
+  Output via MediaStore (pending until done) in Movies/VideoSpeedControl/. No foreground
+  service yet (export dies if the app is killed) – milestone 7.
+- Android milestone 3 (sound) done 2026-10-27, `core/Audio.kt`: decode → per span cut →
+  Media3 `SonicAudioProcessor` (input rate × slow-mo factor = asetrate, tempo, → 48 kHz) →
+  each span cut / padded to its exact length → AAC 192k in memory → interleaved in the same
+  MediaMuxer pass. Pitfalls: Media3 1.11 needs `flush(StreamMetadata.DEFAULT)` (plain
+  `flush()` throws); the AAC encoder's 2048-sample priming is dropped (else sound 43 ms late);
+  MediaMetadataRetriever misses text capture-fps tags (FFmpeg / desktop exports) →
+  `core/Mp4Meta.kt` reads mdta keys/ilst itself (moov/meta and moov/udta/meta, text or float).
+  Verified with tone clips (zero crossings): pitch kept at 9.6× slower, slow-mo restored.
+- Android milestone 4 (editor) done 2026-10-27. `core/ClipEdit.kt` (trim snapping, sections,
+  undo / redo 200, unit-tested), `core/FrameSource.kt` (MediaMetadataRetriever: keyframe
+  thumbnails + exact frame after 120 ms rest), `ui/` = EditorViewModel, Timeline (Canvas:
+  strip, sections, trim, keyframe ticks, pending start, playhead; tap / drag), Panels,
+  PreviewPlayer (ExoPlayer, speed = piece rate ÷ file fps, pitch = slow-mo factor, polled every
+  16 ms; SILENT with sections – audio-clock buffering delays speed changes ~1 s). App accepts
+  "Open with" / "Share" (VIEW / SEND video/*), which also lets tests open a clip via
+  `adb shell am start -a android.intent.action.VIEW -d content://media/external/video/media/ID
+  --grant-read-uri-permission -n com.alexvulcu.videospeedcontrol/.MainActivity` (synthetic
+  clips pushed to /sdcard/Download/vsc-test + media scan; delete them afterwards).
+  Measure playback with logcat timestamps, not uiautomator dumps (too slow / irregular).
+- 2026-10-27 after user test (scrubbing / real-time preview stuttered): `core/Proxy.kt` = 480 px
+  JPEG of every frame (≤ 12000, else every n-th), built after opening: MediaCodec → Surface →
+  `core/GlFrameGrabber.kt` (SurfaceTexture, GPU scale + YUV→RGB, glReadPixels) → JPEG on
+  3 threads; ~90 fps on the Pixel (getFramesAtIndex ~35, YUV→RGB in Kotlin ~45 – debug builds
+  are slow at per-pixel loops). MediaCodec already applies the track rotation to its output
+  surface – don't rotate again. Scrubbing shows the proxy frame at once, sharp frame after
+  120 ms; thin progress bar in the timeline. Play preview: sections or > 2× file rate → proxy
+  frames on an exact clock (silent); otherwise ExoPlayer with sound. Magnetic cursor
+  (`ClipEdit.snap`, 12 dp, 🧲 chip, stored), jog = drag on the picture (1 frame / 8 dp).
+- Android milestone 5 core (2026-10-27): `core/Reencode.kt` – codecs in ASYNC callback mode
+  (sync polling costs a media-server round trip of 1–4 ms per call → 2–4× slower; `Audio.kt`
+  decoder / AAC encoder are async too), decoder → `GlFrameGrabber(w, h, encoderSurface)` →
+  `present(ptsNs)`; source frame f is drawn for every output tick in [ceil(t(f)·fps),
+  ceil(t(f+1)·fps)). `Job.kt`: `Timing` interface (LosslessJob, ReencodeJob), `VideoCodec`,
+  `Quality` (bits per pixel), sizes rounded to the nearest even number. Output tagged BT.709.
+  Synthetic test clips are BT.709-tagged: untagged HD is BT.601 for FFmpeg but BT.709 for
+  Android (looked like wrong colours). Frame check: `android/tools/verify/check_frames.py` (run in /tmp/opencode/vsc-test)
+  (output frame k vs expected source frame, MSE of neighbours) – all 810 frames exact, MSE ≈ 1.
+  `TestClips` re-copies a clip when its size on the phone changed.
 
 ## Setup
 - Git: local repo, branch main. `.venv/`, `vendor/`, `tests/media/` are not committed –

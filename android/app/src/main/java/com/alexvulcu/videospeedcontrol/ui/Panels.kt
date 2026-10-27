@@ -1,0 +1,421 @@
+package com.alexvulcu.videospeedcontrol.ui
+
+import android.content.Intent
+import android.text.format.Formatter
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.media3.ui.compose.PlayerSurface
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import com.alexvulcu.videospeedcontrol.core.ClipEdit
+import com.alexvulcu.videospeedcontrol.core.ClipInfo
+import com.alexvulcu.videospeedcontrol.core.Rational
+import com.alexvulcu.videospeedcontrol.core.Segments
+import com.alexvulcu.videospeedcontrol.core.LosslessJob
+import com.alexvulcu.videospeedcontrol.core.Quality
+import com.alexvulcu.videospeedcontrol.core.ReencodeJob
+import com.alexvulcu.videospeedcontrol.core.VideoCodec
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+
+@Composable
+fun PreviewPane(vm: EditorViewModel, info: ClipInfo) {
+    val aspect = info.displayWidth.toFloat() / maxOf(1, info.displayHeight)
+    val stepPx = with(LocalDensity.current) { 8.dp.toPx() }
+    var jog by remember { mutableStateOf(0f) }
+    Box(
+        Modifier.fillMaxWidth().heightIn(max = 420.dp).aspectRatio(aspect.coerceAtLeast(0.5f))
+            .background(Color.Black)
+            // jog: drag sideways on the picture = one frame per 8 dp (finer than the timeline)
+            .pointerInput(info.uri) {
+                detectHorizontalDragGestures(onDragStart = { jog = 0f }) { change, dx ->
+                    change.consume()
+                    jog += dx
+                    val steps = (jog / stepPx).toInt()
+                    if (steps != 0) {
+                        jog -= steps * stepPx
+                        vm.step(steps)
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (vm.playingVideo) {
+            PlayerSurface(vm.previewPlayer.player, Modifier.fillMaxSize())
+        } else vm.preview?.let {
+            Image(it.asImageBitmap(), contentDescription = "Frame ${vm.playhead + 1}",
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        }
+    }
+}
+
+@Composable
+fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
+    val fm = edit.info.frames
+    val p = vm.playhead
+    val job = vm.job() ?: return
+    val inRange = p >= edit.trim.start && p < edit.trimEnd
+    val outT = if (inRange) secs(Segments.outputTime(job.pieces(), p).toDouble()) else "cut"
+    val key = if (p in fm.keyframes) " · keyframe" else ""
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Frame ${p + 1} / ${fm.count}$key · source ${secs((fm.ptsUs[p] - fm.ptsUs[0]) / 1e6)} · output $outT",
+            style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(vm::togglePlay) { Text(if (vm.playing) "■ Stop" else "▶ Play preview") }
+            Text(
+                "  ${clock(job.outputDuration.toDouble())} · ${speedWords(job.speed.toDouble())}" +
+                    if (job.hasSegments) " on average" else "",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+            )
+            FilterChip(selected = vm.magnet, onClick = vm::toggleMagnet, label = { Text("🧲") })
+        }
+        Text(
+            if (vm.proxyProgress < 1f) "Preparing frames for exact scrubbing… ${(vm.proxyProgress * 100).toInt()} %"
+            else "Drag on the picture to move frame by frame.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            val pad = PaddingValues(horizontal = 6.dp)
+            FilledTonalButton(vm::previousKeyframe, contentPadding = pad) { Text("|◀") }
+            FilledTonalButton({ vm.step(-10) }, contentPadding = pad) { Text("−10") }
+            FilledTonalButton({ vm.step(-1) }, contentPadding = pad) { Text("◀") }
+            FilledTonalButton({ vm.step(1) }, contentPadding = pad) { Text("▶") }
+            FilledTonalButton({ vm.step(10) }, contentPadding = pad) { Text("+10") }
+            FilledTonalButton(vm::nextKeyframe, contentPadding = pad) { Text("▶|") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RateDropdown(
+    label: String,
+    value: Rational,
+    choices: List<Rational>,
+    text: (Rational) -> String,
+    onChoose: (Rational) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    var open by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = open, onExpandedChange = { if (enabled) open = it }, modifier = modifier) {
+        OutlinedTextField(
+            value = text(value), onValueChange = {}, readOnly = true, enabled = enabled, singleLine = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (r in choices) DropdownMenuItem(text = { Text(text(r)) }, onClick = { onChoose(r); open = false })
+        }
+    }
+}
+
+@Composable
+fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
+    val real = edit.info.realFps
+    val rates = sectionRates(real)
+    var confirmClear by remember { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Speed sections", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(vm::undo, enabled = edit.undo.isNotEmpty()) { Text("↶ Undo") }
+                TextButton(vm::redo, enabled = edit.redo.isNotEmpty()) { Text("↷ Redo") }
+            }
+            edit.undo.lastOrNull()?.let {
+                Text("Last change: ${it.what}", style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
+                vm::chooseSectionFps)
+            val start = vm.pendingStart
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(vm::markStart) { Text("[ Start") }
+                Button(vm::markEnd, enabled = start != null) { Text("End ]") }
+                if (start != null) {
+                    TextButton(vm::cancelMark) { Text("Cancel") }
+                }
+            }
+            Text(
+                if (start == null) "Move the playhead to the first frame and tap “Start”, then to the last frame and tap “End”."
+                else "Start at frame ${start + 1} – now move to the last frame and tap “End”.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (edit.segments.isNotEmpty()) HorizontalDivider()
+            edit.segments.forEachIndexed { i, s ->
+                val len = (Rational.of((s.end - s.start).toLong()) / s.fps).toDouble()
+                val bg = if (i == vm.selectedSection) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+                Column(Modifier.fillMaxWidth().background(bg).clickable { vm.seek(s.start) }.padding(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Frames ${s.start + 1}–${s.end} · plays ${secs(len)}",
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton({ vm.removeSection(i) }) { Text("Remove") }
+                    }
+                    RateDropdown("Frame rate", s.fps, rates, { sectionFpsLabel(real, it) }, { vm.setSectionFps(i, it) })
+                }
+            }
+            if (edit.segments.isNotEmpty()) {
+                TextButton({ confirmClear = true }) { Text("Clear sections") }
+            }
+        }
+    }
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear all sections?") },
+            text = { Text("All ${edit.segments.size} speed sections of this clip are removed. You can undo this.") },
+            confirmButton = { TextButton({ vm.clearSections(); confirmClear = false }) { Text("Clear") } },
+            dismissButton = { TextButton({ confirmClear = false }) { Text("Keep") } },
+        )
+    }
+}
+
+@Composable
+fun TrimPanel(vm: EditorViewModel, edit: ClipEdit) {
+    val count = edit.info.frames.count
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Trim", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (edit.trim.start == 0 && edit.trim.end == null) "Whole clip (frames 1–$count)"
+                else "Frames ${edit.trim.start + 1}–${edit.trimEnd} of $count",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(vm::setIn) { Text("Set in") }
+                OutlinedButton(vm::setOut) { Text("Set out") }
+                TextButton(vm::clearTrim, enabled = edit.trim.start != 0 || edit.trim.end != null) { Text("Reset") }
+            }
+            Text(
+                if (vm.mode == EditorViewModel.Mode.LOSSLESS)
+                    "Lossless export can only cut at keyframes (the ticks under the timeline): only they are " +
+                        "complete pictures, all other frames store differences to their neighbours. In and out " +
+                        "snap to the nearest keyframe."
+                else "Re-encoding cuts at any frame.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
+    val ctx = LocalContext.current
+    val info = edit.info
+    val job = vm.job() ?: return
+    val lossless = vm.mode == EditorViewModel.Mode.LOSSLESS
+    val fpsChoices = if (lossless) (FPS_CHOICES + info.realFps).distinct().sorted() else FPS_CHOICES
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Export", style = MaterialTheme.typography.titleMedium)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                val modes = listOf(EditorViewModel.Mode.LOSSLESS to "Lossless", EditorViewModel.Mode.REENCODE to "Re-encode")
+                modes.forEachIndexed { i, (m, label) ->
+                    SegmentedButton(
+                        selected = vm.mode == m, onClick = { vm.chooseMode(m) },
+                        shape = SegmentedButtonDefaults.itemShape(i, modes.size),
+                        enabled = vm.export !is ExportState.Running,
+                    ) { Text(label) }
+                }
+            }
+            Text(
+                if (lossless) "Every frame is kept unchanged – only its timing changes. No quality loss, but " +
+                    "fast parts of slow-motion clips keep their high frame rate, which many players can't show smoothly."
+                else "New file at a constant frame rate: slow parts repeat frames, fast parts drop them – plays " +
+                    "smoothly everywhere. Hardware encoder; cuts at any frame.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (job.hasSegments) {
+                Text("Speed sections set the timing: ${edit.segments.size} section(s), the rest in real time. " +
+                    "Output ${clock(job.outputDuration.toDouble())} (${speedWords(job.speed.toDouble())} on average).",
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            if (lossless) {
+                if (!job.hasSegments) {
+                    RateDropdown("Frame rate", vm.fps, fpsChoices, { exportFpsLabel(job as LosslessJob, it) }, vm::chooseFps)
+                }
+            } else {
+                RateDropdown("Output frame rate (constant)", vm.fps, fpsChoices, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
+                if (!job.hasSegments) {
+                    val everyOnce = vm.fps / info.realFps
+                    val speeds = listOf<Rational?>(null) + listOf(1L, 2L, 4L, 8L, 16L).map { Rational.of(1, it) }
+                    SpeedDropdown(vm.speed, speeds, everyOnce, vm::chooseSpeed)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    EnumDropdown("Codec", vm.codec, VideoCodec.entries, { it.label }, vm::chooseCodec, Modifier.weight(1f))
+                    EnumDropdown("Quality", vm.quality, Quality.entries, { it.label }, vm::chooseQuality, Modifier.weight(1f))
+                }
+                val sides = listOf<Int?>(null) + listOf(2160, 1440, 1080, 720, 480)
+                    .filter { it < minOf(info.displayWidth, info.displayHeight) }
+                EnumDropdown("Resolution", vm.shortSide, sides,
+                    { v -> v?.let { "${it}p" } ?: "Like the source (${info.displayWidth}×${info.displayHeight})" },
+                    vm::chooseShortSide)
+                val r = job as ReencodeJob
+                val (w, h) = r.outputSize()
+                Text("${w}×$h · ${r.outputFrameCount} frames · ${clock(job.outputDuration.toDouble())} · " +
+                    "about ${fmt(r.bitrate / 1e6)} Mbit/s", style = MaterialTheme.typography.bodySmall)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Sound", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        when {
+                            info.audio == null -> "This clip has no sound."
+                            info.slowmoFactor != null -> "Restored to its real pitch, stretched to the new length"
+                            else -> "Stretched to the new length, pitch kept"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = vm.sound && info.audio != null, onCheckedChange = { vm.sound = it },
+                    enabled = info.audio != null && vm.export !is ExportState.Running)
+            }
+            when (val e = vm.export) {
+                is ExportState.Running -> {
+                    LinearProgressIndicator(progress = { e.progress }, modifier = Modifier.fillMaxWidth())
+                    OutlinedButton(vm::cancelExport) { Text("Cancel") }
+                }
+                else -> {
+                    Button(vm::startExport) { Text("Export") }
+                    when (e) {
+                        is ExportState.Done -> {
+                            Text("Saved ${e.name} in Movies/VideoSpeedControl (${e.frames} frames, ${fmt(e.seconds)} s)")
+                            OutlinedButton({
+                                ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(e.uri, "video/*")
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                            }) { Text("Play") }
+                        }
+                        is ExportState.Failed -> Text(e.message, color = MaterialTheme.colorScheme.error)
+                        else -> {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun <T> EnumDropdown(
+    label: String, value: T, choices: List<T>, text: (T) -> String, onChoose: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }, modifier = modifier) {
+        OutlinedTextField(
+            value = text(value), onValueChange = {}, readOnly = true, singleLine = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (c in choices) DropdownMenuItem(text = { Text(text(c)) }, onClick = { onChoose(c); open = false })
+        }
+    }
+}
+
+@Composable
+fun SpeedDropdown(value: Rational?, choices: List<Rational?>, everyOnce: Rational, onChoose: (Rational?) -> Unit) {
+    EnumDropdown("Speed", value, choices, { v ->
+        when (v) {
+            null -> "Every frame once · ${speedWords(everyOnce.toDouble())}"
+            else -> speedWords(v.toDouble()) + if (v < everyOnce) " · frames repeat" else ""
+        }
+    }, onChoose)
+}
+
+@Composable
+fun ClipInfoCard(info: ClipInfo) {
+    val ctx = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    val rows = buildList {
+        add("File" to info.name)
+        add("Size" to if (info.sizeBytes >= 0) Formatter.formatFileSize(ctx, info.sizeBytes) else "unknown")
+        add("Codec" to info.codecName)
+        add("Resolution" to "${info.displayWidth} × ${info.displayHeight}" +
+            if (info.rotation != 0) " (rotated ${info.rotation}°)" else "")
+        add("Frame rate" to "${fmtFps(info.fps.toDouble())} fps")
+        info.slowmoFactor?.let {
+            add("Slow motion" to "recorded at ${fmtFps(info.realFps.toDouble())} fps – plays ${fmt(it)}× slower")
+        }
+        add("Frames" to "${info.frames.count}")
+        add("Duration" to secs(info.durationUs / 1e6))
+        add("Keyframes" to "${info.frames.keyframes.size} (every ~${fmt(info.keyframeInterval)} frames)")
+        val (lo, hi) = info.frames.frameIntervals()
+        if (hi > lo * 1.1 + 1) add("Timing" to "variable frame rate (${lo}–${hi} µs per frame)")
+        info.bitrate?.let { add("Bitrate" to "${fmt(it / 1e6)} Mbit/s") }
+        add("Colour" to (info.hdr ?: "SDR"))
+        add("Audio" to (info.audio ?: "none"))
+        info.recorded?.let {
+            add("Recorded" to DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+                .withZone(ZoneId.systemDefault()).format(it))
+        }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+                Text("Clip info", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(if (open) "▲" else "▼")
+            }
+            if (!open) {
+                Text("${info.codecName} · ${info.displayWidth}×${info.displayHeight} · " +
+                    (info.slowmoFactor?.let { "${fmtFps(info.realFps.toDouble())} fps slow motion" }
+                        ?: "${fmtFps(info.fps.toDouble())} fps") + " · ${info.frames.count} frames",
+                    style = MaterialTheme.typography.bodySmall)
+            } else for ((k, v) in rows) {
+                Row {
+                    Text(k, Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
+                    Text(v, Modifier.weight(0.65f), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
