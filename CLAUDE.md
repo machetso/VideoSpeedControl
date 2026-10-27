@@ -37,8 +37,8 @@ Read SCOPE.md for the agreed feature set and milestone status.
     `.github/workflows/windows.yml` (tests on Windows are report-only for now).
   - Linux bundle built + smoke-tested locally (563 MB incl. AVM). Linux packaging format
     (AppImage / tar.gz) not decided yet.
-- 2026-10-27: Windows build confirmed working by the user. New (user request, NOT committed
-  yet, awaiting their test): .cst treatments, multi-step undo / redo of sections, batch entry
+- 2026-10-27: Windows build confirmed working by the user. New (user request, committed
+  5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 
