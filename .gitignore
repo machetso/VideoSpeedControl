@@ -12,3 +12,6 @@ VideoSpeedControl.psd
 # PyInstaller / Inno Setup output
 build/
 dist/
+
+# finished packages (setup.exe, Linux tar.gz) – uploaded to the releases, not committed
+release/
