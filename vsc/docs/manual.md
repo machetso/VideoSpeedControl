@@ -1,6 +1,12 @@
 # VideoSpeedControl user guide
 
-VideoSpeedControl turns high-frame-rate footage – for example a GoPro at 240 fps or a phone's slow-motion recording – into slow motion, and can also speed parts of a clip up. Where possible it works **losslessly**: every original frame is kept and only its playing time changes, which takes seconds and costs no quality. When a change needs new pictures (another size, codec, or a speed that skips or adds frames), it re-encodes.
+VideoSpeedControl gives you full control over the speed of a video clip. Split a clip that was recorded in native slow motion – for example a GoPro at 240 fps or a phone's slow-motion recording – into sections and give each section its own frame rate: speed up the beginning, follow with extreme slow motion, switch to real time, and end in slow motion again.
+
+- **Lossless** needs no re-encoding at all: every original frame is kept and only its playing time changes, so the app makes a variable-frame-rate clip in practically no time and without any loss of quality.
+- **Smart re-encode** re-encodes only the sections whose frame rate differs from the output frame rate, in the same codec as the source, which keeps the export fast.
+- **Re-encode** encodes the whole clip in a codec of your choice, with the same full control over speed and output frame rate.
+
+The app saves the speed edits of every clip, so you can resume your work later – or encode the same clip in different codecs to compare them, helped by automatically generated file names with naming options. You can also collect many clips – or several versions of the same clip – in a batch list and export them all in one go.
 
 **Contents**
 

@@ -1,7 +1,9 @@
 # VideoSpeedControl – Scope
 
-Desktop app (Windows + Linux) that turns high-frame-rate footage (e.g. GoPro 240 fps) into
-slow-motion video. The first audio track is kept, stretched to the new length with its pitch
+Desktop app (Windows + Linux) that gives full control over the speed of a video clip: a native
+slow-motion clip (e.g. GoPro 240 fps) is split into sections, each with its own frame rate,
+and exported losslessly (variable frame rate), with a smart re-encode, or fully re-encoded.
+The first audio track is kept, stretched to the new length with its pitch
 preserved (phone slow-mo sound restored to its real pitch); other tracks are discarded.
 Stack: Python 3.12+, PySide6 (Qt 6), bundled FFmpeg/ffprobe (static GPL build).
 

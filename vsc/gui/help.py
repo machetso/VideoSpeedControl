@@ -141,8 +141,10 @@ class AboutDialog(QDialog):
         picture.setAlignment(Qt.AlignCenter)
         text = QLabel(
             f"<h2>VideoSpeedControl {__version__}</h2>"
-            "<p>Slow motion and speed changes for high-frame-rate footage – lossless where "
-            "possible.</p>"
+            "<p>Full control over the speed of a video clip: split a native slow-motion clip "
+            "into sections, each with its own frame rate – exported losslessly as a "
+            "variable-frame-rate clip, with a smart re-encode of only the changed sections, "
+            "or fully re-encoded in a codec of your choice.</p>"
             f"<p>Copyright © 2026 Alex Vulcu<br>{ATTRIBUTION}</p>"
             "<p>Licensed under the MIT License. Bundled tools keep their own licences "
             "(FFmpeg: GPL, Qt / PySide6: LGPL, rife-ncnn-vulkan: MIT, AVM: BSD-3-Clause-Clear) "
