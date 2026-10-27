@@ -1,31 +1,103 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/user/application_security/sast/#available-cicd-variables
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure/
-# Dependency Scanning customization: https://docs.gitlab.com/user/application_security/dependency_scanning/dependency_scanning_sbom/#customizing-analyzer-behavior
-# Container Scanning customization: https://docs.gitlab.com/user/application_security/container_scanning/#customizing-analyzer-behavior
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
+# CI on code.esanum.de
+# - SAST + Secret Detection: on every push, on the shared Linux runner.
+# - Windows build (PyInstaller bundle + Inno Setup installer): on the project's own Windows
+#   runner (tag `windows`, shell executor, PowerShell). Runs on a version tag (v0.9.0 → GitLab
+#   release with the setup.exe) or by hand (Build → Pipelines → Run pipeline → setup.exe under
+#   the pipeline's artifacts). Same steps as .github/workflows/windows.yml.
+#   The runner PC needs Python 3.12 (installed for all users, on PATH) and Inno Setup 6.
+
 stages:
-- build
-- test
-- deploy
-- review
-- dast
-- staging
-- canary
-- production
-- incremental rollout 10%
-- incremental rollout 25%
-- incremental rollout 50%
-- incremental rollout 100%
-- performance
-- cleanup
-- secret-detection
-sast:
-  stage: test
+  - test
+  - build
+  - release
+
 include:
-- template: Auto-DevOps.gitlab-ci.yml
-variables:
-  SECRET_DETECTION_ENABLED: 'true'
-secret_detection:
-  stage: secret-detection
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+
+.windows:
+  tags: [windows]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "web"
+  variables:
+    # keep the venv and the downloaded tools (FFmpeg, RIFE ~430 MB) between runs;
+    # delete vendor/ on the runner PC after changing tools/fetch_*.py
+    GIT_CLEAN_FLAGS: -ffdx -e .venv/ -e vendor/
+  before_script:
+    - if (-not (Test-Path .venv)) { python -m venv .venv }
+    - .venv\Scripts\python -m pip install --quiet -r requirements.txt "pyinstaller==6.22.3"
+    - if (-not (Test-Path vendor\ffmpeg\windows-x64)) { .venv\Scripts\python tools/fetch_ffmpeg.py windows }
+    - if (-not (Test-Path vendor\rife\windows-x64)) { .venv\Scripts\python tools/fetch_rife.py windows }
+
+# Report only for now: shows what still needs porting. RIFE tests are skipped without Vulkan.
+windows-tests:
+  extends: .windows
+  stage: test
+  allow_failure: true
+  script:
+    - .venv\Scripts\python -m pytest tests -q -rs
+
+windows-build:
+  extends: .windows
+  stage: build
+  needs: []
+  timeout: 1h
+  script:
+    - $version = .venv\Scripts\python -c "import vsc; print(vsc.__version__)"
+    - |
+      if ($env:CI_COMMIT_TAG -and $env:CI_COMMIT_TAG -ne "v$version") {
+        throw "Tag $env:CI_COMMIT_TAG does not match vsc.__version__ $version"
+      }
+    - Set-Content build.env "VERSION=$version" -Encoding ascii
+    - .venv\Scripts\python -m PyInstaller packaging/VideoSpeedControl.spec --noconfirm
+    # smoke test: starts the bundled exe headless
+    - |
+      $report = "$env:TEMP\vsc-smoke.txt"
+      $env:VSC_SMOKE_TEST = $report
+      $p = Start-Process dist\VideoSpeedControl\VideoSpeedControl.exe -PassThru
+      $null = $p.Handle   # keeps the exit code readable after the process ends
+      if (-not $p.WaitForExit(120000)) {
+        Stop-Process $p -Force
+        throw "Smoke test hung – probably an error dialog of the bundle"
+      }
+      Get-Content $report
+      if ($p.ExitCode -ne 0) { throw "Smoke test failed (exit code $($p.ExitCode))" }
+      Remove-Item Env:VSC_SMOKE_TEST
+    - |
+      $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+      if (-not (Test-Path $iscc)) { throw "Inno Setup 6 is not installed on the runner PC" }
+      & $iscc "/DAppVersion=$version" packaging\installer.iss
+      if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+    # on a tag: keep the setup.exe in the package registry (job artifacts expire)
+    - |
+      if ($env:CI_COMMIT_TAG) {
+        $file = "VideoSpeedControl-$version-setup.exe"
+        Invoke-RestMethod -Method Put -Headers @{ "JOB-TOKEN" = $env:CI_JOB_TOKEN } `
+          -InFile "dist\$file" `
+          -Uri "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID/packages/generic/VideoSpeedControl/$version/$file"
+      }
+  artifacts:
+    name: VideoSpeedControl-windows
+    paths:
+      - dist/VideoSpeedControl-*-setup.exe
+    reports:
+      dotenv: build.env
+    expire_in: 30 days
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  needs: [windows-build]
+  script:
+    - echo "Release $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    description: VideoSpeedControl $VERSION for Windows
+    assets:
+      links:
+        - name: VideoSpeedControl-$VERSION-setup.exe
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/VideoSpeedControl/$VERSION/VideoSpeedControl-$VERSION-setup.exe
+          link_type: package
