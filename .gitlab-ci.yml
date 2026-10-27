@@ -3,7 +3,7 @@
 # - Windows build (PyInstaller bundle + Inno Setup installer): on the project's own Windows
 #   runner (tag `windows`, shell executor, PowerShell). Runs on a version tag (v0.9.0 → GitLab
 #   release + package with the setup.exe) or by hand (Build → Pipelines → Run pipeline → setup.exe under
-#   the pipeline's artifacts). Same steps as .github/workflows/windows.yml.
+#   the pipeline's artifacts; also when started through the API). Same steps as .github/workflows/windows.yml.
 #   The runner PC needs Python 3.12 (installed for all users, on PATH) and Inno Setup 6.
 
 stages:
@@ -18,7 +18,7 @@ include:
   tags: [windows]
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
-    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
   variables:
     # keep the venv and the downloaded tools (FFmpeg, RIFE ~430 MB) between runs;
     # delete vendor/ on the runner PC after changing tools/fetch_*.py
