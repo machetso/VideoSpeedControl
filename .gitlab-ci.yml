@@ -2,14 +2,13 @@
 # - SAST + Secret Detection: on every push, on the shared Linux runner.
 # - Windows build (PyInstaller bundle + Inno Setup installer): on the project's own Windows
 #   runner (tag `windows`, shell executor, PowerShell). Runs on a version tag (v0.9.0 → GitLab
-#   release with the setup.exe) or by hand (Build → Pipelines → Run pipeline → setup.exe under
+#   release + package with the setup.exe) or by hand (Build → Pipelines → Run pipeline → setup.exe under
 #   the pipeline's artifacts). Same steps as .github/workflows/windows.yml.
 #   The runner PC needs Python 3.12 (installed for all users, on PATH) and Inno Setup 6.
 
 stages:
   - test
   - build
-  - release
 
 include:
   - template: Jobs/SAST.gitlab-ci.yml
@@ -49,7 +48,6 @@ windows-build:
       if ($env:CI_COMMIT_TAG -and $env:CI_COMMIT_TAG -ne "v$version") {
         throw "Tag $env:CI_COMMIT_TAG does not match vsc.__version__ $version"
       }
-    - Set-Content build.env "VERSION=$version" -Encoding ascii
     - .venv\Scripts\python -m PyInstaller packaging/VideoSpeedControl.spec --noconfirm
     # smoke test: starts the bundled exe headless
     - |
@@ -69,35 +67,26 @@ windows-build:
       if (-not (Test-Path $iscc)) { throw "Inno Setup 6 is not installed on the runner PC" }
       & $iscc "/DAppVersion=$version" packaging\installer.iss
       if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
-    # on a tag: keep the setup.exe in the package registry (job artifacts expire)
+    # on a tag: setup.exe into the package registry (job artifacts expire) + a GitLab release
+    # linking it – via the API, the shared Linux runner cannot pull registry.gitlab.com images
     - |
       if ($env:CI_COMMIT_TAG) {
         $file = "VideoSpeedControl-$version-setup.exe"
-        Invoke-RestMethod -Method Put -Headers @{ "JOB-TOKEN" = $env:CI_JOB_TOKEN } `
-          -InFile "dist\$file" `
-          -Uri "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID/packages/generic/VideoSpeedControl/$version/$file"
+        $auth = @{ "JOB-TOKEN" = $env:CI_JOB_TOKEN }
+        $api = "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID"
+        $url = "$api/packages/generic/VideoSpeedControl/$version/$file"
+        Invoke-RestMethod -Method Put -Headers $auth -InFile "dist\$file" -Uri $url
+        $release = @{
+          tag_name = $env:CI_COMMIT_TAG
+          name = "VideoSpeedControl $version"
+          description = "VideoSpeedControl $version for Windows"
+          assets = @{ links = @(@{ name = $file; url = $url; link_type = "package" }) }
+        } | ConvertTo-Json -Depth 5
+        Invoke-RestMethod -Method Post -Headers $auth -ContentType "application/json" `
+          -Body $release -Uri "$api/releases"
       }
   artifacts:
     name: VideoSpeedControl-windows
     paths:
       - dist/VideoSpeedControl-*-setup.exe
-    reports:
-      dotenv: build.env
     expire_in: 30 days
-
-release:
-  stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
-  needs: [windows-build]
-  script:
-    - echo "Release $CI_COMMIT_TAG"
-  release:
-    tag_name: $CI_COMMIT_TAG
-    description: VideoSpeedControl $VERSION for Windows
-    assets:
-      links:
-        - name: VideoSpeedControl-$VERSION-setup.exe
-          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/VideoSpeedControl/$VERSION/VideoSpeedControl-$VERSION-setup.exe
-          link_type: package
