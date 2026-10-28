@@ -57,6 +57,8 @@ import com.alexvulcu.videospeedcontrol.core.Segments
 import com.alexvulcu.videospeedcontrol.core.LosslessJob
 import com.alexvulcu.videospeedcontrol.core.Quality
 import com.alexvulcu.videospeedcontrol.core.ReencodeJob
+import com.alexvulcu.videospeedcontrol.core.SmartJob
+import androidx.compose.material3.Checkbox
 import com.alexvulcu.videospeedcontrol.core.VideoCodec
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -235,8 +237,8 @@ fun TrimPanel(vm: EditorViewModel, edit: ClipEdit) {
                 TextButton(vm::clearTrim, enabled = edit.trim.start != 0 || edit.trim.end != null) { Text("Reset") }
             }
             Text(
-                if (vm.mode == EditorViewModel.Mode.LOSSLESS)
-                    "Lossless export can only cut at keyframes (the ticks under the timeline): only they are " +
+                if (vm.snapsToKeyframes)
+                    "Lossless and smart export can only cut at keyframes (the ticks under the timeline): only they are " +
                         "complete pictures, all other frames store differences to their neighbours. In and out " +
                         "snap to the nearest keyframe."
                 else "Re-encoding cuts at any frame.",
@@ -257,7 +259,8 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Export", style = MaterialTheme.typography.titleMedium)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                val modes = listOf(EditorViewModel.Mode.LOSSLESS to "Lossless", EditorViewModel.Mode.REENCODE to "Re-encode")
+                val modes = listOf(EditorViewModel.Mode.LOSSLESS to "Lossless", EditorViewModel.Mode.SMART to "Smart",
+                    EditorViewModel.Mode.REENCODE to "Re-encode")
                 modes.forEachIndexed { i, (m, label) ->
                     SegmentedButton(
                         selected = vm.mode == m, onClick = { vm.chooseMode(m) },
@@ -267,18 +270,26 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
                 }
             }
             Text(
-                if (lossless) "Every frame is kept unchanged – only its timing changes. No quality loss, but " +
-                    "fast parts of slow-motion clips keep their high frame rate, which many players can't show smoothly."
-                else "New file at a constant frame rate: slow parts repeat frames, fast parts drop them – plays " +
-                    "smoothly everywhere. Hardware encoder; cuts at any frame.",
+                when (vm.mode) {
+                    EditorViewModel.Mode.LOSSLESS -> "Every frame is kept unchanged – only its timing changes. No quality loss, but " +
+                        "fast parts of slow-motion clips keep their high frame rate, which many players can't show smoothly."
+                    EditorViewModel.Mode.SMART -> "Parts that play at the output frame rate are copied unchanged; the others " +
+                        "(e.g. real time of a 240 fps recording) are re-encoded to it with the source codec."
+                    EditorViewModel.Mode.REENCODE -> "New file at a constant frame rate: slow parts repeat frames, fast parts drop them – plays " +
+                        "smoothly everywhere. Hardware encoder; cuts at any frame."
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (job.hasSegments) {
+            if (vm.mode == EditorViewModel.Mode.SMART) {
+                SmartOptions(vm, info, job as SmartJob)
+            } else if (job.hasSegments) {
                 Text("Speed sections set the timing: ${edit.segments.size} section(s), the rest in real time. " +
                     "Output ${clock(job.outputDuration.toDouble())} (${speedWords(job.speed.toDouble())} on average).",
                     style = MaterialTheme.typography.bodyMedium)
             }
-            if (lossless) {
+            if (vm.mode == EditorViewModel.Mode.SMART) {
+                // options above
+            } else if (lossless) {
                 if (!job.hasSegments) {
                     RateDropdown("Frame rate", vm.fps, fpsChoices, { exportFpsLabel(job as LosslessJob, it) }, vm::chooseFps)
                 }
@@ -339,6 +350,52 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SmartOptions(vm: EditorViewModel, info: ClipInfo, job: SmartJob) {
+    val pieces = vm.smartPieces()
+    RateDropdown("Output frame rate", vm.fps, FPS_CHOICES, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Re-encode everything that does not play at ${fmtFps(vm.fps.toDouble())} fps",
+            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = vm.smartAuto, onCheckedChange = vm::chooseSmartAuto, enabled = vm.export !is ExportState.Running)
+    }
+    for (p in pieces) {
+        val kind = if (p.rate == info.realFps) "real time" else speedWords((p.rate / info.realFps).toDouble())
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Checkbox(checked = p.reencode, onCheckedChange = { vm.setPieceReencode(p, it) },
+                enabled = vm.export !is ExportState.Running)
+            Column(Modifier.weight(1f)) {
+                Text("Frames ${p.start + 1}–${p.end} · ${fmtFps(p.rate.toDouble())} fps ($kind)",
+                    style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    when {
+                        p.reencode -> "re-encoded to ${fmtFps(vm.fps.toDouble())} fps"
+                        p.differs -> "copied – keeps ${fmtFps(p.rate.toDouble())} fps (may not play smoothly)"
+                        else -> "copied unchanged"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+    EnumDropdown("Quality of re-encoded parts", vm.quality, Quality.entries, { it.label }, vm::chooseQuality)
+    Text("Codec ${info.codecName}, ${info.width}×${info.height} – always like the source, otherwise the parts " +
+        "could not be joined.", style = MaterialTheme.typography.bodySmall)
+    val status = when {
+        vm.joins == null -> "Analysing the keyframes of this clip …"
+        vm.joinsError != null -> "Keyframe analysis failed: ${vm.joinsError}"
+        else -> job.blockers().firstOrNull()
+    }
+    if (status != null) {
+        Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    } else {
+        val enc = job.parts.filter { it.encode }
+        Text("${job.parts.size} parts, ${enc.size} re-encoded (${enc.sumOf { it.frames }} of ${job.parts.sumOf { it.frames }} frames) · " +
+            "output ${clock(job.outputDuration.toDouble())}. Re-encoded parts are widened to the nearest keyframes. " +
+            "The file may not play on Apple devices.", style = MaterialTheme.typography.bodySmall)
     }
 }
 

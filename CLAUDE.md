@@ -41,14 +41,22 @@ Read SCOPE.md for the agreed feature set and milestone status.
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
-- ANDROID – RESUME HERE: milestone 5 (re-encode) done on 2026-10-28 incl. the Export card
-  (checked on the phone with a synthetic clip: constant 25 fps, sound = video length).
-  Quality levels raised (High = 0.14 bit/pixel/frame ≈ 7.3 Mbit/s at 1080p25 – the Pixel
-  records ~8.4 Mbit/s). Next: (1) the user re-tests the real-time stutter with a Re-encode
-  export of a real clip; (2) milestone 6 smart export. adb "no permissions" = phone in
-  "charging only" USB mode → switch to "File transfer". Speed status: re-encode of the 30 s Pixel clip ≈ 20 s (sound ≈ 5 s in an
-  optimised build, 10 s in debug); `./gradlew installRelease` = optimised build signed with the
-  debug key (debug builds are much slower at sound / pixel loops). Status table: android/PLAN.md.
+- ANDROID – RESUME HERE: milestone 6 (smart export) done on 2026-10-28, incl. the UI.
+  Next: (1) the user tries Smart / Re-encode exports of real clips (real-time stutter gone?
+  plays in Google Photos?); (2) milestone 7 (batch list, .cst, export service). adb "no
+  permissions" = phone in "charging only" USB mode → switch to "File transfer".
+- Android smart export (2026-10-28): `core/Smart.kt` (plan = port of smart.plan incl. half-even
+  rounding – 12 random layouts identical to the desktop; join points from the keyframe samples;
+  MediaExtractor hands out Annex-B, not length-prefixed!), `core/SmartExport.kt` (copied parts
+  retimed like lossless; source VPS/SPS/PPS put in front of a copied part after an encoded one;
+  encoded parts: source codec + CODED size (KEY_ROTATION removed from the decoder format),
+  one closed GOP, KEY_PREPEND_HEADER_TO_SYNC_FRAMES, no B-frames). Verified: FFmpeg decodes
+  cleanly, copied frames bit-identical, encoded frames right (MSE ~1.3), and the PIXEL'S OWN
+  DECODER decodes a Pixel HEVC smart export fully with identical copied frames (hvc1 with
+  in-band parameter sets works there). HDR / 10-bit refused for now. UI rule (user): every part
+  (section or real time between) whose rate ≠ the output frame rate is re-encoded to it, the
+  rest copied; switch "re-encode everything that does not play at N fps" + per-part ticks
+  (`EditorViewModel.smartPieces`); the parts become explicit desktop-format sections.
 - 2026-10-27: Android version started in `android/` – fully native (Kotlin + Compose, Media3 /
   MediaCodec / MediaMuxer), no FFmpeg / Python on the phone; `vsc/core` is the reference whose
   rules are ported. Plan, decisions and milestones: `android/PLAN.md`. Milestone 1 (skeleton,

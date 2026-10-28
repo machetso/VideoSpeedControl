@@ -53,8 +53,8 @@ test encode + comparison view.
    laptop). Export card (Lossless / Re-encode + options) checked on the phone. Reason it was moved up: the user saw stutter in the real-time parts of lossless
    exports (120 / 240 fps there – players can't decode that smoothly; Pixel HEVC is a single
    P-frame chain, so no frame can be dropped losslessly).
-6. Smart export (user-approved next step): slow sections copied losslessly, only the
-   real-time parts re-encoded at 30 / 60 fps, joined in one track – needs the join experiment
-   (Pixel keeps VPS/SPS/PPS only in hvcC → in-band parameter sets at each part).
+6. ✅ Smart export: every part whose playback rate differs from the output frame rate is
+   re-encoded to it (source codec), the rest copied; one switch selects all, ticks per part.
+   Join experiment passed on the Pixel (in-band parameter sets; the phone's decoder plays it).
 7. Batch list, .cst load / save / share, export service with notification.
 8. Signed release APK, icon, licence notices.

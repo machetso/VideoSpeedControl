@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
@@ -27,6 +28,10 @@ import com.alexvulcu.videospeedcontrol.core.OutputStore
 import com.alexvulcu.videospeedcontrol.core.Probe
 import com.alexvulcu.videospeedcontrol.core.Proxy
 import com.alexvulcu.videospeedcontrol.core.Segments
+import com.alexvulcu.videospeedcontrol.core.Segment
+import com.alexvulcu.videospeedcontrol.core.Smart
+import com.alexvulcu.videospeedcontrol.core.SmartExport
+import com.alexvulcu.videospeedcontrol.core.SmartJob
 import com.alexvulcu.videospeedcontrol.core.Rational
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,7 +71,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var fps by mutableStateOf(Rational.parse(prefs.getString("fps", "25")!!))
         private set
-    var mode by mutableStateOf(if (prefs.getString("mode", "lossless") == "reencode") Mode.REENCODE else Mode.LOSSLESS)
+    var mode by mutableStateOf(when (prefs.getString("mode", "lossless")) {
+        "reencode" -> Mode.REENCODE
+        "smart" -> Mode.SMART
+        else -> Mode.LOSSLESS
+    })
         private set
     /** Re-encode speed without sections: null = every frame once at [fps]. */
     var speed by mutableStateOf(prefs.getString("speed", "")!!.takeIf { it.isNotEmpty() }?.let(Rational::parse))
@@ -78,12 +87,66 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var quality by mutableStateOf(runCatching { Quality.valueOf(prefs.getString("quality", "HIGH")!!) }.getOrDefault(Quality.HIGH))
         private set
 
-    enum class Mode { LOSSLESS, REENCODE }
+    enum class Mode { LOSSLESS, SMART, REENCODE }
+
+    /** Lossless and smart cut only at keyframes. */
+    val snapsToKeyframes get() = mode != Mode.REENCODE
+
+    // ------------------------------------------------------------------ smart export
+
+    /** Safe join keyframes of the clip (null = still being analysed). */
+    var joins by mutableStateOf<List<Int>?>(null)
+        private set
+    var joinsError by mutableStateOf<String?>(null)
+        private set
+    /** "Re-encode everything that differs from the output frame rate" (stored). */
+    var smartAuto by mutableStateOf(prefs.getBoolean("smart_auto", true))
+        private set
+    /** Ticks changed by hand, by part ("start-end-rate"); cleared when the switch is used. */
+    private val smartOverride = mutableStateMapOf<String, Boolean>()
+
+    /** One run of one playback rate in the trim range (a section or the real time between). */
+    data class SmartPiece(val start: Int, val end: Int, val rate: Rational, val differs: Boolean, val reencode: Boolean) {
+        val key get() = "$start-$end-$rate"
+    }
+
+    /**
+     * Rule (user, 2026-10-28): a part plays at the output frame rate → copied; any other rate
+     * (e.g. real time of a 240 fps recording at 25p) → re-encoded at the output frame rate.
+     */
+    fun smartPieces(): List<SmartPiece> {
+        val e = edit ?: return emptyList()
+        return Segments.pieces(e.segments, e.trim.start, e.trimEnd, e.info.realFps).map { p ->
+            val differs = p.rate != fps
+            val key = "${p.start}-${p.end}-${p.rate}"
+            SmartPiece(p.start, p.end, p.rate, differs, smartOverride[key] ?: (smartAuto && differs))
+        }
+    }
+
+    fun chooseSmartAuto(on: Boolean) {
+        smartAuto = on
+        smartOverride.clear()
+        prefs.edit().putBoolean("smart_auto", on).apply()
+    }
+
+    fun setPieceReencode(piece: SmartPiece, on: Boolean) {
+        smartOverride[piece.key] = on
+    }
+
+    private fun smartJob(e: ClipEdit): SmartJob {
+        // every part becomes an explicit section – the desktop's .cst format (reencode + out_fps)
+        val segs = smartPieces().map { Segment(it.start, it.end, it.rate, it.reencode, if (it.reencode) fps else null) }
+        return SmartJob(e.info, fps, e.trim, segs, joins ?: emptyList(), quality)
+    }
 
     /** The export as currently set up (timing for preview, labels and export). */
     fun job(): Timing? {
         val e = edit ?: return null
-        return if (mode == Mode.LOSSLESS) e.job(fps) else e.reencodeJob(fps, speed, codec, shortSide, quality)
+        return when (mode) {
+            Mode.LOSSLESS -> e.job(fps)
+            Mode.SMART -> smartJob(e)
+            Mode.REENCODE -> e.reencodeJob(fps, speed, codec, shortSide, quality)
+        }
     }
 
     fun chooseFps(r: Rational) { fps = r; prefs.edit().putString("fps", r.toString()).apply() }
@@ -95,8 +158,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun chooseMode(m: Mode) {
         stopPlayback()
         mode = m
-        prefs.edit().putString("mode", if (m == Mode.REENCODE) "reencode" else "lossless").apply()
-        if (m == Mode.LOSSLESS) edit = edit?.snappedTrim()       // lossless cuts only at keyframes
+        prefs.edit().putString("mode", m.name.lowercase()).apply()
+        if (m != Mode.REENCODE) edit = edit?.snappedTrim()       // lossless / smart cut only at keyframes
     }
     var sound by mutableStateOf(true)
     var export by mutableStateOf<ExportState>(ExportState.Idle)
@@ -153,6 +216,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 source = withContext(Dispatchers.IO) { FrameSource(getApplication(), info) }
                 loadThumbs()
                 loadProxy(info)
+                loadJoins(info)
                 seek(0)
             } catch (e: Exception) {
                 clip = ClipState.Failed(e.message ?: e.toString())
@@ -170,6 +234,22 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     thumbs.add(i, t)
                     if (!previewExact && preview == null) preview = bmp
                 }
+            }
+        }
+    }
+
+    private fun loadJoins(info: ClipInfo) {
+        joins = null
+        joinsError = null
+        smartOverride.clear()
+        viewModelScope.launch {
+            try {
+                joins = withContext(Dispatchers.IO) { Smart.joinPoints(getApplication(), info) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                joins = emptyList()
+                joinsError = e.message ?: e.toString()
             }
         }
     }
@@ -369,13 +449,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------------ trim
 
     fun setIn() {
-        edit = edit?.withIn(playhead, snap = mode == Mode.LOSSLESS)
+        edit = edit?.withIn(playhead, snap = snapsToKeyframes)
         edit?.let { seek(it.trim.start) }
     }
 
     fun setOut() {
         stopPlayback()
-        edit = edit?.withOut(playhead, snap = mode == Mode.LOSSLESS)
+        edit = edit?.withOut(playhead, snap = snapsToKeyframes)
     }
 
     fun clearTrim() {
@@ -392,6 +472,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val job = job() ?: return
         val blockers = when (job) {
             is LosslessJob -> job.blockers()
+            is SmartJob -> if (joins == null) listOf("The keyframes of this clip are still being analysed") else job.blockers()
             is ReencodeJob -> job.blockers()
             else -> emptyList()
         }
@@ -407,6 +488,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 val c = Muxing.containerFor(e.info.videoMime)!!
                 ext = c.extension; mime = c.mime
                 val x = LosslessExport(getApplication(), job, withAudio = sound)
+                cancelRunning = { x.cancelled = true }
+                run = { fd, p -> x.run(fd, p) }
+            }
+            is SmartJob -> {
+                ext = "mp4"; mime = "video/mp4"
+                val x = SmartExport(getApplication(), job, withAudio = sound)
                 cancelRunning = { x.cancelled = true }
                 run = { fd, p -> x.run(fd, p) }
             }
