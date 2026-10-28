@@ -96,7 +96,7 @@ enum class VideoCodec(val label: String, val mime: String, val bitsFactor: Doubl
 
 /** Named quality levels (desktop: QUALITY_LEVELS) as bits per pixel and frame for HEVC. */
 enum class Quality(val label: String, val bitsPerPixel: Double) {
-    GOOD("Good", 0.06), HIGH("High", 0.10), VERY_HIGH("Very high", 0.16),
+    GOOD("Good", 0.08), HIGH("High", 0.14), VERY_HIGH("Very high", 0.22),
 }
 
 /**

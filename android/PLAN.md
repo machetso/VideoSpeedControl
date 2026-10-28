@@ -47,11 +47,10 @@ test encode + comparison view.
 4. ✅ Timeline UI: thumbnails, playhead, trim, mark sections, frame rate per section, undo /
    redo, play preview; after user feedback: proxy frames (exact scrubbing, smooth preview),
    magnetic cursor, jog on the picture, proxy progress bar.
-5. ◐ Re-encode – own GL pipeline instead of Media3 Transformer (constant fps with exact frame
+5. ✅ Re-encode – own GL pipeline instead of Media3 Transformer (constant fps with exact frame
    selection like the desktop's setpts + fps=, frame-exact trim, resize, H.264 / HEVC hardware,
    sound from `Audio`). Core done + verified (device tests, frame-by-frame PSNR check on the
-   laptop). UI (Lossless / Re-encode switch + options) built and compiling, NOT yet tried on
-   the phone. Reason it was moved up: the user saw stutter in the real-time parts of lossless
+   laptop). Export card (Lossless / Re-encode + options) checked on the phone. Reason it was moved up: the user saw stutter in the real-time parts of lossless
    exports (120 / 240 fps there – players can't decode that smoothly; Pixel HEVC is a single
    P-frame chain, so no frame can be dropped losslessly).
 6. Smart export (user-approved next step): slow sections copied losslessly, only the

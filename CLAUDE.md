@@ -41,12 +41,12 @@ Read SCOPE.md for the agreed feature set and milestone status.
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
-- ANDROID – RESUME HERE (paused 2026-10-27 by the user): milestone 5 (re-encode) in progress.
-  Next steps: (1) try the new Export card (Lossless / Re-encode switch, fps / speed / codec /
-  quality / resolution) on the phone – install with `./gradlew installDebug`, open a synthetic
-  clip via the VIEW intent (see below), take screenshots with `adb exec-out screencap -p`;
-  (2) let the user re-test the real-time stutter with a Re-encode export; (3) milestone 6
-  smart export. Speed status: re-encode of the 30 s Pixel clip ≈ 20 s (sound ≈ 5 s in an
+- ANDROID – RESUME HERE: milestone 5 (re-encode) done on 2026-10-28 incl. the Export card
+  (checked on the phone with a synthetic clip: constant 25 fps, sound = video length).
+  Quality levels raised (High = 0.14 bit/pixel/frame ≈ 7.3 Mbit/s at 1080p25 – the Pixel
+  records ~8.4 Mbit/s). Next: (1) the user re-tests the real-time stutter with a Re-encode
+  export of a real clip; (2) milestone 6 smart export. adb "no permissions" = phone in
+  "charging only" USB mode → switch to "File transfer". Speed status: re-encode of the 30 s Pixel clip ≈ 20 s (sound ≈ 5 s in an
   optimised build, 10 s in debug); `./gradlew installRelease` = optimised build signed with the
   debug key (debug builds are much slower at sound / pixel loops). Status table: android/PLAN.md.
 - 2026-10-27: Android version started in `android/` – fully native (Kotlin + Compose, Media3 /
