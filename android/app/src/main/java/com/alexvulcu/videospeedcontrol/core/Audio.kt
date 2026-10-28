@@ -49,6 +49,17 @@ object Audio {
 
     fun spans(job: Timing): List<Span> {
         val k = slowmoFactor(job.info)
+        if (job is SmartJob) {
+            // re-encoded parts last whole frames at their rate (Smart.plan) – the sound follows
+            return job.parts.flatMap { part ->
+                val ps = Segments.pieces(job.segments, part.start, part.end, job.info.realFps)
+                val scale = if (part.encode) (part.duration / Segments.duration(ps)).toDouble() else 1.0
+                ps.map { p ->
+                    Span(fileTime(job.info, p.start) / k, fileTime(job.info, p.end) / k,
+                        (Rational.of((p.end - p.start).toLong()) / p.rate).toDouble() * scale)
+                }
+            }
+        }
         val spans = if (!job.hasSegments) {
             listOf(Span(fileTime(job.info, job.trim.start) / k, fileTime(job.info, job.trimEnd) / k,
                 job.outputDuration.toDouble()))

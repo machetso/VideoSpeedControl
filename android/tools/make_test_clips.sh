@@ -15,6 +15,11 @@ C709=(-vf "scale=out_color_matrix=bt709:out_range=tv" -colorspace bt709 -color_p
     -c:v libx265 -preset fast -x265-params "keyint=48:min-keyint=48:bframes=4:log-level=error" \
     "${C709[@]}" -pix_fmt yuv420p -tag:v hvc1 synth_hevc240.mp4
 
+# HEVC 240 fps with closed GOPs (every keyframe is an IDR → safe joins for the smart export)
+"$FF" -v error -y -f lavfi -i "testsrc2=size=1280x720:rate=240:duration=4" \
+    -c:v libx265 -preset fast -x265-params "keyint=48:min-keyint=48:bframes=0:open-gop=0:log-level=error" \
+    "${C709[@]}" -pix_fmt yuv420p -tag:v hvc1 synth_hevc_closed.mp4
+
 # H.264 120 fps, 360 frames, GOP 60, B-frames, rotation 90°
 "$FF" -v error -y -f lavfi -i "testsrc2=size=1280x720:rate=120:duration=3" \
     -c:v libx264 -preset fast -g 60 -bf 3 "${C709[@]}" -pix_fmt yuv420p tmp_avc.mp4
