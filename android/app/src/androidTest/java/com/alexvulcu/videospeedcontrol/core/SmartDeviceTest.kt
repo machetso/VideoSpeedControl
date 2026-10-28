@@ -150,4 +150,15 @@ class SmartDeviceTest {
             decodesLikeTheSource(src, out, job.parts)
         }
     }
+
+    /** Pixel-like colour description (sRGB transfer): encoded parts must be tagged the same. */
+    @Test fun smartKeepsColourDescription() {
+        export("synth_pixel_srgb.mp4", listOf(
+            Segment(90, 180, Rational.of(25)),                                   // copied at 25p
+        ).let { segs ->
+            // smart rule: real-time parts (240 ≠ 25) re-encoded at 25 fps
+            listOf(Segment(0, 90, Rational.of(240), true, Rational.of(25))) + segs +
+                Segment(180, 300, Rational.of(240), true, Rational.of(25))
+        }, "smart_srgb.mp4")
+    }
 }

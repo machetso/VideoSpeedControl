@@ -200,6 +200,9 @@ class SmartExport(
             setFloat(MediaFormat.KEY_I_FRAME_INTERVAL, (part.frames / fps.toDouble() + 10).toFloat())
             setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
             setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+            // the same colour description as the copied parts: a change at the joins (Pixel:
+            // sRGB transfer, the encoder's default BT.709) made players flash dark / white
+            copyColorAspects(srcFormat, this)
         }
         val encName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(encFormat)
             ?: error("No ${info.codecName} encoder for ${width}×$height on this phone")

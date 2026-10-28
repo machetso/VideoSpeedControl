@@ -65,6 +65,7 @@ class ReencodeExport(
             setFloat(MediaFormat.KEY_FRAME_RATE, fps.toDouble().toFloat())
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
+        sourceVideoFormat(context, info)?.let { copyColorAspects(it, encFormat) }   // tagged like the source
         val encName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(encFormat)
             ?: error("No ${job.codec.label} encoder for ${w}×$h at ${fps.toDouble()} fps on this phone")
 

@@ -11,6 +11,31 @@ import java.nio.ByteBuffer
 
 class ExportCancelled : Exception("Export cancelled")
 
+/**
+ * Copy the colour description (standard, range, transfer) of a source track to an encoder
+ * format. Pixel recordings are BT.709, limited range, *sRGB* transfer (color-transfer 2, no
+ * public constant); without this the encoder writes BT.709 transfer.
+ */
+fun copyColorAspects(from: MediaFormat, to: MediaFormat) {
+    for (k in listOf(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.KEY_COLOR_RANGE, MediaFormat.KEY_COLOR_TRANSFER)) {
+        if (from.containsKey(k)) to.setInteger(k, from.getInteger(k))
+    }
+}
+
+/** The source's video track format (null if unreadable). */
+fun sourceVideoFormat(context: Context, info: ClipInfo): MediaFormat? {
+    val ex = MediaExtractor()
+    return try {
+        ex.setDataSource(context, info.uri, null)
+        (0 until ex.trackCount).map { ex.getTrackFormat(it) }
+            .firstOrNull { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+    } catch (_: Exception) {
+        null
+    } finally {
+        ex.release()
+    }
+}
+
 object Muxing {
     data class Container(val muxerFormat: Int, val extension: String, val mime: String)
 

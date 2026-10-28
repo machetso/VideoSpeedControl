@@ -20,6 +20,14 @@ C709=(-vf "scale=out_color_matrix=bt709:out_range=tv" -colorspace bt709 -color_p
     -c:v libx265 -preset fast -x265-params "keyint=48:min-keyint=48:bframes=0:open-gop=0:log-level=error" \
     "${C709[@]}" -pix_fmt yuv420p -tag:v hvc1 synth_hevc_closed.mp4
 
+# Pixel-like colour description: BT.709, limited range, sRGB transfer (iec61966-2-1),
+# 1080p HEVC 30 fps tagged as 240 fps slow motion, closed GOPs of 30
+"$FF" -v error -y -f lavfi -i "testsrc2=size=1920x1080:rate=30:duration=10" \
+    -c:v libx265 -preset ultrafast -pix_fmt yuv420p -tag:v hvc1 \
+    -vf "scale=out_color_matrix=bt709:out_range=tv" \
+    -x265-params "keyint=30:min-keyint=30:open-gop=0:bframes=0:colorprim=bt709:transfer=iec61966-2-1:colormatrix=bt709:range=limited:log-level=error" \
+    -movflags use_metadata_tags -metadata com.android.capture.fps=240.000000 synth_pixel_srgb.mp4
+
 # H.264 120 fps, 360 frames, GOP 60, B-frames, rotation 90°
 "$FF" -v error -y -f lavfi -i "testsrc2=size=1280x720:rate=120:duration=3" \
     -c:v libx264 -preset fast -g 60 -bf 3 "${C709[@]}" -pix_fmt yuv420p tmp_avc.mp4

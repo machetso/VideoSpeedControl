@@ -53,7 +53,12 @@ Read SCOPE.md for the agreed feature set and milestone status.
   one closed GOP, KEY_PREPEND_HEADER_TO_SYNC_FRAMES, no B-frames). Verified: FFmpeg decodes
   cleanly, copied frames bit-identical, encoded frames right (MSE ~1.3), and the PIXEL'S OWN
   DECODER decodes a Pixel HEVC smart export fully with identical copied frames (hvc1 with
-  in-band parameter sets works there). HDR / 10-bit refused for now. UI rule (user): every part
+  in-band parameter sets works there). HDR / 10-bit refused for now. User saw a dark frame /
+  white flash at the joins: Pixel files are BT.709 limited with SRGB transfer (color-transfer 2,
+  no public constant; ffprobe iec61966-2-1), the encoder wrote BT.709 transfer → players
+  re-configure at each change. `copyColorAspects` gives the encoder the source's standard /
+  range / transfer (also for re-encode) – all frames now carry the same description
+  (synth_pixel_srgb.mp4 in make_test_clips.sh). UI rule (user): every part
   (section or real time between) whose rate ≠ the output frame rate is re-encoded to it, the
   rest copied; switch "re-encode everything that does not play at N fps" + per-part ticks
   (`EditorViewModel.smartPieces`); the parts become explicit desktop-format sections.
