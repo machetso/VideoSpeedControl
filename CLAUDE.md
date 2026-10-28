@@ -274,6 +274,7 @@ Read SCOPE.md for the agreed feature set and milestone status.
   click over ~250 ms, so tests time the onset, not the peak. Slow-mo restore = aresample 48k,
   asetrate 48k·k, aresample 48k – no need to know the source rate (was assumed 48 kHz).
   Smart: sound pieces of re-encoded parts scaled to the part's whole-frame duration.
+  User listened to an export on 2026-10-28: sounds OK.
 - Hardware test encodes can crash ffmpeg (system libva older than the static build) – always in
   a subprocess; only negative return codes / 0xC0000005 count as crashes.
 - ProRes 4444 is reported as yuv444p12le by the decoder even if encoded from 10-bit.
