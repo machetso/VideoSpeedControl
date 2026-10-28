@@ -11,8 +11,14 @@
    Pixel: hardly any energy above 3 kHz). `asetrate` × slow-mo factor brings it back to the
    original pitch and real-time length. Normal clips are real time already.
 2. Every run of frames with one speed (the whole trim, or each speed section) gets its piece of
-   sound time-stretched by rubberband (pitch preserved, good even at 10× slower), then the
-   pieces are joined and padded / cut to the exact video length.
+   sound time-stretched by rubberband (pitch preserved, good even at 10× slower). Each piece
+   is cut / padded to its exact length in samples, so every section border stays in sync.
+   - rubberband (as FFmpeg runs it) moves the content ~10–18 ms of *input* time early, i.e.
+     87 ms at 8× slower, 720 ms at 40× – measured once per tempo (`rubberband_lead`, a click
+     through the same filter) and compensated.
+   - Each piece is read with 0.5 s of sound before and after it (its own `-ss/-t` input – no
+     asplit, which made FFmpeg buffer all later pieces), so rubberband works on context and is
+     past its start-up at the border.
 3. The sound is added to the finished video in a last step (video stream copied), so this works
    the same for every processing mode – a lossless video stays lossless.
 """
@@ -26,7 +32,7 @@ from collections import deque
 from fractions import Fraction
 from pathlib import Path
 
-from . import ffmpeg_bin
+from . import ffmpeg_bin, segments as seg
 from .job import Job
 from .runner import Result
 
@@ -77,40 +83,120 @@ def _file_time(job: Job, frame: int) -> float:
 
 
 def pieces(job: Job) -> list[tuple[float, float, float]]:
-    """(start, end, output length) in seconds of *real-time* sound for every run of one speed."""
+    """(start, end, output length) in seconds of *real-time* sound for every run of one speed.
+
+    Smart re-encode: re-encoded parts last a whole number of frames at their own rate
+    (`smart.plan`), so their pieces are scaled to the part's real duration.
+    """
     k = slowmo_factor(job)
-    if job.has_segments or job.settings.smart:
+    if job.settings.smart:
+        out = []
+        for part in job.smart_parts():
+            ps = seg.pieces(job.segments, part.start, part.end, job.info.real_fps)
+            scale = Fraction(part.duration) / seg.duration(ps) if part.kind == "encode" else 1
+            out += [(_file_time(job, p.start) / k, _file_time(job, p.end) / k,
+                     float(Fraction(p.end - p.start) / p.rate * scale)) for p in ps]
+        return out
+    if job.has_segments:
         return [(_file_time(job, p.start) / k, _file_time(job, p.end) / k,
                  float(Fraction(p.end - p.start) / p.rate)) for p in job.pieces()]
     start, end = job.trim.start, job.trim_end
     return [(_file_time(job, start) / k, _file_time(job, end) / k, job.output_duration)]
 
 
-def filter_graph(job: Job) -> str:
-    """Sound of the source (input 1) → [aout], exactly as long as the output video."""
-    rate = job.info.audio_rate or OUT_RATE
+# --------------------------------------------------------------------------- rubberband lead
+
+CONTEXT = 0.5           # seconds of real-time sound read before and after every piece
+_LEAD_CACHE: dict[tuple[str, float], float] = {}
+
+
+def _tempo(a: float, b: float, out: float) -> float:
+    return min(max((b - a) / out, TEMPO_MIN), TEMPO_MAX) if out > 0 and b > a else 1.0
+
+
+def needs_stretch(tempo: float) -> bool:
+    return abs(tempo - 1) > 1e-4
+
+
+def rubberband_lead(tempo: float) -> float:
+    """How far rubberband moves the content early, in seconds of input (0 if unmeasurable).
+
+    A click CONTEXT seconds into a short signal goes through `rubberband=tempo` exactly as in
+    the real graph; its position in the output gives the lead. Cached per FFmpeg and tempo.
+    """
+    key = (ffmpeg_bin.ffmpeg(), round(tempo, 6))
+    if key in _LEAD_CACHE:
+        return _LEAD_CACHE[key]
+    click = CONTEXT
+    src = (f"aevalsrc='if(between(t,{click},{click}+0.001),0.9,0)':"
+           f"s={OUT_RATE}:d={click + 0.3}:c=stereo")
+    res = subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-nostdin", "-f", "lavfi", "-i", src,
+                          "-af", f"rubberband=tempo={tempo:.6f}", "-ac", "1", "-f", "s16le", "-"],
+                         capture_output=True, timeout=60, **ffmpeg_bin.POPEN_FLAGS)
+    lead = 0.0
+    if res.returncode == 0 and len(res.stdout) >= 2:
+        samples = memoryview(res.stdout).cast("h")
+        peak = max(range(len(samples)), key=lambda i: abs(samples[i]))
+        level = abs(samples[peak])
+        if level > 3000:
+            # strong stretching smears the click over hundreds of ms – what the ear times is its
+            # onset, so that is aligned (first sample above half the peak)
+            onset = next(i for i in range(peak + 1) if abs(samples[i]) > level // 2)
+            lead = click - onset / OUT_RATE * tempo
+    _LEAD_CACHE[key] = lead
+    return lead
+
+
+# --------------------------------------------------------------------------- graph
+
+def _sample(t: float) -> int:
+    return round(t * OUT_RATE)
+
+
+def plan_inputs(job: Job) -> list[tuple[float, float, str]]:
+    """Per piece: (seek, duration) on the *file's* timeline for its own input, and its chain.
+
+    The chain turns input i+1 into [p<i>]: exactly the piece's output length in samples
+    (lengths come from the running total, so rounding never adds up). Assumes the sound covers
+    the seek point (true for camera files: audio and video start together).
+    """
     k = slowmo_factor(job)
-    head = "[1:a:0]"
+    head = "aresample=48000"
     if k > 1.001:       # phone slow motion: back to the original pitch and real-time length
-        head += f"asetrate={round(rate * k)},aresample={OUT_RATE},"
-    else:
-        head += f"aresample={OUT_RATE},"
-    ps = pieces(job)
-    chains = []
-    for i, (a, b, out) in enumerate(ps):
-        chain = f"[s{i}]atrim=start={a:.6f}:end={b:.6f},asetpts=PTS-STARTPTS"
-        if out > 0 and b > a:
-            tempo = (b - a) / out
-            if abs(tempo - 1) > 1e-4:
-                chain += f",rubberband=tempo={min(max(tempo, TEMPO_MIN), TEMPO_MAX):.6f}"
-        chains.append(chain + f"[p{i}]")
-    total = job.output_duration
-    split = f"asplit={len(ps)}" + "".join(f"[s{i}]" for i in range(len(ps))) if len(ps) > 1 \
-        else "anull[s0]"
-    joined = "".join(f"[p{i}]" for i in range(len(ps)))
-    tail = (f"{joined}concat=n={len(ps)}:v=0:a=1," if len(ps) > 1 else f"{joined}anull,")
-    tail += f"apad=whole_dur={total:.6f},atrim=end={total:.6f}[aout]"
-    return ";".join([head + split] + chains + [tail])
+        head += f",asetrate={round(OUT_RATE * k)},aresample={OUT_RATE}"
+    plans = []
+    total = 0.0
+    for i, (a, b, out) in enumerate(pieces(job)):
+        n = _sample(total + out) - _sample(total)
+        total += out
+        # -ss counts from the container start (format_start), frame times are absolute
+        start_file = a * k - job.info.format_start
+        seek = max(0.0, start_file - CONTEXT * k)
+        pre = (start_file - seek) / k                       # real-time context before the piece
+        length = (start_file - seek) + (b - a + CONTEXT) * k
+        chain = f"[{i + 1}:a:0]{head},asetpts=N/SR/TB"
+        tempo = _tempo(a, b, out)
+        if needs_stretch(tempo):
+            first = (pre - rubberband_lead(tempo)) / tempo      # output time of the piece start
+            chain += f",rubberband=tempo={tempo:.6f}"
+            if first >= 0:
+                chain += f",atrim=start_sample={_sample(first)}"
+            else:
+                chain += f",adelay={_sample(-first)}S:all=1"
+        else:
+            chain += f",atrim=start_sample={_sample(pre)}"
+        chain += f",asetpts=N/SR/TB,apad=whole_len={n},atrim=end_sample={n}[p{i}]"
+        plans.append((seek, length, chain))
+    return plans
+
+
+def filter_graph(job: Job) -> str:
+    """Sound of the source (inputs 1…N, one per piece) → [aout], exactly as long as the video."""
+    plans = plan_inputs(job)
+    chains = [c for _, _, c in plans]
+    joined = "".join(f"[p{i}]" for i in range(len(plans)))
+    tail = f"{joined}concat=n={len(plans)}:v=0:a=1[aout]" if len(plans) > 1 else f"{joined}anull[aout]"
+    return ";".join(chains + [tail])
 
 
 def _video_tag(path: Path) -> str | None:
@@ -122,10 +208,12 @@ def _video_tag(path: Path) -> str | None:
 
 
 def mux_args(job: Job, video: Path, output: Path) -> list[str]:
-    args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-y", "-v", "error", "-nostdin",
-            "-i", str(video), "-i", str(job.info.path),
-            "-filter_complex", filter_graph(job),
-            "-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
+    args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-y", "-v", "error", "-nostdin", "-i", str(video)]
+    plans = plan_inputs(job)
+    for seek, length, _ in plans:
+        args += ["-ss", f"{seek:.6f}", "-t", f"{length:.6f}", "-i", str(job.info.path)]
+    args += ["-filter_complex", filter_graph(job),
+             "-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
     if job.container in ("mp4", "mov") and video.exists() and (tag := _video_tag(video)):
         args += ["-tag:v", tag]              # keep hvc1 (Apple) / hev1 (smart) as written
     return args + CODEC_ARGS[job.container] + [str(output)]

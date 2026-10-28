@@ -41,6 +41,58 @@ def _packet_times(path) -> list[float]:
     return sorted(float(x) for x in out)
 
 
+def _hevc_nal(t: int, first_slice: bool = True, payload: bytes = b"\x11\x22\x33") -> bytes:
+    """Annex-B HEVC NAL unit: header (type t, layer 0, temporal id 0) + first slice bit."""
+    return b"\x00\x00\x01" + bytes([t << 1, 1, 0x80 if first_slice else 0x00]) + payload
+
+
+def _h264_nal(t: int, first_mb0: bool = True) -> bytes:
+    return b"\x00\x00\x00\x01" + bytes([0x60 | t, 0x80 if first_mb0 else 0x40]) + b"\x55\x66\x77"
+
+
+def _split_everywhere(data: bytes):
+    """All ways of cutting `data` into two blocks, plus 1-byte blocks."""
+    yield [data]
+    for i in range(1, len(data)):
+        yield [data[:i], data[i:]]
+    yield [data[i:i + 1] for i in range(len(data))]
+
+
+def test_parse_access_units_hevc():
+    # VPS/SPS/PPS, IDR in two slices, CRA, RASL, trailing picture
+    stream = (_hevc_nal(32) + _hevc_nal(33) + _hevc_nal(34)
+              + _hevc_nal(19) + _hevc_nal(19, first_slice=False)
+              + _hevc_nal(21) + _hevc_nal(8) + _hevc_nal(1) + b"\x99" * 8)
+    want = [[19, 19], [21], [8], [1]]
+    for blocks in _split_everywhere(stream):
+        assert list(smart.parse_access_units(blocks, hevc=True)) == want, [len(b) for b in blocks]
+
+
+def test_parse_access_units_h264():
+    stream = (_h264_nal(7) + _h264_nal(8) + _h264_nal(5) + _h264_nal(5, first_mb0=False)
+              + _h264_nal(1) + _h264_nal(1) + b"\x99" * 8)
+    want = [[5], [1], [1]]
+    for blocks in _split_everywhere(stream):
+        assert list(smart.parse_access_units(blocks, hevc=False)) == want
+
+
+def test_access_units_reports_ffmpeg_failure(tmp_path, h264_clip):
+    broken = tmp_path / "broken.mp4"
+    broken.write_bytes(b"this is not a video" * 100)
+    info = probe(h264_clip)                         # any H.264 MediaInfo
+    with pytest.raises(smart.AnalysisError, match="exit code"):
+        list(smart._access_units(broken, info))
+    with pytest.raises(smart.AnalysisError):
+        smart.join_points(broken, info, scan_frames(h264_clip))
+
+
+def test_access_units_early_stop_kills_ffmpeg(h264_clip):
+    info = probe(h264_clip)
+    gen = smart._access_units(h264_clip, info, chunk=256)
+    assert next(gen)                                # FFmpeg is running now
+    gen.close()                                     # must not hang or leave FFmpeg behind
+
+
 def test_join_points(h264_clip, hevc10_clip, hevc_closed_clip):
     for clip in (h264_clip, hevc_closed_clip):
         info, fm = probe(clip), scan_frames(clip)
@@ -48,6 +100,27 @@ def test_join_points(h264_clip, hevc10_clip, hevc_closed_clip):
     info, fm = probe(hevc10_clip), scan_frames(hevc10_clip)
     assert len(fm.keyframes) > 1
     assert smart.join_points(hevc10_clip, info, fm) == [0]           # open GOP: IDR only
+
+
+@pytest.mark.parametrize("fixture", ["h264_clip", "hevc10_clip", "hevc_closed_clip"])
+def test_fast_join_points_match_the_full_scan(request, fixture, monkeypatch):
+    """Reading only the keyframe packets gives the same join points as the whole bitstream."""
+    clip = request.getfixturevalue(fixture)
+    info, fm = probe(clip), scan_frames(clip)
+    assert fm.packets and smart._keyframe_types(clip, info, fm) is not None   # fast path taken
+    fast = smart.join_points(clip, info, fm)
+    monkeypatch.setattr(smart, "_keyframe_types", lambda *a: None)          # force the fallback
+    assert smart.join_points(clip, info, fm) == fast
+
+
+def test_fast_path_reads_no_bitstream(h264_clip, monkeypatch):
+    info, fm = probe(h264_clip), scan_frames(h264_clip)
+
+    def forbidden(*a, **k):
+        raise AssertionError("the whole bitstream was read")
+    monkeypatch.setattr(smart, "_access_units", forbidden)
+    monkeypatch.setattr(smart, "_decode_order_pts", forbidden)
+    assert smart.join_points(h264_clip, info, fm) == fm.keyframes
 
 
 def test_plan_widens_to_keyframes(h264_clip):
@@ -108,6 +181,29 @@ def test_smart_export(request, tmp_path, fixture, container):
                               "-show_entries", "stream=codec_tag_string", "-of", "csv=p=0",
                               str(out)], capture_output=True, text=True).stdout.strip()
         assert tag == smart.SMART_CODECS[job.info.codec][1]
+
+
+def test_sound_follows_the_smart_parts(h264_clip):
+    """Re-encoded parts last whole frames at their rate – the sound must follow those lengths."""
+    from vsc.core import audio
+    job, fm = _setup(h264_clip)
+    real = job.info.real_fps
+    job.segments = [seg.Segment(0, 40, real * 8, reencode=True, out_fps=Fraction(25)),
+                    seg.Segment(80, 90, Fraction(30), reencode=True, out_fps=Fraction(60))]
+    parts = smart.plan(job, job.joins)
+    # 40 frames at 8× real speed = 0.0208 s, but the part is 1 whole frame at 25 fps = 0.04 s
+    assert parts[0].kind == "encode" and parts[0].duration != seg.duration(
+        seg.pieces(job.segments, parts[0].start, parts[0].end, real))
+    pieces = audio.pieces(job)
+    k = audio.slowmo_factor(job)
+    video_t, sound_t = Fraction(0), 0.0
+    for part in parts:
+        # sound reached at the real-time position where this part starts
+        start = audio._file_time(job, part.start) / k
+        sound_at = sum(out for a, b, out in pieces if b <= start + 1e-9)
+        assert sound_at == pytest.approx(float(video_t), abs=1e-9), part
+        video_t += part.duration
+    assert sum(out for *_, out in pieces) == pytest.approx(float(video_t), abs=1e-9)
 
 
 def test_open_gop_source_is_reencoded_whole(hevc10_clip, tmp_path):

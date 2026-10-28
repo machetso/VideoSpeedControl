@@ -4,7 +4,7 @@ Read SCOPE.md for the agreed feature set and milestone status.
 
 ## Resume here
 - Status 2026-10-26: milestones 1–6 done and committed, plus the extensions below (one commit
-  after milestone 6, 98 tests green). The user has NOT tried most of it yet – next step is
+  after milestone 6; 124 tests green as of 2026-10-28). The user has NOT tried most of it yet – next step is
   their own test round (list in the 2026-10-26 conversation: export tab, speed sections,
   smart re-encode in VLC / on a phone, batch list, scrubbing / magnet, AV2, a GoPro clip).
 - Extensions after milestone 6 (all user requests):
@@ -255,6 +255,25 @@ Read SCOPE.md for the agreed feature set and milestone status.
   first part's headers for all (Pixel stores VPS/SPS/PPS only in hvcC) → 2/3 of frames broken.
   MPEG-TS parts + hev1 fixed it (copied frames bit-identical, framemd5). MP4 part durations
   from ffprobe were off by a frame → use the plan's own durations in the concat list.
+- Smart analysis (2026-10-28, user review): `scan_frames` keeps packets in decode order with
+  `pos` / `size` (`FrameMap.packets`) – parse ffprobe as key=value, it prints fields in its own
+  order (pts, dts, size, pos, flags), not the requested one. `join_points` then reads only the
+  NAL headers of the keyframe packets (+ the packet after each, RASL check) straight from the
+  MP4 / MOV file: 1 ms instead of two extra full passes (ffprobe again + whole bitstream
+  through a pipe). Fallback (other containers): `parse_access_units` (pure, unit-tested on
+  synthetic Annex-B split at every byte) over FFmpeg's output. FFmpeg / ffprobe failures raise
+  `smart.AnalysisError` – a truncated stream used to look like "only frame 0 is safe".
+- Sound sync (2026-10-28): rubberband as FFmpeg runs it moves content ~10–18 ms of INPUT
+  time early (87 ms at 8× slower, 720 ms at 40×), and stretched pieces come out short
+  (−56 ms at 8×) – both used to add up over sections (−55 … −300 ms, also in later real-time
+  parts). Now: `audio.rubberband_lead(tempo)` measures the onset of a click through the same
+  filter (cached), every piece is its own `-ss/-t` input with 0.5 s context (no asplit → no
+  buffering of later pieces), trimmed by the lead and cut / padded to its exact length in
+  samples from the running total. Real-time parts exact (±0.5 ms); stretched parts: onset
+  −10 … +40 ms (up to ~+75 ms at 40×, content-dependent, late side – tolerable). 40× smears a
+  click over ~250 ms, so tests time the onset, not the peak. Slow-mo restore = aresample 48k,
+  asetrate 48k·k, aresample 48k – no need to know the source rate (was assumed 48 kHz).
+  Smart: sound pieces of re-encoded parts scaled to the part's whole-frame duration.
 - Hardware test encodes can crash ffmpeg (system libva older than the static build) – always in
   a subprocess; only negative return codes / 0xC0000005 count as crashes.
 - ProRes 4444 is reported as yuv444p12le by the decoder even if encoded from 10-bit.

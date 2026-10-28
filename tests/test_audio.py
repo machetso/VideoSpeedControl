@@ -65,8 +65,69 @@ def test_sections_follow_the_video(h264_clip, tmp_path):
     assert _frequency(out, slow_start + 1, 4) == pytest.approx(440, rel=0.02)   # 8× slower part
 
 
-def test_phone_slowmo_sound_is_restored(tmp_path):
-    """A phone stores slow motion like a slowed tape: 440 Hz becomes 55 Hz at 8× slow-mo."""
+def _click_onsets(path, times: list[float], search: float = 0.4) -> list[float]:
+    """Onset (first sample above half the local peak) of the click nearest each expected time."""
+    pcm = subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-i", str(path), "-map", "0:a",
+                          "-ac", "1", "-ar", "48000", "-f", "s16le", "-"],
+                         capture_output=True, check=True).stdout
+    s = array.array("h", pcm)
+    out = []
+    for t in times:
+        lo, hi = max(0, int((t - search) * 48000)), min(len(s), int((t + search) * 48000))
+        peak = max(range(lo, hi), key=lambda k: abs(s[k]))
+        onset = next(k for k in range(lo, peak + 1) if abs(s[k]) > abs(s[peak]) // 2)
+        out.append(onset / 48000)
+    return out
+
+
+@pytest.mark.parametrize("slow", [(8, 4, 2), (40, 10, 20)])
+def test_section_borders_stay_in_sync(tmp_path, slow):
+    """Every click must be heard when its frame is shown – also after several sections.
+
+    Source: 240 fps with a click every 0.5 s (every 120 frames) over a quiet tone. Real-time
+    parts must be exact (no drift from earlier sections). In stretched parts rubberband smears a
+    click over up to ~250 ms; its onset is compensated to within a few ms, the rest of the
+    spread (AAC, content-dependent transient detection) lands late, which the ear tolerates
+    far better than early sound (ITU-R BT.1359: early from ~45 ms, late from ~125 ms).
+    """
+    clip = tmp_path / "clicks.mp4"
+    subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
+                    "testsrc2=s=160x90:r=240:d=4", "-f", "lavfi", "-i",
+                    "aevalsrc='if(lt(mod(t,0.5),0.0005)*gt(t,0.1),0.9,0)+0.02*sin(2*PI*300*t)'"
+                    ":s=48000:d=4",
+                    "-c:v", "libx264", "-g", "24", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                    "-b:a", "192k", "-shortest", str(clip)], check=True)
+    job = _job(clip, codec=COPY, fps=Fraction(240))
+    a, b, c = (Fraction(240, x) for x in slow)
+    job.segments = [seg.Segment(100, 340, a), seg.Segment(400, 560, b), seg.Segment(700, 760, c)]
+    out = output_path(job, tmp_path / "out")
+    res = runner.create(job, out).run()
+    assert res.ok, res.error
+    ps = job.pieces()
+    frames = list(range(120, 960, 120))
+    want = [float(seg.output_time(ps, f)) for f in frames]
+    got = _click_onsets(out, want)
+    report = []
+    for f, w, g in zip(frames, want, got):
+        rate = next(p.rate for p in ps if p.start <= f < p.end)
+        err = g - w
+        report.append(f"frame {f} ({float(240 / rate):g}× slower): {err * 1000:+.1f} ms")
+        if rate == 240:
+            assert abs(err) < 0.002, report             # real time: exact, no drift
+        else:
+            # stretched: onset compensated; the content-dependent rest grows with the stretch
+            # but stays below the ~125 ms at which late sound becomes noticeable
+            assert -0.020 < err < 0.040 + 0.0015 * float(240 / rate), report
+    assert _durations(out)["audio"] == pytest.approx(job.output_duration, abs=0.03)
+
+
+@pytest.mark.parametrize("rate_known", [True, False])
+def test_phone_slowmo_sound_is_restored(tmp_path, rate_known):
+    """A phone stores slow motion like a slowed tape: 440 Hz becomes 55 Hz at 8× slow-mo.
+
+    The source is 44.1 kHz; the restore must not depend on knowing that (it used to assume
+    48 kHz when the rate was unknown – wrong pitch).
+    """
     clip = tmp_path / "phone.mp4"
     subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
                     "testsrc2=s=320x180:r=30:d=8", "-f", "lavfi", "-i", "sine=f=55:d=8",
@@ -76,6 +137,9 @@ def test_phone_slowmo_sound_is_restored(tmp_path):
                    check=True)
     job = _job(clip, codec=COPY, fps=Fraction(240))             # real time
     assert job.info.slowmo_factor == pytest.approx(8, rel=0.01)
+    assert job.info.audio_rate == 44100
+    if not rate_known:
+        job.info.audio_rate = None
     out = output_path(job, tmp_path / "out")
     res = runner.create(job, out).run()
     assert res.ok, res.error

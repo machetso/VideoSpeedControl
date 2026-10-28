@@ -314,6 +314,9 @@ class FrameMap:
     pts: list[int]          # sorted, in stream time base
     time_base: Fraction
     keyframes: list[int]    # frame indices (display order) of keyframes, ascending
+    # packets in decode (file) order: pts, byte position and size – lets the smart analysis
+    # read just the keyframe packets instead of the whole file (None = not scanned)
+    packets: list[tuple[int, int, int]] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         tb = float(self.time_base)
@@ -359,27 +362,33 @@ class FrameMap:
 
 
 def scan_frames(path: str | Path, stream_index: int = 0) -> FrameMap:
+    # key=value output: ffprobe prints the fields in its own fixed order, not the requested one
     res = ffmpeg_bin.run([
         ffmpeg_bin.ffprobe(), "-v", "error", "-select_streams", f"{stream_index}",
-        "-show_entries", "stream=time_base:packet=pts,dts,flags", "-of", "csv=p=0", str(path),
+        "-show_entries", "stream=time_base:packet=pts,dts,flags,pos,size", "-of", "compact=p=0",
+        str(path),
     ], timeout=600)
     if res.returncode != 0:
         raise ValueError(f"Cannot scan frames: {res.stderr.strip()}")
     frames: list[tuple[int, bool]] = []
+    packets: list[tuple[int, int, int]] = []
     time_base = Fraction(1, 1000)
     for line in res.stdout.splitlines():
-        parts = line.split(",")
-        if len(parts) == 1 and "/" in parts[0]:
-            time_base = Fraction(parts[0])
+        kv = dict(item.partition("=")[::2] for item in line.split("|"))
+        if "time_base" in kv and "flags" not in kv:
+            time_base = Fraction(kv["time_base"])
             continue
-        if len(parts) < 3:
-            continue
-        t = parts[0] if parts[0] not in ("", "N/A") else parts[1]
+        t = kv.get("pts", "")
+        if t in ("", "N/A"):
+            t = kv.get("dts", "")
         if t in ("", "N/A"):
             continue
-        frames.append((int(t), "K" in parts[2]))
+        frames.append((int(t), "K" in kv.get("flags", "")))
+        pos, size = kv.get("pos", ""), kv.get("size", "")
+        packets.append((int(t), int(pos) if pos.isdigit() else -1, int(size) if size.isdigit() else 0))
     frames.sort()
     keys = [i for i, (_, k) in enumerate(frames) if k]
     if not keys and frames:
         keys = [0]
-    return FrameMap(pts=[p for p, _ in frames], time_base=time_base, keyframes=keys)
+    return FrameMap(pts=[p for p, _ in frames], time_base=time_base, keyframes=keys,
+                    packets=packets)
