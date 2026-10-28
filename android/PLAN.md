@@ -57,5 +57,8 @@ test encode + comparison view.
 6. ✅ Smart export: every part whose playback rate differs from the output frame rate is
    re-encoded to it (source codec), the rest copied; one switch selects all, ticks per part.
    Join experiment passed on the Pixel (in-band parameter sets; the phone's decoder plays it).
-7. Batch list, .cst load / save / share, export service with notification.
+7. ✅ Batch list, .cst load / save / share, export service with notification. Every export
+   (single or batch) is an `ExportTask` (clip uri + treatment snapshot) run by `ExportManager`
+   in the foreground `ExportService`; the batch list survives a restart (files/batch.json).
+   .cst files are the desktop format (fingerprint check, both directions verified).
 8. Signed release APK, icon, licence notices.

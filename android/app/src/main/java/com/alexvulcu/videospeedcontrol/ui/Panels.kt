@@ -58,6 +58,7 @@ import com.alexvulcu.videospeedcontrol.core.LosslessJob
 import com.alexvulcu.videospeedcontrol.core.Quality
 import com.alexvulcu.videospeedcontrol.core.ReencodeJob
 import com.alexvulcu.videospeedcontrol.core.SmartJob
+import com.alexvulcu.videospeedcontrol.export.ExportManager
 import androidx.compose.material3.Checkbox
 import com.alexvulcu.videospeedcontrol.core.VideoCodec
 import androidx.compose.material3.SegmentedButton
@@ -249,7 +250,7 @@ fun TrimPanel(vm: EditorViewModel, edit: ClipEdit) {
 }
 
 @Composable
-fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
+fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::startExport) {
     val ctx = LocalContext.current
     val info = edit.info
     val job = vm.job() ?: return
@@ -335,7 +336,13 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
                     OutlinedButton(vm::cancelExport) { Text("Cancel") }
                 }
                 else -> {
-                    Button(vm::startExport) { Text("Export") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onExport) { Text("Export") }
+                        OutlinedButton(vm::addToBatch) { Text("Add to batch") }
+                    }
+                    if (vm.editingEntry != null) {
+                        OutlinedButton(vm::updateBatchEntry) { Text("✔ Update batch entry") }
+                    }
                     when (e) {
                         is ExportState.Done -> {
                             Text("Saved ${e.name} in Movies/VideoSpeedControl (${e.frames} frames, ${fmt(e.seconds)} s)")
@@ -349,6 +356,91 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun TreatmentCard(vm: EditorViewModel, onSave: () -> Unit, onLoad: () -> Unit, onShare: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Treatment (.cst)", style = MaterialTheme.typography.titleMedium)
+            Text("Sections, trim and export settings of this clip – the same file format as the desktop " +
+                "app. A treatment only loads onto the video it was made for (any file name).",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onSave) { Text("Save") }
+                OutlinedButton(onLoad) { Text("Load") }
+                OutlinedButton(onShare) { Text("Share") }
+            }
+        }
+    }
+}
+
+@Composable
+fun BatchCard(vm: EditorViewModel) {
+    val entries = vm.batch
+    if (entries.isEmpty()) return
+    val ctx = LocalContext.current
+    val running = entries.any { it.status == ExportManager.Status.RUNNING || it.status == ExportManager.Status.WAITING }
+    val open = entries.count { it.status != ExportManager.Status.DONE }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Batch list", style = MaterialTheme.typography.titleMedium)
+            for (e in entries) {
+                val editing = vm.editingEntry == e.task.id
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(if (editing) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                        .clickable(enabled = !running) { vm.openEntry(e) }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(e.task.treatment.sourceName, style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(e.task.label, style = MaterialTheme.typography.bodySmall)
+                        val status = when (e.status) {
+                            ExportManager.Status.IDLE -> null
+                            ExportManager.Status.WAITING -> "waiting"
+                            ExportManager.Status.RUNNING -> "exporting … ${(e.progress * 100).toInt()} %"
+                            ExportManager.Status.DONE -> "✔ ${e.output}"
+                            ExportManager.Status.FAILED -> "failed: ${e.error}"
+                            ExportManager.Status.CANCELLED -> "cancelled"
+                        }
+                        status?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall,
+                                color = when (e.status) {
+                                    ExportManager.Status.DONE -> MaterialTheme.colorScheme.primary
+                                    ExportManager.Status.FAILED -> MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                })
+                        }
+                        if (e.status == ExportManager.Status.RUNNING) {
+                            LinearProgressIndicator(progress = { e.progress }, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                    when (e.status) {
+                        ExportManager.Status.RUNNING, ExportManager.Status.WAITING ->
+                            TextButton({ vm.cancelBatchEntry(e.task.id) }) { Text("Cancel") }
+                        ExportManager.Status.DONE -> TextButton({
+                            e.outputUri?.let {
+                                ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(it, "video/*")
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                            }
+                        }) { Text("Play") }
+                        else -> {}
+                    }
+                    TextButton({ vm.removeBatchEntry(e.task.id) }, enabled = e.status != ExportManager.Status.RUNNING) { Text("✕") }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (running) OutlinedButton(vm::cancelAll) { Text("Cancel all") }
+                else Button(vm::exportBatch, enabled = open > 0) { Text("Export batch ($open)") }
+                if (entries.any { it.status == ExportManager.Status.DONE }) TextButton(vm::clearDoneEntries) { Text("Remove done") }
+            }
+            Text("Tap an entry to load it into the editor (e.g. to make another version). Exported entries " +
+                "are skipped by the next batch export.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -11,6 +11,7 @@ DIR=/data/local/tmp/vsc
 
 ./gradlew -q installDebug installDebugAndroidTest
 "$ADB" shell mkdir -p "$DIR"
+"$ADB" push app/src/test/resources/desktop_smart.cst "$DIR/" >/dev/null   # TreatmentDeviceTest
 for clip in "$@"; do
     "$ADB" push "$clip" "$DIR/" >/dev/null
 done

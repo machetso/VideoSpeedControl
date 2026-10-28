@@ -1,0 +1,53 @@
+{
+  "format": "VideoSpeedControl clip speed treatment",
+  "version": 1,
+  "source": {
+    "name": "synth_hevc_closed.mp4",
+    "path": "/tmp/opencode/vsc-test/synth_hevc_closed.mp4",
+    "size": 7561604,
+    "fingerprint": "3a22d24327c241d8c64622de068bdfe8933aa963fdba5637455265a67c79cdbd",
+    "frames": 960
+  },
+  "settings": {
+    "fps": "25",
+    "speed": null,
+    "codec": "x265",
+    "container": null,
+    "profile": null,
+    "preset": null,
+    "quality": 20,
+    "chroma": null,
+    "depth": null,
+    "resize": "source",
+    "width": null,
+    "height": null,
+    "fit": "pad",
+    "scaler": "lanczos",
+    "interpolation": "blend",
+    "smart": true,
+    "audio": false
+  },
+  "ui": {
+    "res": "source"
+  },
+  "trim": {
+    "start": 48,
+    "end": 912
+  },
+  "sections": [
+    {
+      "start": 50,
+      "end": 100,
+      "fps": "30",
+      "reencode": true,
+      "out_fps": "30000/1001"
+    },
+    {
+      "start": 300,
+      "end": 400,
+      "fps": "60",
+      "reencode": false,
+      "out_fps": null
+    }
+  ]
+}

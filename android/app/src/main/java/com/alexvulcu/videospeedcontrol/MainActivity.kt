@@ -1,6 +1,20 @@
 package com.alexvulcu.videospeedcontrol
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import com.alexvulcu.videospeedcontrol.ui.BatchCard
+import com.alexvulcu.videospeedcontrol.ui.TreatmentCard
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -63,6 +77,10 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
             else -> null
         } ?: return
+        // keep access after a restart (batch list) – only possible if the other app allows it
+        if (intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0) {
+            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
         vm.open(uri)
     }
 }
@@ -88,7 +106,42 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
             vm.open(uri)
         }
     }
-    Scaffold { padding ->
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(vm.message) {
+        vm.message?.let { snackbar.showSnackbar(it, withDismissAction = true); vm.message = null }
+    }
+    // notifications (export progress) – asked once, on the first export
+    val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.startExport() }
+    val onExport = {
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        else vm.startExport()
+    }
+    val saveCst = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) scope.launch {
+            val text = vm.treatmentText() ?: return@launch
+            withContext(Dispatchers.IO) { ctx.contentResolver.openOutputStream(uri)!!.use { it.write(text.toByteArray()) } }
+            vm.message = "Treatment saved"
+        }
+    }
+    val loadCst = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val text = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() } }
+            vm.loadTreatment(text, uri.lastPathSegment?.substringAfterLast('/') ?: "treatment")
+        }
+    }
+    val shareCst: () -> Unit = {
+        scope.launch {
+            val text = vm.treatmentText() ?: return@launch
+            val file = java.io.File(java.io.File(ctx.cacheDir, "share").apply { mkdirs() }, vm.treatmentFileName())
+            withContext(Dispatchers.IO) { file.writeText(text) }
+            val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
+            ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/octet-stream")
+                .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share treatment"))
+        }
+    }
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -100,7 +153,10 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 else Button(onClick = choose) { Text("Choose clip") }
             }
             when (val s = vm.clip) {
-                ClipState.None -> Text("Choose a clip – ideally a slow-motion recording.")
+                ClipState.None -> {
+                    Text("Choose a clip – ideally a slow-motion recording.")
+                    BatchCard(vm)
+                }
                 ClipState.Loading -> CircularProgressIndicator()
                 is ClipState.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
                 is ClipState.Loaded -> {
@@ -110,7 +166,10 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     TransportPanel(vm, edit)
                     SectionsPanel(vm, edit)
                     TrimPanel(vm, edit)
-                    ExportCard(vm, edit)
+                    ExportCard(vm, edit, onExport)
+                    BatchCard(vm)
+                    TreatmentCard(vm, onSave = { saveCst.launch(vm.treatmentFileName()) },
+                        onLoad = { loadCst.launch(arrayOf("*/*")) }, onShare = shareCst)
                     ClipInfoCard(s.info)
                 }
             }

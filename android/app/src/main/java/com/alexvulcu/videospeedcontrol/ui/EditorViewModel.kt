@@ -32,6 +32,9 @@ import com.alexvulcu.videospeedcontrol.core.Segment
 import com.alexvulcu.videospeedcontrol.core.Smart
 import com.alexvulcu.videospeedcontrol.core.SmartExport
 import com.alexvulcu.videospeedcontrol.core.SmartJob
+import com.alexvulcu.videospeedcontrol.core.ExportTask
+import com.alexvulcu.videospeedcontrol.core.Treatment
+import com.alexvulcu.videospeedcontrol.export.ExportManager
 import com.alexvulcu.videospeedcontrol.core.Rational
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -164,6 +167,34 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var sound by mutableStateOf(true)
     var export by mutableStateOf<ExportState>(ExportState.Idle)
         private set
+    /** Batch list entries (from ExportManager, persisted). */
+    var batch by mutableStateOf<List<ExportManager.Entry>>(emptyList())
+        private set
+    /** Batch entry currently loaded in the editor ("Update batch entry"). */
+    var editingEntry by mutableStateOf<Long?>(null)
+        private set
+    /** Message for the user (treatment loaded / refused, …); null = none. */
+    var message by mutableStateOf<String?>(null)
+    private var pendingTreatment: Treatment.Data? = null
+    private var fingerprint: String? = null
+
+    init {
+        ExportManager.init(app)
+        viewModelScope.launch {
+            ExportManager.entries.collect { list ->
+                batch = list.filter { it.inBatch }
+                val single = list.lastOrNull { !it.inBatch }
+                export = when (single?.status) {
+                    null, ExportManager.Status.IDLE, ExportManager.Status.CANCELLED -> ExportState.Idle
+                    ExportManager.Status.WAITING -> ExportState.Running(0f)
+                    ExportManager.Status.RUNNING -> ExportState.Running(single.progress)
+                    ExportManager.Status.DONE -> ExportState.Done(single.output ?: "", single.outputUri ?: Uri.EMPTY,
+                        single.frames, single.seconds)
+                    ExportManager.Status.FAILED -> ExportState.Failed(single.error ?: "Export failed")
+                }
+            }
+        }
+    }
 
     /** Picture at the playhead; [previewExact] = false while only a thumbnail is shown. */
     var preview by mutableStateOf<Bitmap?>(null)
@@ -199,6 +230,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun open(uri: Uri) {
         stopPlayback()
+        if (pendingTreatment == null) editingEntry = null
         player?.release()
         player = null
         clip = ClipState.Loading
@@ -217,6 +249,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 loadThumbs()
                 loadProxy(info)
                 loadJoins(info)
+                fingerprint = null
+                pendingTreatment?.let { applyTreatment(it) }
+                pendingTreatment = null
                 seek(0)
             } catch (e: Exception) {
                 clip = ClipState.Failed(e.message ?: e.toString())
@@ -465,68 +500,140 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ export
 
-    fun startExport() {
-        stopPlayback()
-        val e = edit ?: return
-        if (export is ExportState.Running) return
-        val job = job() ?: return
-        val blockers = when (job) {
-            is LosslessJob -> job.blockers()
-            is SmartJob -> if (joins == null) listOf("The keyframes of this clip are still being analysed") else job.blockers()
-            is ReencodeJob -> job.blockers()
-            else -> emptyList()
+    // ------------------------------------------------------------------ export / batch / treatment
+
+    private val treatmentMode: Treatment.Mode
+        get() = when (mode) {
+            Mode.LOSSLESS -> Treatment.Mode.LOSSLESS
+            Mode.SMART -> Treatment.Mode.SMART
+            Mode.REENCODE -> Treatment.Mode.REENCODE
         }
-        if (blockers.isNotEmpty()) {
-            export = ExportState.Failed(blockers.joinToString("\n"))
+
+    /** The current clip, edit and settings as a treatment (what a .cst / batch entry holds). */
+    private suspend fun snapshot(): Treatment.Data? {
+        val e = edit ?: return null
+        val info = e.info
+        val fp = fingerprint ?: withContext(Dispatchers.IO) {
+            Treatment.fingerprint(info.sizeBytes) { getApplication<Application>().contentResolver.openInputStream(info.uri)!! }
+        }.also { fingerprint = it }
+        val segs = if (mode == Mode.SMART) (job() as SmartJob).segments else e.segments
+        return Treatment.Data(info.name, info.sizeBytes, fp, info.frames.count,
+            Treatment.Settings(treatmentMode, fps, speed, codec, quality, shortSide, sound, smartAuto,
+                size = (job() as? ReencodeJob)?.outputSize()),
+            e.trim, segs, info.uri.toString())
+    }
+
+    private fun blockers(): List<String> = when (val job = job()) {
+        is LosslessJob -> job.blockers()
+        is SmartJob -> if (joins == null) listOf("The keyframes of this clip are still being analysed") else job.blockers()
+        is ReencodeJob -> job.blockers()
+        else -> listOf("No clip")
+    }
+
+    private fun withTask(action: (ExportTask) -> Unit) {
+        val e = edit ?: return
+        val b = blockers()
+        if (b.isNotEmpty()) {
+            export = ExportState.Failed(b.joinToString("\n"))
             return
         }
-        val ext: String
-        val mime: String
-        val run: (java.io.FileDescriptor, (Float) -> Unit) -> Int
-        when (job) {
-            is LosslessJob -> {
-                val c = Muxing.containerFor(e.info.videoMime)!!
-                ext = c.extension; mime = c.mime
-                val x = LosslessExport(getApplication(), job, withAudio = sound)
-                cancelRunning = { x.cancelled = true }
-                run = { fd, p -> x.run(fd, p) }
-            }
-            is SmartJob -> {
-                ext = "mp4"; mime = "video/mp4"
-                val x = SmartExport(getApplication(), job, withAudio = sound)
-                cancelRunning = { x.cancelled = true }
-                run = { fd, p -> x.run(fd, p) }
-            }
-            else -> {
-                ext = "mp4"; mime = "video/mp4"
-                val x = ReencodeExport(getApplication(), job as ReencodeJob, withAudio = sound)
-                cancelRunning = { x.cancelled = true }
-                run = { fd, p -> x.run(fd, p) }
-            }
-        }
-        export = ExportState.Running(0f)
         viewModelScope.launch {
-            val store = OutputStore(getApplication())
-            export = withContext(Dispatchers.IO) {
-                val out = store.create(job.fileStem(), ext, mime)
-                val t0 = System.nanoTime()
-                try {
-                    val frames = store.open(out).use { pfd ->
-                        run(pfd.fileDescriptor) { p -> export = ExportState.Running(p) }
-                    }
-                    store.publish(out)
-                    ExportState.Done(out.displayName, out.uri, frames, (System.nanoTime() - t0) / 1e9)
-                } catch (ex: Exception) {
-                    store.discard(out)
-                    if (ex is ExportCancelled) ExportState.Idle else ExportState.Failed(ex.message ?: ex.toString())
-                }
-            }
-            cancelRunning = null
+            val t = snapshot() ?: return@launch
+            action(ExportTask(ExportManager.newId(), e.info.uri, t, e.info.videoMime))
         }
     }
 
+    /** Export now – runs in the export service (goes on in the background). */
+    fun startExport() {
+        stopPlayback()
+        if (export is ExportState.Running) return
+        withTask { ExportManager.exportNow(it) }
+    }
+
     fun cancelExport() {
-        cancelRunning?.invoke()
+        ExportManager.entries.value.lastOrNull { !it.inBatch }?.let { ExportManager.cancel(it.task.id) }
+    }
+
+    fun addToBatch() = withTask {
+        ExportManager.addToBatch(it)
+        message = "Added to the batch list: ${it.treatment.sourceName} – ${it.label}"
+    }
+
+    fun updateBatchEntry() {
+        val id = editingEntry ?: return
+        withTask {
+            ExportManager.updateBatchEntry(id, it)
+            message = "Batch entry updated"
+        }
+    }
+
+    fun exportBatch() = ExportManager.exportBatch()
+    fun removeBatchEntry(id: Long) { ExportManager.remove(id); if (editingEntry == id) editingEntry = null }
+    fun cancelBatchEntry(id: Long) = ExportManager.cancel(id)
+    fun clearDoneEntries() = ExportManager.clearDone()
+    fun cancelAll() = ExportManager.cancelAll()
+
+    /** Load a batch entry into the editor (its clip with its treatment). */
+    fun openEntry(entry: ExportManager.Entry) {
+        val sameClip = (clip as? ClipState.Loaded)?.info?.uri == entry.task.uri
+        if (sameClip) applyTreatment(entry.task.treatment) else {
+            pendingTreatment = entry.task.treatment
+            open(entry.task.uri)
+        }
+        editingEntry = entry.task.id
+    }
+
+    /** .cst text of the current clip (Save treatment / Share). */
+    suspend fun treatmentText(): String? {
+        val t = snapshot() ?: return null
+        return Treatment.toJson(t, edit!!.info.videoMime)
+    }
+
+    fun treatmentFileName(): String = (edit?.info?.name?.substringBeforeLast('.') ?: "clip") + Treatment.SUFFIX
+
+    /** Load a .cst onto the current clip – refused unless it was made for exactly this video. */
+    fun loadTreatment(text: String, fileName: String) {
+        viewModelScope.launch {
+            try {
+                val d = Treatment.fromJson(text, fileName)
+                val e = edit ?: throw Treatment.TreatmentError("Open the clip first: ${d.sourceName}")
+                val fp = fingerprint ?: withContext(Dispatchers.IO) {
+                    Treatment.fingerprint(e.info.sizeBytes) { getApplication<Application>().contentResolver.openInputStream(e.info.uri)!! }
+                }.also { fingerprint = it }
+                d.check(e.info.name, e.info.sizeBytes, fp, e.info.frames.count)
+                applyTreatment(d)
+                message = "Treatment loaded: ${ExportTask.describe(d)}"
+            } catch (ex: Treatment.TreatmentError) {
+                message = ex.message
+            }
+        }
+    }
+
+    private fun applyTreatment(d: Treatment.Data) {
+        val e = edit ?: return
+        stopPlayback()
+        val s = d.settings
+        mode = when (s.mode) {
+            Treatment.Mode.LOSSLESS -> Mode.LOSSLESS
+            Treatment.Mode.SMART -> Mode.SMART
+            Treatment.Mode.REENCODE -> Mode.REENCODE
+        }
+        prefs.edit().putString("mode", mode.name.lowercase()).apply()
+        chooseFps(s.fps); chooseSpeed(s.speed); chooseCodec(s.codec); chooseQuality(s.quality); chooseShortSide(s.shortSide)
+        sound = s.sound
+        smartAuto = s.smartAuto
+        // smart treatments list every part; the real-time ones are implicit in the editor
+        val real = e.info.realFps
+        val segs = if (s.mode == Treatment.Mode.SMART) d.segments.filter { it.fps != real } else d.segments
+        edit = e.copy(trim = d.trim).editSegments(segs, "Load treatment")
+        smartOverride.clear()
+        if (s.mode == Treatment.Mode.SMART) {
+            for (p in smartPieces()) {
+                val flag = d.segments.any { it.reencode && it.start < p.end && it.end > p.start }
+                if (flag != p.reencode) smartOverride[p.key] = flag
+            }
+        }
+        selectedSection = -1
     }
 
     private fun closeSource() {

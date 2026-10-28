@@ -55,6 +55,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.24.0")
+    testImplementation("org.json:json:20260814")        // real org.json for JVM tests (Android's is a stub)
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
 }

@@ -42,10 +42,21 @@ IDEAS.md – add new ones there instead of building them unasked.
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
-- ANDROID – RESUME HERE: milestone 6 (smart export) done on 2026-10-28, incl. the UI.
-  Next: (1) the user tries Smart / Re-encode exports of real clips (real-time stutter gone?
-  plays in Google Photos?); (2) milestone 7 (batch list, .cst, export service). adb "no
-  permissions" = phone in "charging only" USB mode → switch to "File transfer".
+- ANDROID – RESUME HERE: milestone 7 (batch list, .cst, export service) done on 2026-10-28.
+  Next: (1) the user tries batch / .cst / background export; (2) milestone 8 (signed release
+  APK, icon, licence notices). adb "no permissions" = phone in "charging only" USB mode →
+  switch to "File transfer".
+- Android M7 (2026-10-28): `core/Treatment.kt` = port of treatment.py (fingerprint identical,
+  unit test with desktop_smart.cst). Mapping: Lossless → codec "copy"; Smart → smart true +
+  x265 / x264 by source; Re-encode → x265 / x264; quality VERY_HIGH / HIGH / GOOD = desktop
+  level 0 / 1 / 2; resize → "fit_box" with the actual output size as width / height (desktop
+  ignores fit_box without them); Android extras under ui.android. Smart treatments list every
+  part: loading drops the real-time ones and turns their re-encode flags into overrides.
+  `core/ExportTask.kt` (task + `Exporter.prepare`), `export/ExportManager.kt` (queue, batch.json),
+  `export/ExportService.kt`: call `startForeground(id, n, type)` directly – ServiceCompat
+  crashed with "Starting FGS with type none" on Android 17; type mediaProcessing (API ≥ 35) /
+  dataSync. Clips opened via VIEW / Share are only readable until the app process ends (the
+  persistable grant is taken when offered) → batch entries then fail with a clear message.
 - Android smart export (2026-10-28): `core/Smart.kt` (plan = port of smart.plan incl. half-even
   rounding – 12 random layouts identical to the desktop; join points from the keyframe samples;
   MediaExtractor hands out Annex-B, not length-prefixed!), `core/SmartExport.kt` (copied parts
