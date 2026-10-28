@@ -1,6 +1,7 @@
 # VideoSpeedControl – developer notes
 
-Read SCOPE.md for the agreed feature set and milestone status.
+Read SCOPE.md for the agreed feature set and milestone status. Postponed ideas (both platforms):
+IDEAS.md – add new ones there instead of building them unasked.
 
 ## Resume here
 - Status 2026-10-26: milestones 1–6 done and committed, plus the extensions below (one commit

@@ -161,4 +161,11 @@ class SmartDeviceTest {
                 Segment(180, 300, Rational.of(240), true, Rational.of(25))
         }, "smart_srgb.mp4")
     }
+
+    /** A long encoded part (4× slower, 5 s at 25p): keyframes and colour description inside it. */
+    @Test fun smartLongEncodedPart() {
+        export("synth_pixel_srgb.mp4", listOf(
+            Segment(0, 300, Rational.of(60), true, Rational.of(25)),
+        ), "smart_long.mp4")
+    }
 }

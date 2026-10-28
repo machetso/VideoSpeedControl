@@ -39,6 +39,7 @@ Out (desktop only): RIFE / interpolation, AV2, ProRes / DNxHR / CineForm / lossl
 test encode + comparison view.
 
 ## Milestones
+(Ideas beyond these: ../IDEAS.md)
 1. ✅ App skeleton + clip info: pick a clip, show container / codec / resolution / frame rate /
    slow-mo factor / keyframes / audio. Kotlin port of `segments.py` with unit tests.
 2. ✅ Lossless retime + speed sections → MP4 in Movies/VideoSpeedControl, checked on the phone
