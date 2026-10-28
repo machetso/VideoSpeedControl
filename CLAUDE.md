@@ -43,8 +43,10 @@ IDEAS.md – add new ones there instead of building them unasked.
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 - ANDROID – RESUME HERE: milestone 7 (batch list, .cst, export service) done on 2026-10-28.
-  Next: (1) the user tries batch / .cst / background export; (2) milestone 8 (signed release
-  APK, icon, licence notices). adb "no permissions" = phone in "charging only" USB mode →
+  Then (same day) new launcher icon + own clip gallery + "＋ Clip" button (commit 1cf4820).
+  Next: (1) the user tries batch / .cst / background export, the new icon and the gallery;
+  (2) milestone 8 (signed release APK, licence notices); (3) later maybe the new icon for
+  the desktop too (tools/make_icons.py still uses the old artwork). adb "no permissions" = phone in "charging only" USB mode →
   switch to "File transfer".
 - Android M7 (2026-10-28): `core/Treatment.kt` = port of treatment.py (fingerprint identical,
   unit test with desktop_smart.cst). Mapping: Lossless → codec "copy"; Smart → smart true +
