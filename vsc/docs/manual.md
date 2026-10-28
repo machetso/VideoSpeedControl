@@ -253,4 +253,4 @@ AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30
 
 Copyright © 2026 Alex Vulcu. Concept, architecture, direction, and curation by Alex Vulcu. Implementation assisted by generative AI tools. Licensed under the MIT License – see the LICENSE file.
 
-VideoSpeedControl uses other open-source software with its own licence: **FFmpeg** (GPL build, includes x264 / x265 and the Rubber Band time-stretching library), **Qt / PySide6** (LGPL), **rife-ncnn-vulkan** with the RIFE model (MIT) and **AVM**, the AV2 reference software (BSD-3-Clause-Clear). Details are in THIRD_PARTY_NOTICES.md.
+VideoSpeedControl uses other open-source software with its own licence: **FFmpeg** (GPL build, includes x264 / x265), **Sonic** for stretching the sound (Apache-2.0, the same algorithm as the Android app), **Qt / PySide6** (LGPL), **rife-ncnn-vulkan** with the RIFE model (MIT) and **AVM**, the AV2 reference software (BSD-3-Clause-Clear). Details are in THIRD_PARTY_NOTICES.md.

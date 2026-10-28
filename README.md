@@ -37,6 +37,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip
 .venv/bin/python tools/fetch_ffmpeg.py          # downloads the bundled FFmpeg
 .venv/bin/python tools/fetch_rife.py            # RIFE AI interpolation (Vulkan GPU, ~430 MB download)
+.venv/bin/python tools/build_sonic.py           # sound time-stretching (one C file, needs gcc)
 .venv/bin/python tools/fetch_avm.py             # optional: AV2 (builds AVM, needs cmake + nasm)
 ```
 
@@ -72,7 +73,7 @@ Artwork and documentation:
 .venv/bin/python -m PyInstaller packaging/VideoSpeedControl.spec --noconfirm   # → dist/VideoSpeedControl/
 ```
 
-The bundle contains FFmpeg, RIFE and (if built) AVM from `vendor/`. Windows installers are built
+The bundle contains FFmpeg, RIFE, Sonic and (if built) AVM from `vendor/`. Windows installers are built
 by GitHub Actions (`.github/workflows/windows.yml`). Pushing a tag `vX.Y.Z` that matches
 `vsc/__init__.py` creates a release with `VideoSpeedControl-X.Y.Z-setup.exe`. A test build can
 be started by hand under Actions → "Windows build" → Run workflow.

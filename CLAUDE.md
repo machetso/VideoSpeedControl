@@ -108,7 +108,7 @@ Read SCOPE.md for the agreed feature set and milestone status.
   (output frame k vs expected source frame, MSE of neighbours) – all 810 frames exact, MSE ≈ 1.
   `TestClips` re-copies a clip when its size on the phone changed.
 - Android sound sync (2026-10-28, after the desktop review): Media3 Sonic moves content
-  ~4–5 ms of input early (32 ms at 8× slower, 191 ms at 40×) like rubberband on the desktop.
+  ~4–5 ms of input early (32 ms at 8× slower, 191 ms at 40×), constant per tempo.
   `Audio.sonicLead(inRate, tempo)` measures a click's onset through an identically set-up
   SonicAudioProcessor in-process (cached; inactive processor = pass-through = 0). Every span
   gets its own Sonic fed from 0.25 s before to 0.25 s after it (`Audio.CONTEXT`); overlapping
@@ -123,6 +123,9 @@ Read SCOPE.md for the agreed feature set and milestone status.
 - venv: `.venv/` (created with `--without-pip` + get-pip.py, because python3-venv/ensurepip is
   not installed system-wide). Run things with `.venv/bin/python`.
 - FFmpeg: `python tools/fetch_ffmpeg.py [linux|windows]` → `vendor/ffmpeg/<platform>-x64/`.
+- Sonic (sound stretching): `python tools/build_sonic.py` compiles native/sonic_media3/sonic_media3.c
+  → `vendor/sonic/<platform>-x64/libsonic.so|sonic.dll` (`VSC_SONIC_DIR` overrides). Required for
+  sound; without it `audio.unavailable_reason` says so.
   `vsc/core/ffmpeg_bin.py` prefers the bundled copy, then `VSC_FFMPEG_DIR`, then PATH.
 - AVM (AV2 reference, v1.0.0): `python tools/fetch_avm.py` clones + builds avmenc/avmdec into
   `vendor/avm/linux-x64/` (needs git, cmake, nasm – installed via apt on the dev laptop;
@@ -183,7 +186,7 @@ Read SCOPE.md for the agreed feature set and milestone status.
     `audio.wanted(job)` (setting `audio`, clip has sound, container takes it, not AV2): video →
     temp file, then one ffmpeg pass adds the sound (video copied, MP4 tag kept – hvc1 / hev1).
     Phone slow-mo sound is stored like a slowed tape (Pixel: nothing above ~3 kHz) →
-    `asetrate` × slow-mo factor first; then per speed piece `atrim` + rubberband (pitch kept),
+    `asetrate` × slow-mo factor first; then per speed piece Sonic (pitch kept – see below),
     concat, apad/atrim to the video length. Tests check pitch with pure tones (zero crossings).
   - `testencode.py` – TestEncode (N output frames from the playhead into a temp dir), steady
     fps = frames / elapsed (see Hard-won details), Estimate for a clip: own test if settings
@@ -272,18 +275,20 @@ Read SCOPE.md for the agreed feature set and milestone status.
   through a pipe). Fallback (other containers): `parse_access_units` (pure, unit-tested on
   synthetic Annex-B split at every byte) over FFmpeg's output. FFmpeg / ffprobe failures raise
   `smart.AnalysisError` – a truncated stream used to look like "only frame 0 is safe".
-- Sound sync (2026-10-28): rubberband as FFmpeg runs it moves content ~10–18 ms of INPUT
-  time early (87 ms at 8× slower, 720 ms at 40×), and stretched pieces come out short
-  (−56 ms at 8×) – both used to add up over sections (−55 … −300 ms, also in later real-time
-  parts). Now: `audio.rubberband_lead(tempo)` measures the onset of a click through the same
-  filter (cached), every piece is its own `-ss/-t` input with 0.5 s context (no asplit → no
-  buffering of later pieces), trimmed by the lead and cut / padded to its exact length in
-  samples from the running total. Real-time parts exact (±0.5 ms); stretched parts: onset
-  −10 … +40 ms (up to ~+75 ms at 40×, content-dependent, late side – tolerable). 40× smears a
-  click over ~250 ms, so tests time the onset, not the peak. Slow-mo restore = aresample 48k,
-  asetrate 48k·k, aresample 48k – no need to know the source rate (was assumed 48 kHz).
+- Sound (2026-10-28): the user compared rubberband (FFmpeg filter), Rubber Band R3, Signalsmith
+  Stretch and Sonic by ear and chose Sonic, on both platforms, no choice in the UI. Desktop =
+  `native/sonic_media3/sonic_media3.c`, a C port of Media3's Sonic.java (Apache-2.0), BIT-EXACT
+  with the Java original (tests/test_sonic.py: SHA-256 of outputs from tools/sonic_reference/,
+  also independent of input chunking). NOT waywardgeek's C Sonic: it clamps speed ≥ 0.05, and
+  its slow-down drifts (+31 ms per click at 8×, output too long) – Media3 fixed that.
+  `audio.py`: per piece one FFmpeg decode (`-ss/-t`, 0.25 s context, aresample 48k, asetrate
+  48k·k for slow-mo) → `sonic.Stream` → drop `sonic.lead(rate, tempo, CONTEXT)` (click onset,
+  cached; 1–5 ms of input) → exact length in samples from the running total → temp WAV →
+  final mux. Clicks within ±2.5 ms even at 40×; 200 s of output in ~1 s. rubberband (still in
+  the FFmpeg build) is no longer used. Earlier finding kept for reference: FFmpeg's rubberband
+  moved content 10–18 ms of input early (720 ms at 40×) and pieces came out short.
   Smart: sound pieces of re-encoded parts scaled to the part's whole-frame duration.
-  User listened to an export on 2026-10-28: sounds OK.
+  User listened to an export on 2026-10-28 (rubberband version): sounds OK.
 - Hardware test encodes can crash ffmpeg (system libva older than the static build) – always in
   a subprocess; only negative return codes / 0xC0000005 count as crashes.
 - ProRes 4444 is reported as yuv444p12le by the decoder even if encoded from 10-bit.

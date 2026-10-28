@@ -31,12 +31,13 @@ datas = tree(ROOT / "vsc" / "gui" / "resources", "vsc/gui/resources")
 datas += tree(ROOT / "vsc" / "docs", "vsc/docs")
 datas += [(str(ROOT / "LICENSE"), "."), (str(ROOT / "THIRD_PARTY_NOTICES.md"), ".")]
 
-for tool, required in (("ffmpeg", True), ("rife", True), ("avm", False)):
+for tool, required, script in (("ffmpeg", True, "fetch_ffmpeg"), ("rife", True, "fetch_rife"),
+                               ("sonic", True, "build_sonic"), ("avm", False, "fetch_avm")):
     src = ROOT / "vendor" / tool / PLATFORM_DIR
     if src.is_dir():
         datas += tree(src, f"vendor/{tool}/{PLATFORM_DIR}")
     elif required:
-        raise SystemExit(f"{src} missing – run tools/fetch_{tool}.py first")
+        raise SystemExit(f"{src} missing – run tools/{script}.py first")
 
 a = Analysis(
     [str(ROOT / "packaging" / "launch.py")],

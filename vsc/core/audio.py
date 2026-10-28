@@ -8,19 +8,21 @@
 """Sound: stretched or compressed to the new video length, the pitch stays the same.
 
 1. Phone slow motion stores its sound slowed down like a tape (lower pitch – measured on a
-   Pixel: hardly any energy above 3 kHz). `asetrate` × slow-mo factor brings it back to the
-   original pitch and real-time length. Normal clips are real time already.
+   Pixel: hardly any energy above 3 kHz). Resampled to 48 kHz, then `asetrate` × slow-mo factor
+   brings it back to the original pitch and real-time length (independent of the source rate).
+   Normal clips are real time already.
 2. Every run of frames with one speed (the whole trim, or each speed section) gets its piece of
-   sound time-stretched by rubberband (pitch preserved, good even at 10× slower). Each piece
-   is cut / padded to its exact length in samples, so every section border stays in sync.
-   - rubberband (as FFmpeg runs it) moves the content ~10–18 ms of *input* time early, i.e.
-     87 ms at 8× slower, 720 ms at 40× – measured once per tempo (`rubberband_lead`, a click
-     through the same filter) and compensated.
-   - Each piece is read with 0.5 s of sound before and after it (its own `-ss/-t` input – no
-     asplit, which made FFmpeg buffer all later pieces), so rubberband works on context and is
-     past its start-up at the border.
-3. The sound is added to the finished video in a last step (video stream copied), so this works
-   the same for every processing mode – a lossless video stays lossless.
+   sound time-stretched by Sonic (`vsc.core.sonic`, pitch preserved) – the same algorithm as the
+   Android version; the user chose it after listening to rubberband, Rubber Band R3 and
+   Signalsmith Stretch. Each piece is cut / padded to its exact length in samples (running
+   total, so nothing drifts over sections).
+   - Each piece is decoded with CONTEXT seconds before and after it (its own `-ss/-t` FFmpeg
+     run), so Sonic is past its start-up at the border.
+   - Sonic moves the content a few ms of input early; measured per tempo with a click
+     (`sonic.lead`) and compensated.
+3. The pieces are written to a temporary WAV, and the sound is added to the finished video in
+   a last step (video stream copied) – this works the same for every processing mode, and a
+   lossless video stays lossless.
 """
 from __future__ import annotations
 
@@ -32,13 +34,13 @@ from collections import deque
 from fractions import Fraction
 from pathlib import Path
 
-from . import ffmpeg_bin, segments as seg
+from . import ffmpeg_bin, segments as seg, sonic
 from .formats import COPY
 from .job import Job
 from .runner import Result
 
 OUT_RATE = 48000
-TEMPO_MIN, TEMPO_MAX = 0.01, 100.0          # rubberband's range
+TEMPO_MIN, TEMPO_MAX = 0.01, 20.0           # Sonic: ≤ 100× slower (build patch), ≤ 20× faster
 # audio codec per container (None = this container takes no sound)
 CODEC_ARGS = {
     "mp4": ["-c:a", "aac", "-b:a", "192k"],
@@ -54,6 +56,8 @@ def unavailable_reason(job: Job) -> str | None:
     """Why this output gets no sound (None = it can)."""
     if not job.info.has_audio:
         return "This clip has no sound."
+    if reason := sonic.unavailable_reason():
+        return reason
     if job.codec and job.codec.image_sequence:
         return "Image sequences cannot hold sound."
     if job.codec and job.codec.external:
@@ -111,10 +115,14 @@ def pieces(job: Job) -> list[tuple[float, float, float]]:
     return [(_file_time(job, start) / k, _file_time(job, end) / k, job.output_duration)]
 
 
-# --------------------------------------------------------------------------- rubberband lead
+# --------------------------------------------------------------------------- rendering
 
-CONTEXT = 0.5           # seconds of real-time sound read before and after every piece
-_LEAD_CACHE: dict[tuple[str, float], float] = {}
+CONTEXT = 0.25          # seconds of real-time sound decoded before and after every piece
+CHANNELS = 2
+
+
+class AudioError(Exception):
+    """Decoding or stretching the sound failed."""
 
 
 def _tempo(a: float, b: float, out: float) -> float:
@@ -125,85 +133,78 @@ def needs_stretch(tempo: float) -> bool:
     return abs(tempo - 1) > 1e-4
 
 
-def rubberband_lead(tempo: float) -> float:
-    """How far rubberband moves the content early, in seconds of input (0 if unmeasurable).
-
-    A click CONTEXT seconds into a short signal goes through `rubberband=tempo` exactly as in
-    the real graph; its position in the output gives the lead. Cached per FFmpeg and tempo.
-    """
-    key = (ffmpeg_bin.ffmpeg(), round(tempo, 6))
-    if key in _LEAD_CACHE:
-        return _LEAD_CACHE[key]
-    click = CONTEXT
-    src = (f"aevalsrc='if(between(t,{click},{click}+0.001),0.9,0)':"
-           f"s={OUT_RATE}:d={click + 0.3}:c=stereo")
-    res = subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-nostdin", "-f", "lavfi", "-i", src,
-                          "-af", f"rubberband=tempo={tempo:.6f}", "-ac", "1", "-f", "s16le", "-"],
-                         capture_output=True, timeout=60, **ffmpeg_bin.POPEN_FLAGS)
-    lead = 0.0
-    if res.returncode == 0 and len(res.stdout) >= 2:
-        samples = memoryview(res.stdout).cast("h")
-        peak = max(range(len(samples)), key=lambda i: abs(samples[i]))
-        level = abs(samples[peak])
-        if level > 3000:
-            # strong stretching smears the click over hundreds of ms – what the ear times is its
-            # onset, so that is aligned (first sample above half the peak)
-            onset = next(i for i in range(peak + 1) if abs(samples[i]) > level // 2)
-            lead = click - onset / OUT_RATE * tempo
-    _LEAD_CACHE[key] = lead
-    return lead
-
-
-# --------------------------------------------------------------------------- graph
-
 def _sample(t: float) -> int:
     return round(t * OUT_RATE)
 
 
-def plan_inputs(job: Job) -> list[tuple[float, float, str]]:
-    """Per piece: (seek, duration) on the *file's* timeline for its own input, and its chain.
-
-    The chain turns input i+1 into [p<i>]: exactly the piece's output length in samples
-    (lengths come from the running total, so rounding never adds up). Assumes the sound covers
-    the seek point (true for camera files: audio and video start together).
-    """
+def _head(job: Job) -> str:
     k = slowmo_factor(job)
-    head = "aresample=48000"
+    head = f"aresample={OUT_RATE}"
     if k > 1.001:       # phone slow motion: back to the original pitch and real-time length
         head += f",asetrate={round(OUT_RATE * k)},aresample={OUT_RATE}"
-    plans = []
-    total = 0.0
-    for i, (a, b, out) in enumerate(pieces(job)):
-        n = _sample(total + out) - _sample(total)
-        total += out
+    return head
+
+
+def plan(job: Job) -> list[dict]:
+    """Per piece: what to decode (seek / length on the file's timeline), the context before it,
+    its tempo and its exact output length in samples (from the running total)."""
+    k = slowmo_factor(job)
+    out, total = [], 0.0
+    for a, b, length in pieces(job):
+        n = _sample(total + length) - _sample(total)
+        total += length
         # -ss counts from the container start (format_start), frame times are absolute
         start_file = a * k - job.info.format_start
         seek = max(0.0, start_file - CONTEXT * k)
-        pre = (start_file - seek) / k                       # real-time context before the piece
-        length = (start_file - seek) + (b - a + CONTEXT) * k
-        chain = f"[{i + 1}:a:0]{head},asetpts=N/SR/TB"
-        tempo = _tempo(a, b, out)
-        if needs_stretch(tempo):
-            first = (pre - rubberband_lead(tempo)) / tempo      # output time of the piece start
-            chain += f",rubberband=tempo={tempo:.6f}"
-            if first >= 0:
-                chain += f",atrim=start_sample={_sample(first)}"
-            else:
-                chain += f",adelay={_sample(-first)}S:all=1"
-        else:
-            chain += f",atrim=start_sample={_sample(pre)}"
-        chain += f",asetpts=N/SR/TB,apad=whole_len={n},atrim=end_sample={n}[p{i}]"
-        plans.append((seek, length, chain))
-    return plans
+        out.append({"seek": seek, "length": (start_file - seek) + (b - a + CONTEXT) * k,
+                    "pre": (start_file - seek) / k, "tempo": _tempo(a, b, length), "samples": n})
+    return out
 
 
-def filter_graph(job: Job) -> str:
-    """Sound of the source (inputs 1…N, one per piece) → [aout], exactly as long as the video."""
-    plans = plan_inputs(job)
-    chains = [c for _, _, c in plans]
-    joined = "".join(f"[p{i}]" for i in range(len(plans)))
-    tail = f"{joined}concat=n={len(plans)}:v=0:a=1[aout]" if len(plans) > 1 else f"{joined}anull[aout]"
-    return ";".join(chains + [tail])
+def _decode(job: Job, seek: float, length: float) -> bytes:
+    """Real-time sound of the source from `seek` for `length` seconds (file timeline):
+    interleaved s16, 48 kHz, stereo. Assumes the sound covers the seek point (camera files)."""
+    res = subprocess.run([ffmpeg_bin.ffmpeg(), "-hide_banner", "-v", "error", "-nostdin",
+                          "-ss", f"{seek:.6f}", "-t", f"{length:.6f}", "-i", str(job.info.path),
+                          "-map", "0:a:0", "-af", _head(job), "-ac", str(CHANNELS),
+                          "-ar", str(OUT_RATE), "-f", "s16le", "-"],
+                         capture_output=True, timeout=600, **ffmpeg_bin.POPEN_FLAGS)
+    if res.returncode != 0:
+        raise AudioError("Decoding the sound failed: "
+                         + res.stderr.decode("utf-8", "replace").strip()[-500:])
+    return res.stdout
+
+
+def render_piece(job: Job, p: dict) -> bytes:
+    """One piece, exactly p["samples"] frames long."""
+    fb = 2 * CHANNELS
+    pcm = _decode(job, p["seek"], p["length"])
+    n, tempo = p["samples"], p["tempo"]
+    if needs_stretch(tempo):
+        with sonic.Stream(OUT_RATE, CHANNELS, tempo) as s:
+            s.write(pcm)
+            stretched = s.read() + s.flush()
+        first = (p["pre"] - sonic.lead(OUT_RATE, tempo, CONTEXT)) / tempo   # piece start in output
+        skip = _sample(first)
+        data = stretched[skip * fb:] if skip >= 0 else bytes(-skip * fb) + stretched
+    else:
+        data = pcm[_sample(p["pre"]) * fb:]
+    data = data[:n * fb]
+    return data + bytes(n * fb - len(data))            # a short result is padded with silence
+
+
+def render(job: Job, wav: Path, cancelled=lambda: False) -> bool:
+    """Write the whole sound of `job` to `wav` (s16, 48 kHz, stereo). False if cancelled."""
+    import wave
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(CHANNELS)
+        w.setsampwidth(2)
+        w.setframerate(OUT_RATE)
+        for p in plan(job):
+            if cancelled():
+                return False
+            w.writeframes(render_piece(job, p))
+    return True
 
 
 def _video_tag(path: Path) -> str | None:
@@ -214,13 +215,9 @@ def _video_tag(path: Path) -> str | None:
     return tag if tag and not tag.startswith("[") and tag != "0x0000" else None
 
 
-def mux_args(job: Job, video: Path, output: Path) -> list[str]:
-    args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-y", "-v", "error", "-nostdin", "-i", str(video)]
-    plans = plan_inputs(job)
-    for seek, length, _ in plans:
-        args += ["-ss", f"{seek:.6f}", "-t", f"{length:.6f}", "-i", str(job.info.path)]
-    args += ["-filter_complex", filter_graph(job),
-             "-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
+def mux_args(job: Job, video: Path, sound: Path, output: Path) -> list[str]:
+    args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-y", "-v", "error", "-nostdin",
+            "-i", str(video), "-i", str(sound), "-map", "0:v", "-map", "1:a", "-c:v", "copy"]
     if job.container in ("mp4", "mov") and video.exists() and (tag := _video_tag(video)):
         args += ["-tag:v", tag]              # keep hvc1 (Apple) / hev1 (smart) as written
     return args + CODEC_ARGS[job.container] + [str(output)]
@@ -241,7 +238,7 @@ class AudioRunner:
     def describe(self) -> list[list[str]]:
         describe = getattr(self.inner, "describe", None)
         return (describe() if describe else [self.inner.args]) + \
-            [mux_args(self.job, self.video, self.output)]
+            [mux_args(self.job, self.video, temp_sound_path(self.output), self.output)]
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -258,9 +255,19 @@ class AudioRunner:
             return Result(ok=False, cancelled=res.cancelled or self._cancelled,
                           output=self.output, elapsed=time.monotonic() - start,
                           frames=res.frames, error=res.error)
+        sound = temp_sound_path(self.output)
+        try:
+            if not render(self.job, sound, lambda: self._cancelled):
+                raise AudioError("cancelled")
+        except Exception as e:  # noqa: BLE001 – reported on the result
+            self.video.unlink(missing_ok=True)
+            sound.unlink(missing_ok=True)
+            return Result(ok=False, cancelled=self._cancelled, output=self.output,
+                          elapsed=time.monotonic() - start, frames=res.frames,
+                          error="" if self._cancelled else f"Preparing the sound failed: {e}")
         err: deque[str] = deque(maxlen=30)
         self._proc = proc = subprocess.Popen(
-            mux_args(self.job, self.video, self.output), stdin=subprocess.DEVNULL,
+            mux_args(self.job, self.video, sound, self.output), stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace",
             **ffmpeg_bin.POPEN_FLAGS)
         t = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
@@ -268,12 +275,18 @@ class AudioRunner:
         proc.wait()
         t.join(timeout=2)
         self.video.unlink(missing_ok=True)
+        sound.unlink(missing_ok=True)
         ok = proc.returncode == 0 and not self._cancelled
         if not ok and self.output.exists():
             self.output.unlink(missing_ok=True)
         return Result(ok=ok, cancelled=self._cancelled, output=self.output,
                       elapsed=time.monotonic() - start, frames=res.frames,
                       error="" if ok else "Adding the sound failed: " + "".join(err).strip())
+
+
+def temp_sound_path(output: Path) -> Path:
+    """Where the stretched sound is written before it is added (same folder as the output)."""
+    return output.with_name(f"{output.stem}.sound-{os.getpid()}.wav")
 
 
 def temp_video_path(output: Path) -> Path:

@@ -94,10 +94,8 @@ def test_section_borders_stay_in_sync(tmp_path, slow):
     """Every click must be heard when its frame is shown – also after several sections.
 
     Source: 240 fps with a click every 0.5 s (every 120 frames) over a quiet tone. Real-time
-    parts must be exact (no drift from earlier sections). In stretched parts rubberband smears a
-    click over up to ~250 ms; its onset is compensated to within a few ms, the rest of the
-    spread (AAC, content-dependent transient detection) lands late, which the ear tolerates
-    far better than early sound (ITU-R BT.1359: early from ~45 ms, late from ~125 ms).
+    parts must be exact (no drift from earlier sections); in stretched parts Sonic's lead is
+    compensated (onset = first sample above half the peak; Sonic repeats a click at 8×+).
     """
     clip = tmp_path / "clicks.mp4"
     subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
@@ -124,9 +122,7 @@ def test_section_borders_stay_in_sync(tmp_path, slow):
         if rate == 240:
             assert abs(err) < 0.002, report             # real time: exact, no drift
         else:
-            # stretched: onset compensated; the content-dependent rest grows with the stretch
-            # but stays below the ~125 ms at which late sound becomes noticeable
-            assert -0.020 < err < 0.040 + 0.0015 * float(240 / rate), report
+            assert abs(err) < 0.010, report             # stretched: Sonic's lead compensated
     assert _durations(out)["audio"] == pytest.approx(job.output_duration, abs=0.03)
 
 
