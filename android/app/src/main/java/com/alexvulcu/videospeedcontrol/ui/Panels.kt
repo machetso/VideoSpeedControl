@@ -378,7 +378,7 @@ fun TreatmentCard(vm: EditorViewModel, onSave: () -> Unit, onLoad: () -> Unit, o
 }
 
 @Composable
-fun BatchCard(vm: EditorViewModel) {
+fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
     val entries = vm.batch
     if (entries.isEmpty()) return
     val ctx = LocalContext.current
@@ -439,6 +439,7 @@ fun BatchCard(vm: EditorViewModel) {
                 else Button(vm::exportBatch, enabled = open > 0) { Text("Export batch ($open)") }
                 if (entries.any { it.status == ExportManager.Status.DONE }) TextButton(vm::clearDoneEntries) { Text("Remove done") }
             }
+            OutlinedButton(onAddClip) { Text("＋ Add another clip") }
             Text("Tap an entry to load it into the editor (e.g. to make another version). Exported entries " +
                 "are skipped by the next batch export.", style = MaterialTheme.typography.bodySmall)
         }

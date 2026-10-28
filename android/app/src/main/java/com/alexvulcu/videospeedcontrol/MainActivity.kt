@@ -1,6 +1,18 @@
 package com.alexvulcu.videospeedcontrol
 
 import android.Manifest
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.material3.SnackbarHost
@@ -11,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.alexvulcu.videospeedcontrol.ui.BatchCard
+import com.alexvulcu.videospeedcontrol.ui.VideoGallery
 import com.alexvulcu.videospeedcontrol.ui.TreatmentCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -96,10 +109,13 @@ fun VscTheme(content: @Composable () -> Unit) {
 @Composable
 fun MainScreen(vm: EditorViewModel = viewModel()) {
     val ctx = LocalContext.current
-    // System file picker rather than the photo picker: it passes on the real file name
-    // (PXL_….mp4 – needed for output names and .cst files) and also reaches Downloads / cloud.
+    // Clips are chosen in the app's own gallery (VideoGallery: newest first, real names); the
+    // system file picker is the way to Downloads / cloud ("Other files…"). Not the photo picker:
+    // it hands out numbers instead of the file names (PXL_….mp4 – needed for output names).
+    var showGallery by remember { mutableStateOf(false) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            showGallery = false
             runCatching {
                 ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
@@ -141,21 +157,62 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share treatment"))
         }
     }
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    // another clip replaces the one in the editor – offer to keep its edits in the batch list first
+    var askKeep by remember { mutableStateOf(false) }
+    val choose = {
+        if (vm.hasUnsavedWork) askKeep = true else showGallery = true
+    }
+    if (askKeep) {
+        val name = (vm.clip as? ClipState.Loaded)?.info?.name ?: "this clip"
+        AlertDialog(
+            onDismissRequest = { askKeep = false },
+            title = { Text("Keep the edits of $name?") },
+            text = { Text("Its sections and trim are not in the batch list yet. The next clip replaces it in the editor.") },
+            confirmButton = {
+                TextButton({ askKeep = false; vm.addToBatch(); showGallery = true }) { Text("Add to batch") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton({ askKeep = false }) { Text("Cancel") }
+                    TextButton({ askKeep = false; showGallery = true }) { Text("Discard") }
+                }
+            },
+        )
+    }
+    if (showGallery) {
+        Surface(Modifier.fillMaxSize().statusBarsPadding()) {
+            VideoGallery(onPick = { showGallery = false; vm.open(it) },
+                onOtherFiles = { pick.launch(arrayOf("video/*")) }, onClose = { showGallery = false })
+        }
+        return
+    }
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            // stays visible while the editor scrolls, so a further clip can be added at any time
+            Surface(tonalElevation = 3.dp) {
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Image(painterResource(R.drawable.vsc_logo), null, Modifier.size(36.dp))
+                    Text("VideoSpeedControl", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (vm.clip is ClipState.Loaded) OutlinedButton(onClick = choose) { Text("＋ Clip") }
+                    else Button(onClick = choose) { Text("Choose clip") }
+                }
+            }
+        },
+    ) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("VideoSpeedControl", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                val choose = { pick.launch(arrayOf("video/*")) }
-                if (vm.clip is ClipState.Loaded) OutlinedButton(onClick = choose) { Text("Other clip") }
-                else Button(onClick = choose) { Text("Choose clip") }
-            }
             when (val s = vm.clip) {
                 ClipState.None -> {
                     Text("Choose a clip – ideally a slow-motion recording.")
-                    BatchCard(vm)
+                    BatchCard(vm, choose)
                 }
                 ClipState.Loading -> CircularProgressIndicator()
                 is ClipState.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
@@ -167,7 +224,7 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     SectionsPanel(vm, edit)
                     TrimPanel(vm, edit)
                     ExportCard(vm, edit, onExport)
-                    BatchCard(vm)
+                    BatchCard(vm, choose)
                     TreatmentCard(vm, onSave = { saveCst.launch(vm.treatmentFileName()) },
                         onLoad = { loadCst.launch(arrayOf("*/*")) }, onShare = shareCst)
                     ClipInfoCard(s.info)

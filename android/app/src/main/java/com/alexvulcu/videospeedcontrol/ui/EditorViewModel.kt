@@ -29,6 +29,7 @@ import com.alexvulcu.videospeedcontrol.core.Probe
 import com.alexvulcu.videospeedcontrol.core.Proxy
 import com.alexvulcu.videospeedcontrol.core.Segments
 import com.alexvulcu.videospeedcontrol.core.Segment
+import com.alexvulcu.videospeedcontrol.core.Trim
 import com.alexvulcu.videospeedcontrol.core.Smart
 import com.alexvulcu.videospeedcontrol.core.SmartExport
 import com.alexvulcu.videospeedcontrol.core.SmartJob
@@ -176,6 +177,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** Message for the user (treatment loaded / refused, …); null = none. */
     var message by mutableStateOf<String?>(null)
     private var pendingTreatment: Treatment.Data? = null
+    /** Trim + sections last put into the batch list / exported (or as loaded). */
+    private var committed by mutableStateOf<Pair<Trim, List<Segment>>?>(null)
+
+    /** The clip has sections / a trim that are neither in the batch list nor exported. */
+    val hasUnsavedWork: Boolean
+        get() = edit?.let { e -> (e.trim to e.segments) != committed && (e.segments.isNotEmpty() || e.trim != Trim()) } ?: false
     private var fingerprint: String? = null
 
     init {
@@ -252,6 +259,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 fingerprint = null
                 pendingTreatment?.let { applyTreatment(it) }
                 pendingTreatment = null
+                edit?.let { committed = it.trim to it.segments }
                 seek(0)
             } catch (e: Exception) {
                 clip = ClipState.Failed(e.message ?: e.toString())
@@ -540,6 +548,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val t = snapshot() ?: return@launch
             action(ExportTask(ExportManager.newId(), e.info.uri, t, e.info.videoMime))
+            committed = e.trim to e.segments
         }
     }
 

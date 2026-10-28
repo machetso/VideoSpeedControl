@@ -61,4 +61,5 @@ test encode + comparison view.
    (single or batch) is an `ExportTask` (clip uri + treatment snapshot) run by `ExportManager`
    in the foreground `ExportService`; the batch list survives a restart (files/batch.json).
    .cst files are the desktop format (fingerprint check, both directions verified).
-8. Signed release APK, icon, licence notices.
+8. Signed release APK, licence notices. (Icon done: tools/make_android_icons.py; own clip
+   gallery with newest recordings first.)

@@ -57,6 +57,18 @@ IDEAS.md – add new ones there instead of building them unasked.
   crashed with "Starting FGS with type none" on Android 17; type mediaProcessing (API ≥ 35) /
   dataSync. Clips opened via VIEW / Share are only readable until the app process ends (the
   persistable grant is taken when offered) → batch entries then fail with a clear message.
+- Android icon + clip picker (2026-10-28, user request): launcher icon from
+  assets/VideoSpeedControl_0.92_big.webp via `tools/make_android_icons.py` (adaptive: gradient
+  fitted as a 4th-degree polynomial → background layer, gauge cut out → foreground, 66 dp wide;
+  title-bar logo drawable-nodpi/vsc_logo.png; monochrome + notification icon = gauge vector).
+  Desktop icons unchanged for now (user: Android first). Clips are chosen in the app's own
+  gallery (`ui/VideoGallery.kt`, READ_MEDIA_VIDEO / partial access, camera folder or all videos,
+  newest first by datetaken else date_added – sorted in Kotlin, NULL datetaken sorts last in
+  SQL). Tested alternatives: SAF EXTRA_INITIAL_URI DCIM/Camera works but sorts by name, does
+  not remember "newest first", shows photos; media-documents bucket URIs are ignored on
+  Android 17 (falls back to the last folder); photo picker gives `<id>.mp4` as display name.
+  SAF stays as "Other files…". Top bar (fixed): logo, "＋ Clip"; unsaved sections / trim →
+  dialog "Add to batch / Discard / Cancel" (`EditorViewModel.hasUnsavedWork`).
 - Android smart export (2026-10-28): `core/Smart.kt` (plan = port of smart.plan incl. half-even
   rounding – 12 random layouts identical to the desktop; join points from the keyframe samples;
   MediaExtractor hands out Annex-B, not length-prefixed!), `core/SmartExport.kt` (copied parts
