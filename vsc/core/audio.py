@@ -33,6 +33,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from . import ffmpeg_bin, segments as seg
+from .formats import COPY
 from .job import Job
 from .runner import Result
 
@@ -98,8 +99,14 @@ def pieces(job: Job) -> list[tuple[float, float, float]]:
                      float(Fraction(p.end - p.start) / p.rate * scale)) for p in ps]
         return out
     if job.has_segments:
-        return [(_file_time(job, p.start) / k, _file_time(job, p.end) / k,
-                 float(Fraction(p.end - p.start) / p.rate)) for p in job.pieces()]
+        out = [(_file_time(job, p.start) / k, _file_time(job, p.end) / k,
+                float(Fraction(p.end - p.start) / p.rate)) for p in job.pieces()]
+        if job.settings.codec != COPY:
+            # re-encoded video lasts a whole number of frames – the sound ends exactly with it
+            a, b, last = out[-1]
+            video = job.output_frame_count / float(job.settings.fps)
+            out[-1] = (a, b, max(0.0, last + video - sum(o for *_, o in out)))
+        return out
     start, end = job.trim.start, job.trim_end
     return [(_file_time(job, start) / k, _file_time(job, end) / k, job.output_duration)]
 

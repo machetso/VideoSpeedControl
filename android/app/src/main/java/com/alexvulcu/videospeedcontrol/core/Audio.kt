@@ -49,14 +49,21 @@ object Audio {
 
     fun spans(job: Timing): List<Span> {
         val k = slowmoFactor(job.info)
-        if (!job.hasSegments) {
-            return listOf(Span(fileTime(job.info, job.trim.start) / k, fileTime(job.info, job.trimEnd) / k,
+        val spans = if (!job.hasSegments) {
+            listOf(Span(fileTime(job.info, job.trim.start) / k, fileTime(job.info, job.trimEnd) / k,
                 job.outputDuration.toDouble()))
-        }
-        return job.pieces().map { p ->
+        } else job.pieces().map { p ->
             Span(fileTime(job.info, p.start) / k, fileTime(job.info, p.end) / k,
                 (Rational.of((p.end - p.start).toLong()) / p.rate).toDouble())
         }
+        // re-encoded video lasts a whole number of frames – the sound ends exactly with it
+        if (job is ReencodeJob) {
+            val video = job.outputFrameCount / job.fps.toDouble()
+            val last = spans.last()
+            val out = last.out + video - spans.sumOf { it.out }
+            if (out > 0) return spans.dropLast(1) + last.copy(out = out)
+        }
+        return spans
     }
 
     /** Decode, restore, stretch and encode the sound for [job]. [progress] gets 0..1. */
@@ -74,7 +81,7 @@ object Audio {
             val spans = spans(job)
             ex.selectTrack(track)
             // seek a little before the first span (the decoder needs to warm up)
-            ex.seekTo(maxOf(0L, ((spans.first().start * k - 0.5) * 1e6).toLong()), MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+            ex.seekTo(maxOf(0L, (((spans.first().start - CONTEXT) * k - 0.2) * 1e6).toLong()), MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
             // asynchronous decoder: polling a codec costs a media-server round trip per call
             val thread = android.os.HandlerThread("vsc-audio-dec").apply { start() }
@@ -89,7 +96,7 @@ object Audio {
                     if (inputDone) return
                     try {
                         val n = ex.readSampleData(codec.getInputBuffer(index)!!, 0)
-                        if (n < 0 || ex.sampleTime / 1e6 / k > lastSpanEnd + 0.5) {
+                        if (n < 0 || ex.sampleTime / 1e6 / k > lastSpanEnd + CONTEXT + 0.2) {
                             codec.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
                         } else {
@@ -146,127 +153,219 @@ object Audio {
         }
     }
 
+    /** Seconds of real-time sound fed before and after every stretched span (Sonic warm-up). */
+    const val CONTEXT = 0.25
+
+    private val leadCache = java.util.concurrent.ConcurrentHashMap<Pair<Int, Int>, Double>()
+
+    /**
+     * How far Sonic moves the content early, in seconds of input, for input rate [inRate] (Hz,
+     * already × slow-mo factor) and [tempo] – measured once with a click through a processor set
+     * up exactly like the real one (in-process, a few ms) and cached. Measured on a Pixel:
+     * ~4–5 ms of input, i.e. 32 ms early at 8× slower, 190 ms at 40× (desktop: rubberband,
+     * same idea). The onset is aligned – what the ear times in a smeared click.
+     */
+    @OptIn(UnstableApi::class)
+    fun sonicLead(inRate: Int, tempo: Double): Double = leadCache.getOrPut(inRate to (tempo * 1e6).toInt()) {
+        val click = CONTEXT
+        val frames = ((click + 0.2) * inRate).toInt()
+        val input = ByteBuffer.allocateDirect(frames * 4).order(ByteOrder.nativeOrder())
+        val at = (click * inRate).toInt()
+        for (i in 0 until frames) {
+            val v: Short = if (i in at until at + maxOf(1, inRate / 2000)) 29000 else 0
+            input.putShort(v); input.putShort(v)
+        }
+        input.flip()
+        val p = SonicAudioProcessor().apply {
+            setSpeed(tempo.toFloat()); setPitch(1f); setOutputSampleRateHz(OUT_RATE)
+            configure(AudioProcessor.AudioFormat(inRate, 2, androidx.media3.common.C.ENCODING_PCM_16BIT))
+            flush(AudioProcessor.StreamMetadata.DEFAULT)
+        }
+        if (!p.isActive) return@getOrPut 0.0              // tempo 1, no rate change: pass-through
+        val out = java.io.ByteArrayOutputStream()
+        fun drain() {
+            while (true) {
+                val o = p.output
+                if (!o.hasRemaining()) break
+                val b = ByteArray(o.remaining()); o.get(b); out.write(b)
+            }
+        }
+        while (input.hasRemaining()) { p.queueInput(input); drain() }
+        p.queueEndOfStream(); drain()
+        val pcm = ByteBuffer.wrap(out.toByteArray()).order(ByteOrder.nativeOrder()).asShortBuffer()
+        val n = pcm.remaining() / 2
+        var peak = 0; var level = 0
+        for (i in 0 until n) { val v = kotlin.math.abs(pcm.get(i * 2).toInt()); if (v > level) { level = v; peak = i } }
+        if (level < 3000) 0.0 else {
+            var onset = peak
+            for (i in 0..peak) if (kotlin.math.abs(pcm.get(i * 2).toInt()) > level / 2) { onset = i; break }
+            click - onset.toDouble() / OUT_RATE * tempo
+        }
+    }
+
     /**
      * Cuts the decoded sound into spans and time-stretches each one; output is 48 kHz stereo
-     * (or mono) 16-bit PCM handed to the encoder, each span exactly as long as its video piece.
+     * (or mono) 16-bit PCM handed to the encoder, each span exactly as long as its video piece
+     * (lengths from the running total, so rounding never adds up).
+     *
+     * Every span gets its own Sonic fed from [CONTEXT] before its start to [CONTEXT] after its
+     * end, so neighbouring spans overlap: while one still takes its after-context the next has
+     * already started – its output is held back until the earlier span is complete. The first
+     * output frames (context minus Sonic's lead, see [sonicLead]) are dropped.
      */
     @OptIn(UnstableApi::class)
     private class Stretcher(val spans: List<Span>, val k: Double) {
         var finished = false
         var position = spans.first().start        // real-time seconds reached in the input
-        private var span = 0
-        private var sonic: SonicAudioProcessor? = null
         private var inRate = 0
         private var inChannels = 0
         private var outChannels = 0
-        private var written = 0L                  // output frames so far (all spans)
-        private var spanTarget = 0L               // output frames at the end of the current span
+        private var procs: List<Proc> = emptyList()
+        private var current = 0                   // span whose output goes to the encoder now
+        private var enc: AacEncoder? = null
 
-        fun feed(pcm: ByteBuffer, ptsUs: Long, fmt: MediaFormat, enc: AacEncoder) {
+        /** One span's processor: input window [inStart, inEnd) in real-time seconds. */
+        private inner class Proc(val index: Int) {
+            val span = spans[index]
+            val tempo = if (span.out > 0 && span.end > span.start) (span.end - span.start) / span.out else 1.0
+            val inStart = maxOf(0.0, span.start - CONTEXT)
+            val inEnd = span.end + CONTEXT
+            /** Output frames this span must produce (from the running total). */
+            val target: Long = run {
+                val before = spans.take(index).sumOf { it.out }
+                kotlin.math.round((before + span.out) * OUT_RATE).toLong() - kotlin.math.round(before * OUT_RATE).toLong()
+            }
+            var sonic: SonicAudioProcessor? = null
+            var skip = 0L                         // output frames still to drop at the start
+            var written = 0L                      // frames delivered (to the encoder or held)
+            val held = java.io.ByteArrayOutputStream()
+            var inputDone = false
+
+            fun start() {
+                val rate = (inRate * k).roundToLong().toInt()
+                val pre = span.start - inStart
+                val lead = sonicLead(rate, tempo)
+                val first = (pre - lead) / tempo                 // output time of the span start
+                sonic = SonicAudioProcessor().apply {
+                    setSpeed(tempo.toFloat().coerceIn(0.01f, 100f))
+                    setPitch(1f)
+                    setOutputSampleRateHz(OUT_RATE)
+                    // asetrate: the samples are read at rate × k (rounded like the desktop)
+                    configure(AudioProcessor.AudioFormat(rate, outChannels, androidx.media3.common.C.ENCODING_PCM_16BIT))
+                    flush(AudioProcessor.StreamMetadata.DEFAULT)
+                }
+                if (first >= 0) skip = kotlin.math.round(first * OUT_RATE).toLong()
+                else deliver(ByteBuffer.allocateDirect((kotlin.math.round(-first * OUT_RATE) * outChannels * 2).toInt()))
+            }
+
+            fun feed(chunk: ByteBuffer) {
+                val p = sonic!!
+                if (!p.isActive) { take(chunk); return }
+                while (chunk.hasRemaining()) {
+                    p.queueInput(chunk)
+                    drain()
+                }
+            }
+
+            fun end() {
+                if (inputDone) return
+                inputDone = true
+                sonic?.let { p ->
+                    if (p.isActive) { p.queueEndOfStream(); drain() }
+                    p.reset()
+                }
+                // a short result is padded with silence
+                val missing = target - written
+                if (missing > 0) deliver(ByteBuffer.allocateDirect((missing * outChannels * 2).toInt()))
+            }
+
+            private fun drain() {
+                val p = sonic!!
+                while (true) {
+                    val o = p.output
+                    if (!o.hasRemaining()) break
+                    take(o)
+                }
+            }
+
+            /** Drop the lead-in, then deliver at most [target] frames. */
+            private fun take(buf: ByteBuffer) {
+                val fb = outChannels * 2
+                val n = buf.remaining() / fb
+                val drop = minOf(skip, n.toLong()).toInt()
+                skip -= drop
+                buf.position(buf.position() + drop * fb)
+                deliver(buf)
+            }
+
+            private fun deliver(buf: ByteBuffer) {
+                val fb = outChannels * 2
+                val room = (target - written).coerceAtLeast(0)
+                val n = minOf(room, (buf.remaining() / fb).toLong()).toInt()
+                if (n > 0) {
+                    val slice = buf.duplicate().apply { limit(position() + n * fb) }
+                    if (index == current) enc!!.write(slice)
+                    else { val b = ByteArray(n * fb); slice.get(b); held.write(b) }
+                    written += n
+                }
+                buf.position(buf.limit())
+            }
+        }
+
+        fun feed(pcm: ByteBuffer, ptsUs: Long, fmt: MediaFormat, encoder: AacEncoder) {
             if (finished) return
             if (inRate == 0) {
                 inRate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 inChannels = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 outChannels = minOf(2, inChannels)
-                enc.start(outChannels)
-                startSpan()
+                enc = encoder
+                encoder.start(outChannels)
+                procs = spans.indices.map { Proc(it) }
             }
             val shorts = pcm.order(ByteOrder.nativeOrder()).asShortBuffer()
             val frames = shorts.remaining() / inChannels
             val rate = inRate * k                                // asetrate: real-time sample rate
-            var t0 = ptsUs / 1e6 / k                              // real time of the first frame
-            var i = 0
-            while (i < frames && !finished) {
-                val s = spans[span]
-                val ti = t0 + i / rate
-                if (ti < s.start) {                               // before this span: skip
-                    i = minOf(frames, i + maxOf(1, ((s.start - ti) * rate).toInt()))
-                    continue
+            val t0 = ptsUs / 1e6 / k                              // real time of the first frame
+            val t1 = t0 + frames / rate
+            position = t1
+            for (p in procs) {
+                if (p.inputDone || p.inEnd <= t0) { if (!p.inputDone && p.inEnd <= t0) p.end(); continue }
+                if (p.inStart >= t1) break                       // later spans: not reached yet
+                if (p.sonic == null) p.start()
+                val a = maxOf(0, kotlin.math.ceil((p.inStart - t0) * rate).toInt()).coerceAtMost(frames)
+                val b = minOf(frames, kotlin.math.ceil((p.inEnd - t0) * rate).toInt()).coerceAtLeast(a)
+                if (b > a) {
+                    val chunk = ByteBuffer.allocateDirect((b - a) * outChannels * 2).order(ByteOrder.nativeOrder())
+                    for (f in a until b) for (c in 0 until outChannels) chunk.putShort(shorts.get(f * inChannels + c))
+                    chunk.flip()
+                    p.feed(chunk)
                 }
-                // frames of this buffer that belong to the current span
-                val endIdx = minOf(frames, i + maxOf(1, kotlin.math.ceil((s.end - ti) * rate).toInt()))
-                val chunk = ByteBuffer.allocateDirect((endIdx - i) * outChannels * 2).order(ByteOrder.nativeOrder())
-                for (f in i until endIdx) {
-                    for (c in 0 until outChannels) chunk.putShort(shorts.get(f * inChannels + c))
+                if (p.inEnd <= t1) p.end()
+            }
+            advance()
+        }
+
+        /** Hand finished spans to the encoder in order, releasing the held output of the next. */
+        private fun advance() {
+            while (current < procs.size && procs[current].inputDone) {
+                current++
+                if (current < procs.size) {
+                    val next = procs[current]
+                    if (next.held.size() > 0) enc!!.write(ByteBuffer.wrap(next.held.toByteArray()))
+                    next.held.reset()
                 }
-                chunk.flip()
-                process(chunk, enc)
-                position = t0 + endIdx / rate
-                i = endIdx
-                if (position >= s.end - 0.5 / rate) endSpan(enc)
             }
+            if (current >= procs.size) finished = true
         }
 
-        private fun startSpan() {
-            val s = spans[span]
-            val cumOut = spans.take(span + 1).sumOf { it.out }
-            spanTarget = (cumOut * OUT_RATE).roundToLong()
-            val tempo = if (s.out > 0 && s.end > s.start) (s.end - s.start) / s.out else 1.0
-            sonic = SonicAudioProcessor().apply {
-                setSpeed(tempo.toFloat().coerceIn(0.01f, 100f))
-                setPitch(1f)
-                setOutputSampleRateHz(OUT_RATE)
-                // asetrate: the samples are read at rate × k (rounded like the desktop)
-                configure(AudioProcessor.AudioFormat((inRate * k).roundToLong().toInt(), outChannels, androidx.media3.common.C.ENCODING_PCM_16BIT))
-                flush(AudioProcessor.StreamMetadata.DEFAULT)
-            }
-        }
-
-        private fun process(chunk: ByteBuffer, enc: AacEncoder) {
-            val p = sonic!!
-            if (!p.isActive) { emit(chunk, enc); return }
-            while (chunk.hasRemaining()) {
-                p.queueInput(chunk)
-                drain(p, enc)
-            }
-        }
-
-        private fun drain(p: SonicAudioProcessor, enc: AacEncoder) {
-            while (true) {
-                val out = p.output
-                if (!out.hasRemaining()) break
-                emit(out, enc)
-            }
-        }
-
-        /** Pass output on, but never beyond the current span's exact end. */
-        private fun emit(buf: ByteBuffer, enc: AacEncoder) {
-            val frameBytes = outChannels * 2
-            val room = (spanTarget - written).coerceAtLeast(0)
-            val n = minOf(room, (buf.remaining() / frameBytes).toLong()).toInt()
-            if (n > 0) {
-                val slice = buf.duplicate().apply { limit(position() + n * frameBytes) }
-                enc.write(slice)
-                written += n
-            }
-            buf.position(buf.limit())
-        }
-
-        private fun endSpan(enc: AacEncoder) {
-            sonic?.let { p ->
-                if (p.isActive) {
-                    p.queueEndOfStream()
-                    drain(p, enc)
-                }
-                p.reset()
-            }
-            padTo(spanTarget, enc)
-            span++
-            if (span >= spans.size) finished = true else startSpan()
-        }
-
-        /** Source sound ended early: finish the open span and fill the rest with silence. */
-        fun finish(enc: AacEncoder) {
+        /** Source sound ended early: finish the open spans (padded with silence). */
+        fun finish(encoder: AacEncoder) {
             if (inRate == 0) return
-            while (!finished) endSpan(enc)
-        }
-
-        private fun padTo(target: Long, enc: AacEncoder) {
-            val missing = target - written
-            if (missing <= 0) return
-            val silence = ByteBuffer.allocateDirect((missing * outChannels * 2).toInt()).order(ByteOrder.nativeOrder())
-            enc.write(silence)
-            written = target
+            for (p in procs) {
+                if (p.sonic == null) p.start()
+                p.end()
+            }
+            advance()
         }
     }
 

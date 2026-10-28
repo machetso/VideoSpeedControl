@@ -65,6 +65,15 @@ def test_sections_follow_the_video(h264_clip, tmp_path):
     assert _frequency(out, slow_start + 1, 4) == pytest.approx(440, rel=0.02)   # 8× slower part
 
 
+def test_sound_ends_with_the_reencoded_video(h264_clip):
+    """Re-encoded video lasts whole frames – the sound pieces must add up to exactly that."""
+    job = _job(h264_clip, codec="x264", fps=Fraction(30))
+    job.segments = [seg.Segment(10, 47, Fraction(70))]          # 37 frames at 70 fps: not whole
+    total = sum(out for *_, out in audio.pieces(job))
+    assert job.output_duration != job.output_frame_count / 30
+    assert total == pytest.approx(job.output_frame_count / 30, abs=1e-9)
+
+
 def _click_onsets(path, times: list[float], search: float = 0.4) -> list[float]:
     """Onset (first sample above half the local peak) of the click nearest each expected time."""
     pcm = subprocess.run([ffmpeg_bin.ffmpeg(), "-v", "error", "-i", str(path), "-map", "0:a",

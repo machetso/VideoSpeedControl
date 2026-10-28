@@ -32,4 +32,10 @@ rm tmp_avc.mp4
     -f lavfi -i "sine=frequency=250:sample_rate=48000:duration=8" \
     -c:v libx264 -preset fast -g 30 -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -shortest \
     -movflags use_metadata_tags -metadata com.android.capture.fps=120.000000 synth_slowmo.mp4
+
+# Sound sync: 240 fps, 4 s, a click every 0.5 s (= every 120 frames) over a quiet 300 Hz tone
+"$FF" -v error -y -f lavfi -i "testsrc2=size=320x180:rate=240:duration=4" \
+    -f lavfi -i "aevalsrc='if(lt(mod(t,0.5),0.0005)*gt(t,0.1),0.9,0)+0.02*sin(2*PI*300*t)':s=48000:d=4" \
+    -c:v libx264 -preset fast -g 24 "${C709[@]}" -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -shortest \
+    synth_clicks240.mp4
 ls -la "$OUT"

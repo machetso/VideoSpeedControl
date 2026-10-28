@@ -107,6 +107,15 @@ Read SCOPE.md for the agreed feature set and milestone status.
   Android (looked like wrong colours). Frame check: `android/tools/verify/check_frames.py` (run in /tmp/opencode/vsc-test)
   (output frame k vs expected source frame, MSE of neighbours) – all 810 frames exact, MSE ≈ 1.
   `TestClips` re-copies a clip when its size on the phone changed.
+- Android sound sync (2026-10-28, after the desktop review): Media3 Sonic moves content
+  ~4–5 ms of input early (32 ms at 8× slower, 191 ms at 40×) like rubberband on the desktop.
+  `Audio.sonicLead(inRate, tempo)` measures a click's onset through an identically set-up
+  SonicAudioProcessor in-process (cached; inactive processor = pass-through = 0). Every span
+  gets its own Sonic fed from 0.25 s before to 0.25 s after it (`Audio.CONTEXT`); overlapping
+  spans run concurrently, later output is held until the earlier span is complete. Result
+  (`AudioSyncDeviceTest` + `tools/verify/check_clicks.py`): onsets −2.4 … +0.2 ms even at 40×,
+  real-time parts exact. Re-encode (both platforms): the last sound piece ends exactly with
+  the last whole video frame.
 
 ## Setup
 - Git: local repo, branch main. `.venv/`, `vendor/`, `tests/media/` are not committed –
