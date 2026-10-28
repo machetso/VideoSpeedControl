@@ -51,6 +51,18 @@ class Rational private constructor(val num: BigInteger, val den: BigInteger) : C
 
     fun abs() = if (num.signum() < 0) -this else this
 
+    /** Nearest integer, ties to even – Python's round(Fraction) (used by the desktop's plans). */
+    fun roundHalfEven(): Long {
+        val f = floor()
+        val diff = this - f
+        val half = of(1, 2)
+        return when {
+            diff < half -> f
+            diff > half -> f + 1
+            else -> if (f % 2 == 0L) f else f + 1
+        }
+    }
+
     companion object {
         val ZERO = of(0)
         val ONE = of(1)

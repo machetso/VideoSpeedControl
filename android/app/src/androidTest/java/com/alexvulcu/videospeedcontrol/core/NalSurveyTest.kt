@@ -29,26 +29,10 @@ class NalSurveyTest {
         while (true) {
             val size = ex.readSampleData(buf, 0)
             if (size < 0) break
-            // length-prefixed NAL units (4 bytes)
-            var p = 0
-            val vcl = mutableListOf<String>()
-            while (p + 6 <= size) {
-                val len = buf.getInt(p)
-                if (len <= 0 || p + 4 + len > size) break
-                val b0 = buf.get(p + 4).toInt() and 0xff
-                val b1 = buf.get(p + 5).toInt() and 0xff
-                if (hevc) {
-                    val type = (b0 shr 1) and 0x3f
-                    val tid = (b1 and 7) - 1
-                    if (type < 32) vcl += "t$type/L$tid"
-                } else {
-                    val type = b0 and 0x1f
-                    val ref = (b0 shr 5) and 3
-                    if (type in 1..5) vcl += "t$type/ref$ref"
-                }
-                p += 4 + len
-            }
+            // MediaExtractor hands out Annex-B (start codes) – Smart.nalTypes reads both layouts
+            val vcl = (Smart.nalTypes(buf, size, hevc) ?: emptyList()).map { "t$it" }
             val key = vcl.distinct().joinToString("+")
+            if (n < 3) Log.i("VscNal", "sample $n starts with " + (0 until 8).joinToString(" ") { "%02x".format(buf.get(it)) })
             types[key] = (types[key] ?: 0) + 1
             if (n < 64) pattern.append(key).append(' ')
             n++
