@@ -176,7 +176,7 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Speed sections", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text("Clip Sections", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 TextButton(vm::undo, enabled = edit.undo.isNotEmpty()) {
                     Text(if (edit.undo.isEmpty()) "↶ Undo" else "↶ Undo (${edit.undo.size})")
                 }
@@ -189,7 +189,9 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             edit.segments.getOrNull(vm.selectedSection)?.let { SectionEditor(vm, edit, vm.selectedSection, rates) }
-            RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
+            if (vm.easy) RateDropdown("Video speed of new sections", vm.sectionFps, rates,
+                { easySpeedLabel(real, vm.fps, it) }, vm::chooseSectionFps)
+            else RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
                 vm::chooseSectionFps)
             val start = vm.pendingStart
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -217,9 +219,13 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                 Row(Modifier.fillMaxWidth().background(bg).clickable { vm.selectSection(i) }.padding(6.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Frames ${s.start + 1}–${s.end} · plays ${secs(len)}", style = MaterialTheme.typography.bodyMedium)
-                        Text(sectionFpsLabel(real, s.fps) + if (vm.easy) "" else smoothNote(s),
-                            style = MaterialTheme.typography.bodySmall)
+                        if (vm.easy) {
+                            Text("Section ${i + 1}: ⏳ ${secs1(len)}", style = MaterialTheme.typography.bodyMedium)
+                            Text(easySpeedLabel(real, vm.fps, s.fps), style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text("Frames ${s.start + 1}–${s.end} · plays ${secs(len)}", style = MaterialTheme.typography.bodyMedium)
+                            Text(sectionFpsLabel(real, s.fps) + smoothNote(s), style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     Text("Edit ›", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
@@ -233,7 +239,7 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
             title = { Text("Clear all sections?") },
-            text = { Text("All ${edit.segments.size} speed sections of this clip are removed. You can undo this.") },
+            text = { Text("All ${edit.segments.size} clip sections of this clip are removed. You can undo this.") },
             confirmButton = { TextButton({ vm.clearSections(); confirmClear = false }) { Text("Clear") } },
             dismissButton = { TextButton({ confirmClear = false }) { Text("Keep") } },
         )
@@ -257,18 +263,19 @@ private fun SectionEditor(vm: EditorViewModel, edit: ClipEdit, index: Int, rates
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val len = (Rational.of((s.end - s.start).toLong()) / s.fps).toDouble()
-                Text("Section ${index + 1}: frames ${s.start + 1}–${s.end} · plays ${secs(len)}",
+                Text(if (vm.easy) "Section ${index + 1}: ⏳ ${secs1(len)}"
+                    else "Section ${index + 1}: frames ${s.start + 1}–${s.end} · plays ${secs(len)}",
                     style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 TextButton(vm::deselectSection) { Text("Done") }
             }
-            RateDropdown("Frame rate", s.fps, rates, { sectionFpsLabel(real, it) }, { vm.setSectionFps(index, it) })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ vm.setSectionStartHere(index) }) { Text("Start = playhead") }
-                OutlinedButton({ vm.setSectionEndHere(index) }) { Text("End = playhead") }
-            }
             if (vm.easy) {
-                Text("Speed changes are smoothed automatically (0.5 s). Pro: choose per border.",
-                    style = MaterialTheme.typography.bodySmall)
+                RateDropdown("Video speed", s.fps, rates, { easySpeedLabel(real, vm.fps, it) }, { vm.setSectionFps(index, it) })
+            } else {
+                RateDropdown("Frame rate", s.fps, rates, { sectionFpsLabel(real, it) }, { vm.setSectionFps(index, it) })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton({ vm.setSectionStartHere(index) }) { Text("Start = playhead") }
+                    OutlinedButton({ vm.setSectionEndHere(index) }) { Text("End = playhead") }
+                }
             }
             for (atStart in if (vm.easy) emptyList() else listOf(true, false)) {
                 val other = edit.neighbourRate(index, atStart)
@@ -371,7 +378,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             if (vm.mode == EditorViewModel.Mode.SMART) {
                 SmartOptions(vm, info, job as SmartJob)
             } else if (job.hasSegments) {
-                Text("Speed sections set the timing: ${edit.segments.size} section(s), the rest in real time. " +
+                Text("Clip sections set the timing: ${edit.segments.size} section(s), the rest in real time. " +
                     "Output ${clock(job.outputDuration.toDouble())} (${speedWords(job.speed.toDouble())} on average).",
                     style = MaterialTheme.typography.bodyMedium)
             }

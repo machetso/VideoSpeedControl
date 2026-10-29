@@ -36,6 +36,9 @@ import com.alexvulcu.videospeedcontrol.core.ClipEdit
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
+/** Space above the thumbnail strip: section labels, playhead handle, the tops of the trim brackets. */
+private val STRIP_TOP = 22.dp
+
 /** A speed ramp on the timeline: source frames [start, end), rate going from [from] to [to]. */
 data class RampZone(val start: Int, val end: Int, val from: com.alexvulcu.videospeedcontrol.core.Rational,
                     val to: com.alexvulcu.videospeedcontrol.core.Rational)
@@ -63,6 +66,7 @@ fun Timeline(
     onBorderDragStart: (border: Int) -> Unit = {},
     onBorderDrag: (frame: Int) -> Unit = {},
     onBorderDragEnd: () -> Unit = {},
+    onTrimDrag: (isIn: Boolean, frame: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val count = edit.info.frames.count
@@ -76,9 +80,14 @@ fun Timeline(
     val dragStart by rememberUpdatedState(onBorderDragStart)
     val dragMove by rememberUpdatedState(onBorderDrag)
     val dragEnd by rememberUpdatedState(onBorderDragEnd)
+    val trimDrag by rememberUpdatedState(onTrimDrag)
+    val trimIn by rememberUpdatedState(edit.trim.start)
+    val trimOut by rememberUpdatedState(edit.trimEnd)
+    val stripTopPx = with(androidx.compose.ui.platform.LocalDensity.current) { STRIP_TOP.toPx() }
     val grabPx = with(androidx.compose.ui.platform.LocalDensity.current) { 16.dp.toPx() }
 
     var downX by remember { mutableFloatStateOf(0f) }
+    var downY by remember { mutableFloatStateOf(0f) }
     fun frameAt(x: Float, width: Float) = (x / width * count).toInt().coerceIn(0, count - 1)
     val magnetPx = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.toPx() }
     /** Magnet radius in frames: 12 dp on screen (a fingertip; the desktop uses 8 px). */
@@ -87,35 +96,54 @@ fun Timeline(
     Canvas(
         modifier
             .fillMaxWidth()
-            .height(84.dp)
+            .height(96.dp)
             .pointerInput(count) {
                 detectTapGestures { tap(frameAt(it.x, size.width.toFloat()), radius(size.width.toFloat())) }
             }
             .pointerInput(count) {
                 // where the finger went down (onDragStart only reports the point after the touch slop)
-                awaitEachGesture { downX = awaitFirstDown(requireUnconsumed = false).position.x }
+                awaitEachGesture {
+                    val p = awaitFirstDown(requireUnconsumed = false).position
+                    downX = p.x
+                    downY = p.y
+                }
             }
             .pointerInput(count) {
                 var border: Int? = null
+                var trim: Boolean? = null          // true = in bracket, false = out bracket
                 detectHorizontalDragGestures(
                     onDragStart = {
                         val w = size.width.toFloat()
-                        border = borders.minByOrNull { b -> abs(b.toFloat() / count * w - downX) }
-                            ?.takeIf { b -> abs(b.toFloat() / count * w - downX) <= grabPx }
-                        border?.let(dragStart) ?: seek(frameAt(it.x, w), radius(w))
+                        val nearBorder = borders.minByOrNull { b -> abs(b.toFloat() / count * w - downX) }
+                        val dBorder = nearBorder?.let { b -> abs(b.toFloat() / count * w - downX) } ?: Float.MAX_VALUE
+                        val dIn = abs(trimIn.toFloat() / count * w - downX)
+                        val dOut = abs(trimOut.toFloat() / count * w - downX)
+                        val dTrim = minOf(dIn, dOut)
+                        // the brackets: grabbed above the strip, or when closer than any section border
+                        trim = if (dTrim <= grabPx * 1.5f && (downY < stripTopPx || dTrim < dBorder)) dIn <= dOut else null
+                        border = if (trim == null) nearBorder?.takeIf { dBorder <= grabPx } else null
+                        when {
+                            trim != null -> {}
+                            border != null -> dragStart(border!!)
+                            else -> seek(frameAt(it.x, w), radius(w))
+                        }
                     },
-                    onDragEnd = { if (border != null) dragEnd(); border = null },
-                    onDragCancel = { if (border != null) dragEnd(); border = null },
+                    onDragEnd = { if (border != null) dragEnd(); border = null; trim = null },
+                    onDragCancel = { if (border != null) dragEnd(); border = null; trim = null },
                 ) { change, _ ->
                     change.consume()
                     val w = size.width.toFloat()
-                    if (border != null) dragMove((change.position.x / w * count).roundToInt().coerceIn(0, count))
-                    else seek(frameAt(change.position.x, w), radius(w))
+                    val b = (change.position.x / w * count).roundToInt().coerceIn(0, count)
+                    when {
+                        trim != null -> trimDrag(trim!!, b)
+                        border != null -> dragMove(b)
+                        else -> seek(frameAt(change.position.x, w), radius(w))
+                    }
                 }
             },
     ) {
         val w = size.width
-        val stripTop = 14.dp.toPx()
+        val stripTop = STRIP_TOP.toPx()
         val stripH = 48.dp.toPx()
         fun x(frame: Int) = frame.toFloat() / count * w
 
@@ -184,6 +212,19 @@ fun Timeline(
         val dim = Color.Black.copy(alpha = 0.6f)
         if (edit.trim.start > 0) drawRect(dim, Offset(0f, stripTop), Size(x(edit.trim.start), stripH))
         if (edit.trimEnd < count) drawRect(dim, Offset(x(edit.trimEnd), stripTop), Size(w - x(edit.trimEnd), stripH))
+
+        // trim brackets [ ] – reaching above the strip, where they are easy to grab
+        val trimColor = Color(0xFFF1C40F)
+        val bw = 4.dp.toPx()
+        val serif = 10.dp.toPx()
+        val bottom = stripTop + stripH + 2.dp.toPx()
+        for ((frame, isIn) in listOf(edit.trim.start to true, edit.trimEnd to false)) {
+            val bx = x(frame).coerceIn(bw / 2, w - bw / 2)
+            val dir = if (isIn) 1f else -1f
+            drawLine(trimColor, Offset(bx, 1.dp.toPx()), Offset(bx, bottom), bw)
+            drawLine(trimColor, Offset(bx - dir * bw / 2, 1.dp.toPx() + bw / 2), Offset(bx + dir * serif, 1.dp.toPx() + bw / 2), bw)
+            drawLine(trimColor, Offset(bx - dir * bw / 2, bottom - bw / 2), Offset(bx + dir * serif, bottom - bw / 2), bw)
+        }
 
         // proxy progress: thin bar along the bottom edge while frames are being prepared
         if (proxyProgress < 1f) {

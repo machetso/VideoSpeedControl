@@ -222,7 +222,8 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     Timeline(edit, vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress,
                         vm::seekFromTimeline, onTap = vm::tapTimeline, ramps = vm.rampZones(),
                         draggedBorder = vm.draggedBorder, onBorderDragStart = vm::beginBorderDrag,
-                        onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag)
+                        onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag,
+                        onTrimDrag = vm::dragTrim)
                     TransportPanel(vm, edit)
                     SectionsPanel(vm, edit)
                     TrimPanel(vm, edit)

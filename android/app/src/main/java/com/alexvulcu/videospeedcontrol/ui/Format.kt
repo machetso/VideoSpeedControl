@@ -28,6 +28,28 @@ fun speedWords(speed: Double): String = when {
     else -> "${fmt(speed)}× faster"
 }
 
+/** Seconds with one decimal, e.g. "5.0 s" (Easy mode). */
+fun secs1(v: Double): String = String.format(Locale.US, "%.1f s", v)
+
+/**
+ * Easy mode: a section's rate as speed only – "4× slower", "real time", "2× faster" – relative
+ * to real time; the rate that equals the output frame rate shows every recorded frame once and is
+ * marked "(original)" (e.g. 9.6× slower at 25 fps for a 240 fps recording).
+ */
+fun easySpeedLabel(real: Rational, outFps: Rational, r: Rational): String {
+    val speed = (r / real).toDouble()
+    val words = when {
+        abs(speed - 1) < 1e-6 -> "real time"
+        speed < 1 -> "${short(1 / speed)}× slower"
+        else -> "${short(speed)}× faster"
+    }
+    return if (r == outFps && r != real) "$words (original)" else words
+}
+
+/** At most one decimal, no trailing ".0" (9.6, 4, 8). */
+private fun short(v: Double): String =
+    String.format(Locale.US, "%.1f", v).removeSuffix(".0")
+
 /** Desktop frame-rate list (formats.FPS). */
 val FPS_CHOICES: List<Rational> =
     listOf("24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60", "120").map(Rational::parse)

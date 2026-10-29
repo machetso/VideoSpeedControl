@@ -624,6 +624,21 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         edit?.let { seek(it.trim.start) }
     }
 
+    /** Trim bracket dragged on the timeline to border [frame] (lossless / smart: keyframes). */
+    fun dragTrim(isIn: Boolean, frame: Int) {
+        stopPlayback()
+        val e = edit ?: return
+        if (isIn) {
+            val f = frame.coerceIn(0, e.trimEnd - 1)
+            edit = e.withIn(f, snap = snapsToKeyframes)
+            edit?.let { seek(it.trim.start) }
+        } else {
+            val f = frame.coerceIn(e.trim.start + 1, e.info.frames.count)
+            edit = e.withOut(f - 1, snap = snapsToKeyframes)
+            edit?.let { seek(it.trimEnd - 1) }
+        }
+    }
+
     fun setOut() {
         stopPlayback()
         edit = edit?.withOut(playhead, snap = snapsToKeyframes)
