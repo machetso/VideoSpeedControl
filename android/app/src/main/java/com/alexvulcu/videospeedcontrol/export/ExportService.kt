@@ -41,7 +41,7 @@ class ExportService : Service() {
         val type = if (ExportManager.mediaProcessingType) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
         else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         // directly, not via ServiceCompat: that started the service "with type none" on Android 17
-        startForeground(ID, notification("Preparing export …", 0f, true), type)
+        startForeground(ID, notification("Preparing …", 0f, true), type)
         if (!running) {
             running = true
             scope.launch {
@@ -78,7 +78,7 @@ class ExportService : Service() {
         }
         nm.notify(ID_DONE, NotificationCompat.Builder(this, CHANNEL_DONE)
             .setSmallIcon(R.drawable.ic_stat_export)
-            .setContentTitle("Export finished")
+            .setContentTitle("Video saved")
             .setContentText(text)
             .setContentIntent(openApp())
             .setAutoCancel(true)
@@ -91,7 +91,7 @@ class ExportService : Service() {
     private fun notification(text: String, progress: Float, indeterminate: Boolean) =
         NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_export)
-            .setContentTitle("Exporting")
+            .setContentTitle("Still saving – the video appears when it is finished")
             .setContentText(text)
             .setProgress(1000, (progress * 1000).toInt(), indeterminate)
             .setOngoing(true)

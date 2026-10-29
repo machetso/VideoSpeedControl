@@ -387,7 +387,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Export", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(if (vm.easy) "Save" else "Export", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 // Easy hides the codec details (codec, quality); Pro shows everything
                 SingleChoiceSegmentedButtonRow {
                     listOf(true to "Easy", false to "Pro").forEachIndexed { i, (easy, label) ->
@@ -472,12 +472,15 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             }
             when (val e = vm.export) {
                 is ExportState.Running -> {
+                    // the file only appears in the folder (and in Google Photos) once it is complete
+                    Text("Still saving … ${(e.progress * 100).toInt()} % – the video appears in " +
+                        "Movies/VideoSpeedControl when it is finished.", style = MaterialTheme.typography.bodyMedium)
                     LinearProgressIndicator(progress = { e.progress }, modifier = Modifier.fillMaxWidth())
                     OutlinedButton(vm::cancelExport) { Text("Cancel") }
                 }
                 else -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onExport) { Text("Export") }
+                        Button(onExport) { Text(if (vm.easy) "Save video" else "Export") }
                         OutlinedButton(vm::addToBatch) { Text("Add to batch") }
                     }
                     if (vm.editingEntry != null) {
@@ -549,7 +552,7 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
                         val status = when (e.status) {
                             ExportManager.Status.IDLE -> null
                             ExportManager.Status.WAITING -> "waiting"
-                            ExportManager.Status.RUNNING -> "exporting … ${(e.progress * 100).toInt()} %"
+                            ExportManager.Status.RUNNING -> "still saving … ${(e.progress * 100).toInt()} %"
                             ExportManager.Status.DONE -> "✔ ${e.output}"
                             ExportManager.Status.FAILED -> "failed: ${e.error}"
                             ExportManager.Status.CANCELLED -> "cancelled"
@@ -594,7 +597,7 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (running) OutlinedButton(vm::cancelAll) { Text("Cancel all") }
-                else Button(vm::exportBatch, enabled = open > 0) { Text("Export batch ($open)") }
+                else Button(vm::exportBatch, enabled = open > 0) { Text(if (vm.easy) "Save all ($open)" else "Export batch ($open)") }
                 if (entries.any { it.status == ExportManager.Status.DONE }) TextButton(vm::clearDoneEntries) { Text("Remove done") }
             }
             OutlinedButton(onAddClip) { Text("＋ Add another clip") }
