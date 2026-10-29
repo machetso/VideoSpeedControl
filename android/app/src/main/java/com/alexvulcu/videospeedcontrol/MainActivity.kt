@@ -230,14 +230,14 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 is ClipState.Loaded -> {
                     val edit = vm.edit ?: return@Column
                     PreviewPane(vm, s.info)
-                    Timeline(edit, vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress,
+                    Timeline(vm.shownEdit(edit), vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress,
                         vm::seekFromTimeline, onTap = vm::tapTimeline, ramps = vm.rampZones(),
                         draggedBorder = vm.draggedBorder, onBorderDragStart = vm::beginBorderDrag,
                         onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag,
                         onTrimDrag = vm::dragTrim, easy = vm.easy)
                     TransportPanel(vm, edit)
                     SectionsPanel(vm, edit)
-                    TrimPanel(vm, edit)
+                    if (!vm.easy) TrimPanel(vm, edit)       // Easy: the yellow brackets on the timeline
                     ExportCard(vm, edit, onExport)
                     BatchCard(vm, choose)
                     TreatmentCard(vm, onSave = { saveCst.launch(vm.treatmentFileName()) },

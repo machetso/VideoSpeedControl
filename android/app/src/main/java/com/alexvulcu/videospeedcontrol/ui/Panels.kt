@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
@@ -112,6 +113,12 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (!vm.easy) Text("Frame ${p + 1} / ${fm.count}$key · source ${secs((fm.ptsUs[p] - fm.ptsUs[0]) / 1e6)} · output $outT",
             style = MaterialTheme.typography.bodySmall)
+        else {
+            // the yellow brackets as times: in, out and what is kept
+            val tIn = vm.realSeconds(edit, edit.trim.start)
+            val tOut = vm.realSeconds(edit, edit.trimEnd)
+            Text("In ${secs1(tIn)} · Out ${secs1(tOut)} · ⏳ ${secs1(tOut - tIn)}", style = MaterialTheme.typography.bodyMedium)
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(vm::togglePlay) { Text(if (vm.playing) "■ Stop" else "▶ Play preview") }
             Text(
@@ -173,6 +180,20 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
     val real = edit.info.realFps
     val rates = sectionRates(real)
     var confirmClear by remember { mutableStateOf(false) }
+    if (vm.easy && vm.wholeClip) {
+        // Easy "Whole clip": one speed for everything, the sections are kept aside
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Whole clip selected", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    OutlinedButton({ vm.chooseWholeClip(false) }) { Text("Clip Sections") }
+                }
+                RateDropdown("Video speed", vm.wholeRate ?: vm.fps, (rates + vm.fps).distinct().sorted(),
+                    { easySpeedLabel(real, vm.fps, it) }, vm::chooseWholeRate)
+            }
+        }
+        return
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -195,8 +216,10 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                 vm::chooseSectionFps)
             val start = vm.pendingStart
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(vm::markStart) { Text("[ Start") }
-                Button(vm::markEnd) { Text("End ]") }
+                val pad = if (vm.easy) PaddingValues(horizontal = 14.dp) else ButtonDefaults.ContentPadding
+                Button(vm::markStart, contentPadding = pad) { Text("[ Start") }
+                Button(vm::markEnd, contentPadding = pad) { Text("End ]") }
+                if (vm.easy) OutlinedButton({ vm.chooseWholeClip(true) }, contentPadding = pad) { Text("Whole clip") }
                 if (start != null) {
                     TextButton(vm::cancelMark) { Text("Cancel") }
                 }
@@ -390,7 +413,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             )
             if (vm.mode == EditorViewModel.Mode.SMART) {
                 SmartOptions(vm, info, job as SmartJob)
-            } else if (job.hasSegments) {
+            } else if (job.hasSegments && !(vm.easy && vm.wholeClip)) {
                 Text("Clip sections set the timing: ${edit.segments.size} section(s), the rest in real time. " +
                     "Output ${clock(job.outputDuration.toDouble())} (${speedWords(job.speed.toDouble())} on average).",
                     style = MaterialTheme.typography.bodyMedium)

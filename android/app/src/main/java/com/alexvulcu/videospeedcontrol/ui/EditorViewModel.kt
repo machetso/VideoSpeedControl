@@ -111,8 +111,36 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     val usedCodec: VideoCodec get() = if (easy) defaultCodec else codec
     val usedQuality: Quality get() = if (easy) Quality.HIGH else quality
 
+    /**
+     * Easy "Whole clip": the sections are set aside and the whole clip plays at [wholeRate]
+     * (one section over the whole clip – works the same in every export mode).
+     */
+    var wholeClip by mutableStateOf(false)
+        private set
+    /** Rate of the whole clip; null = the output frame rate (every recorded frame once). */
+    var wholeRate by mutableStateOf<Rational?>(null)
+        private set
+
+    fun chooseWholeClip(on: Boolean) { stopPlayback(); wholeClip = on; selectedSection = -1; pendingStart = null }
+    fun chooseWholeRate(r: Rational) { stopPlayback(); wholeRate = r }
+
     /** The sections as exported: Easy smooths every speed change (no switches), Pro as set. */
-    fun usedSegments(e: ClipEdit): List<Segment> = if (easy) Segments.allSmooth(e.segments) else e.segments
+    fun usedSegments(e: ClipEdit): List<Segment> = when {
+        easy && wholeClip -> listOf(Segment(0, e.info.frames.count, wholeRate ?: fps))
+        easy -> Segments.allSmooth(e.segments)
+        else -> e.segments
+    }
+
+    /** The edit as the timeline shows it (Whole clip: one band over everything). */
+    fun shownEdit(e: ClipEdit): ClipEdit = if (easy && wholeClip) e.copy(segments = usedSegments(e)) else e
+
+    /** Real-time seconds from the clip start to the start of [frame] (Easy in / out display). */
+    fun realSeconds(e: ClipEdit, frame: Int): Double {
+        val pts = e.info.frames.ptsUs
+        val us = if (frame < pts.size) pts[frame] - pts[0]
+        else pts.last() - pts[0] + (pts.last() - pts[maxOf(0, pts.size - 2)])
+        return us / 1e6 / (e.info.realFps / e.info.fps).toDouble()
+    }
 
     fun chooseEasy(on: Boolean) {
         easy = on
@@ -148,7 +176,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun smartPieces(): List<SmartPiece> {
         val e = edit ?: return emptyList()
-        return Segments.pieces(e.segments, e.trim.start, e.trimEnd, e.info.realFps).map { p ->
+        return Segments.pieces(usedSegments(e), e.trim.start, e.trimEnd, e.info.realFps).map { p ->
             val differs = p.rate != fps
             val key = "${p.start}-${p.end}-${p.rate}"
             // Easy: always the automatic rule (no switch, no ticks)
@@ -291,6 +319,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 val info = withContext(Dispatchers.IO) { Probe.probe(getApplication(), uri) }
                 clip = ClipState.Loaded(info)
                 edit = ClipEdit(info)
+                wholeClip = false
+                wholeRate = null
                 playhead = 0
                 pendingStart = null
                 selectedSection = -1
