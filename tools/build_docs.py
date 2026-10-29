@@ -171,8 +171,21 @@ Copyright © 2026 Alex Vulcu. Concept, architecture, direction, and curation by 
 
 
 def _finish_title_page(doc: QTextDocument) -> None:
-    """Centre the title page and start the guide on a new page."""
+    """Centre the title page and start the guide on a new page; the logo at half the width."""
     block = doc.begin()
+    it = block.begin()
+    while not it.atEnd():
+        frag = it.fragment()
+        if frag.charFormat().isImageFormat():
+            image = frag.charFormat().toImageFormat()
+            if image.width() > 0:
+                image.setWidth(image.width() * 0.5)
+                image.setHeight(image.height() * 0.5)
+                cursor = QTextCursor(doc)
+                cursor.setPosition(frag.position())
+                cursor.setPosition(frag.position() + frag.length(), QTextCursor.KeepAnchor)
+                cursor.setCharFormat(image)
+        it += 1
     while block.isValid():
         fmt = block.blockFormat()
         fmt.setAlignment(Qt.AlignCenter)

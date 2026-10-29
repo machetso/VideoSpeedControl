@@ -43,10 +43,9 @@ IDEAS.md – add new ones there instead of building them unasked.
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 - ANDROID – RESUME HERE: milestone 7 (batch list, .cst, export service) done on 2026-10-28.
-  Then (same day) new launcher icon + own clip gallery + "＋ Clip" button (commit 1cf4820).
-  Next: (1) the user tries batch / .cst / background export, the new icon and the gallery;
-  (2) milestone 8 (signed release APK, licence notices); (3) later maybe the new icon for
-  the desktop too (tools/make_icons.py still uses the old artwork). adb "no permissions" = phone in "charging only" USB mode →
+  Then own clip gallery + "＋ Clip" button (1cf4820); 2026-10-29 new logo for desktop + Android.
+  Next: the user has more changes for the app; then milestone 8 (signed release APK, licence
+  notices). adb "no permissions" = phone in "charging only" USB mode →
   switch to "File transfer".
 - Android M7 (2026-10-28): `core/Treatment.kt` = port of treatment.py (fingerprint identical,
   unit test with desktop_smart.cst). Mapping: Lossless → codec "copy"; Smart → smart true +
@@ -59,11 +58,14 @@ IDEAS.md – add new ones there instead of building them unasked.
   crashed with "Starting FGS with type none" on Android 17; type mediaProcessing (API ≥ 35) /
   dataSync. Clips opened via VIEW / Share are only readable until the app process ends (the
   persistable grant is taken when offered) → batch entries then fail with a clear message.
-- Android icon + clip picker (2026-10-28, user request): launcher icon from
-  assets/VideoSpeedControl_0.92_big.webp via `tools/make_android_icons.py` (adaptive: gradient
-  fitted as a 4th-degree polynomial → background layer, gauge cut out → foreground, 66 dp wide;
-  title-bar logo drawable-nodpi/vsc_logo.png; monochrome + notification icon = gauge vector).
-  Desktop icons unchanged for now (user: Android first). Clips are chosen in the app's own
+- LOGO (2026-10-29, user request): `assets/VSL-Logo_transparent.webp` (square, transparent) is
+  the artwork for ALL variants. Desktop: `tools/make_icons.py` → icons 16–512, icon.ico,
+  splash.webp (1024 px; About dialog shows it 260 px wide, PDF title page at half width).
+  Android: `tools/make_android_icons.py` → adaptive icon (background: dark blue radial gradient
+  #3a4a6b → #141a26, chosen by the user from 4 options; logo 66 dp wide) + title-bar logo
+  drawable-nodpi/vsc_logo.png (transparent); monochrome + notification icon = gauge vector.
+  The older assets/VideoSpeedControl_*.webp are no longer used.
+- Android clip picker (2026-10-28, user request): clips are chosen in the app's own
   gallery (`ui/VideoGallery.kt`, READ_MEDIA_VIDEO / partial access, camera folder or all videos,
   newest first by datetaken else date_added – sorted in Kotlin, NULL datetaken sorts last in
   SQL). Tested alternatives: SAF EXTRA_INITIAL_URI DCIM/Camera works but sorts by name, does

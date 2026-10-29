@@ -137,7 +137,7 @@ class AboutDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("About VideoSpeedControl")
         picture = QLabel()
-        picture.setPixmap(splash_pixmap(560))
+        picture.setPixmap(splash_pixmap(260))
         picture.setAlignment(Qt.AlignCenter)
         text = QLabel(
             f"<h2>VideoSpeedControl {__version__}</h2>"
