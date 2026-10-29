@@ -46,6 +46,17 @@ fun easySpeedLabel(real: Rational, outFps: Rational, r: Rational): String {
     return if (r == outFps && r != real) "$words (original)" else words
 }
 
+/**
+ * Easy speed choices: whole frame rates only (30, not 29.97 – they would show as the same
+ * "8× slower"), plus the original (the output frame rate, e.g. 25 → 9.6× slower) and real
+ * time; every label once.
+ */
+fun easyRates(real: Rational, outFps: Rational): List<Rational> =
+    (sectionRates(real) + outFps)
+        .filter { Rational.of(it.floor()) == it || it == outFps || it == real }
+        .distinct().sorted()
+        .distinctBy { easySpeedLabel(real, outFps, it) }
+
 /** Timeline label in Easy: "4× slower" / "real time" / "2× faster", or just "4×" / "1×". */
 fun easySpeedShort(real: Rational, r: Rational, long: Boolean): String {
     val speed = (r / real).toDouble()

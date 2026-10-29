@@ -194,7 +194,7 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                     }
                 }
                 OutlinedButton({ vm.chooseWholeClip(false) }) { Text("Back to Clip Sections") }
-                RateDropdown("Video speed", vm.wholeRate ?: vm.fps, (rates + vm.fps).distinct().sorted(),
+                RateDropdown("Video speed", vm.wholeRate ?: vm.fps, easyRates(real, vm.fps),
                     { easySpeedLabel(real, vm.fps, it) }, vm::chooseWholeRate)
             }
         }
@@ -218,7 +218,7 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
             val selected = edit.segments.getOrNull(vm.selectedSection)
             selected?.let { SectionEditor(vm, edit, vm.selectedSection, rates) }
             // Easy: while a section is open its own "Video speed" is enough
-            if (vm.easy && selected == null) RateDropdown("Video speed of new sections", vm.sectionFps, rates,
+            if (vm.easy && selected == null) RateDropdown("Video speed of new sections", vm.sectionFps, easyRates(real, vm.fps),
                 { easySpeedLabel(real, vm.fps, it) }, vm::chooseSectionFps)
             else if (!vm.easy) RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
                 vm::chooseSectionFps)
@@ -303,7 +303,7 @@ private fun SectionEditor(vm: EditorViewModel, edit: ClipEdit, index: Int, rates
                 TextButton(vm::deselectSection) { Text("Done") }
             }
             if (vm.easy) {
-                RateDropdown("Video speed", s.fps, rates, { easySpeedLabel(real, vm.fps, it) }, { vm.setSectionFps(index, it) })
+                RateDropdown("Video speed", s.fps, easyRates(real, vm.fps), { easySpeedLabel(real, vm.fps, it) }, { vm.setSectionFps(index, it) })
             } else {
                 RateDropdown("Frame rate", s.fps, rates, { sectionFpsLabel(real, it) }, { vm.setSectionFps(index, it) })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
