@@ -186,8 +186,14 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Whole clip selected", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    OutlinedButton({ vm.chooseWholeClip(false) }) { Text("Clip Sections") }
+                    TextButton(vm::undo, enabled = edit.undo.isNotEmpty()) {
+                        Text(if (edit.undo.isEmpty()) "↶ Undo" else "↶ Undo (${edit.undo.size})")
+                    }
+                    TextButton(vm::redo, enabled = edit.redo.isNotEmpty()) {
+                        Text(if (edit.redo.isEmpty()) "↷ Redo" else "↷ Redo (${edit.redo.size})")
+                    }
                 }
+                OutlinedButton({ vm.chooseWholeClip(false) }) { Text("Back to Clip Sections") }
                 RateDropdown("Video speed", vm.wholeRate ?: vm.fps, (rates + vm.fps).distinct().sorted(),
                     { easySpeedLabel(real, vm.fps, it) }, vm::chooseWholeRate)
             }

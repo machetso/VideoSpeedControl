@@ -115,14 +115,22 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
      * Easy "Whole clip": the sections are set aside and the whole clip plays at [wholeRate]
      * (one section over the whole clip – works the same in every export mode).
      */
-    var wholeClip by mutableStateOf(false)
-        private set
-    /** Rate of the whole clip; null = the output frame rate (every recorded frame once). */
-    var wholeRate by mutableStateOf<Rational?>(null)
-        private set
+    val wholeClip: Boolean get() = edit?.whole != null
+    /** Rate of the whole clip (set to the output frame rate – every recorded frame once – when switched on). */
+    val wholeRate: Rational? get() = edit?.whole
 
-    fun chooseWholeClip(on: Boolean) { stopPlayback(); wholeClip = on; selectedSection = -1; pendingStart = null }
-    fun chooseWholeRate(r: Rational) { stopPlayback(); wholeRate = r }
+    /** Whole clip on / off – undoable (the sections are kept either way). */
+    fun chooseWholeClip(on: Boolean) {
+        stopPlayback()
+        selectedSection = -1
+        pendingStart = null
+        edit = edit?.withWhole(if (on) fps else null, if (on) "Whole clip" else "Back to the clip sections")
+    }
+
+    fun chooseWholeRate(r: Rational) {
+        stopPlayback()
+        edit = edit?.withWhole(r, "Whole clip speed")
+    }
 
     /** The sections as exported: Easy smooths every speed change (no switches), Pro as set. */
     fun usedSegments(e: ClipEdit): List<Segment> = when {
@@ -319,8 +327,6 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 val info = withContext(Dispatchers.IO) { Probe.probe(getApplication(), uri) }
                 clip = ClipState.Loaded(info)
                 edit = ClipEdit(info)
-                wholeClip = false
-                wholeRate = null
                 playhead = 0
                 pendingStart = null
                 selectedSection = -1

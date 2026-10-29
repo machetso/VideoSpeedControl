@@ -11,9 +11,11 @@ data class ClipEdit(
     val segments: List<Segment> = emptyList(),
     val undo: List<Step> = emptyList(),
     val redo: List<Step> = emptyList(),
+    /** Easy "Whole clip": the whole clip plays at this rate, the sections are set aside (null = sections). */
+    val whole: Rational? = null,
 ) {
-    /** One undoable change: the sections before it and what it was ("Add section 120–240"). */
-    data class Step(val segments: List<Segment>, val what: String)
+    /** One undoable change: the state before it and what it was ("Add section 120–240"). */
+    data class Step(val segments: List<Segment>, val what: String, val whole: Rational? = null)
 
     private val frames get() = info.frames
 
@@ -24,17 +26,25 @@ data class ClipEdit(
     /** Change the sections; the old ones go onto the undo stack. */
     fun editSegments(new: List<Segment>, what: String): ClipEdit {
         if (new == segments) return this
-        return copy(segments = new, undo = (undo + Step(segments, what)).takeLast(MAX_UNDO), redo = emptyList())
+        return copy(segments = new, undo = (undo + Step(segments, what, whole)).takeLast(MAX_UNDO), redo = emptyList())
+    }
+
+    /** "Whole clip" on at [rate] / off (null) – undoable like a section edit. */
+    fun withWhole(rate: Rational?, what: String): ClipEdit {
+        if (rate == whole) return this
+        return copy(whole = rate, undo = (undo + Step(segments, what, whole)).takeLast(MAX_UNDO), redo = emptyList())
     }
 
     fun undo(): ClipEdit {
         val step = undo.lastOrNull() ?: return this
-        return copy(segments = step.segments, undo = undo.dropLast(1), redo = redo + Step(segments, step.what))
+        return copy(segments = step.segments, whole = step.whole, undo = undo.dropLast(1),
+            redo = redo + Step(segments, step.what, whole))
     }
 
     fun redo(): ClipEdit {
         val step = redo.lastOrNull() ?: return this
-        return copy(segments = step.segments, redo = redo.dropLast(1), undo = undo + Step(segments, step.what))
+        return copy(segments = step.segments, whole = step.whole, redo = redo.dropLast(1),
+            undo = undo + Step(segments, step.what, whole))
     }
 
     /** Section from [first] to [last] (both included, any order) at [fps]. */

@@ -113,4 +113,17 @@ class ClipEditTest {
         val m = e.setSectionRange(0, 150, 349)                          // overlaps the next: cut back
         assertEquals(listOf(Segment(150, 350, r("25")), Segment(350, 400, r("60"))), m.segments)
     }
+
+    @Test fun wholeClipIsUndoable() {
+        val e = clip().addSection(0, 299, r("25")).addSection(300, 499, r("60"))
+        val w = e.withWhole(r("25"), "Whole clip").withWhole(r("30"), "Whole clip speed")
+        assertEquals(r("30"), w.whole)
+        assertEquals(e.segments, w.segments)                     // the sections stay
+        val back = w.undo()
+        assertEquals(r("25"), back.whole)
+        val sections = back.undo()
+        assertEquals(null, sections.whole)                       // accidental "Whole clip" undone
+        assertEquals(e.segments, sections.segments)
+        assertEquals(r("25"), sections.redo().whole)
+    }
 }
