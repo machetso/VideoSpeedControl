@@ -46,6 +46,16 @@ fun easySpeedLabel(real: Rational, outFps: Rational, r: Rational): String {
     return if (r == outFps && r != real) "$words (original)" else words
 }
 
+/** Timeline label in Easy: "4× slower" / "real time" / "2× faster", or just "4×" / "1×". */
+fun easySpeedShort(real: Rational, r: Rational, long: Boolean): String {
+    val speed = (r / real).toDouble()
+    return when {
+        abs(speed - 1) < 1e-6 -> if (long) "real time" else "1×"
+        speed < 1 -> "${short(1 / speed)}×" + if (long) " slower" else ""
+        else -> "${short(speed)}×" + if (long) " faster" else ""
+    }
+}
+
 /** At most one decimal, no trailing ".0" (9.6, 4, 8). */
 private fun short(v: Double): String =
     String.format(Locale.US, "%.1f", v).removeSuffix(".0")

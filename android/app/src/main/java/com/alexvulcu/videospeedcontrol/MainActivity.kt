@@ -197,8 +197,19 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Image(painterResource(R.drawable.vsc_logo), null, Modifier.size(36.dp))
-                    Text("VideoSpeedControl", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("VideoSpeedControl", style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    // Easy / Pro badge: tap to switch
+                    Surface(
+                        onClick = { vm.chooseEasy(!vm.easy) },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        color = androidx.compose.ui.graphics.Color.Transparent,
+                    ) {
+                        Text(if (vm.easy) "Easy" else "Pro", style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                    }
+                    androidx.compose.foundation.layout.Spacer(Modifier.weight(0.01f))
                     if (vm.clip is ClipState.Loaded) OutlinedButton(onClick = choose) { Text("＋ Clip") }
                     else Button(onClick = choose) { Text("Choose clip") }
                 }
@@ -223,7 +234,7 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                         vm::seekFromTimeline, onTap = vm::tapTimeline, ramps = vm.rampZones(),
                         draggedBorder = vm.draggedBorder, onBorderDragStart = vm::beginBorderDrag,
                         onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag,
-                        onTrimDrag = vm::dragTrim)
+                        onTrimDrag = vm::dragTrim, easy = vm.easy)
                     TransportPanel(vm, edit)
                     SectionsPanel(vm, edit)
                     TrimPanel(vm, edit)

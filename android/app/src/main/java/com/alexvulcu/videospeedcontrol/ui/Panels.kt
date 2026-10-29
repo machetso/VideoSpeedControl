@@ -110,7 +110,7 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
     val outT = if (inRange) secs(Segments.outputTime(job.pieces(), p).toDouble()) else "cut"
     val key = if (p in fm.keyframes) " · keyframe" else ""
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Frame ${p + 1} / ${fm.count}$key · source ${secs((fm.ptsUs[p] - fm.ptsUs[0]) / 1e6)} · output $outT",
+        if (!vm.easy) Text("Frame ${p + 1} / ${fm.count}$key · source ${secs((fm.ptsUs[p] - fm.ptsUs[0]) / 1e6)} · output $outT",
             style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(vm::togglePlay) { Text(if (vm.playing) "■ Stop" else "▶ Play preview") }
@@ -130,12 +130,12 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             val pad = PaddingValues(horizontal = 6.dp)
             FilledTonalButton(vm::toStart, contentPadding = pad) { Icon(FirstIcon, "first frame", Modifier.size(22.dp)) }
-            FilledTonalButton(vm::previousKeyframe, contentPadding = pad) {
+            if (!vm.easy) FilledTonalButton(vm::previousKeyframe, contentPadding = pad) {
                 Icon(KeyMinusIcon, "previous keyframe", Modifier.size(width = 30.dp, height = 26.dp))
             }
             FilledTonalButton({ vm.step(-1) }, contentPadding = pad) { Text("◀ 1") }
             FilledTonalButton({ vm.step(1) }, contentPadding = pad) { Text("1 ▶") }
-            FilledTonalButton(vm::nextKeyframe, contentPadding = pad) {
+            if (!vm.easy) FilledTonalButton(vm::nextKeyframe, contentPadding = pad) {
                 Icon(KeyPlusIcon, "next keyframe", Modifier.size(width = 30.dp, height = 26.dp))
             }
             FilledTonalButton(vm::toEnd, contentPadding = pad) { Icon(LastIcon, "last frame", Modifier.size(22.dp)) }
@@ -184,7 +184,7 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                     Text(if (edit.redo.isEmpty()) "↷ Redo" else "↷ Redo (${edit.redo.size})")
                 }
             }
-            edit.undo.lastOrNull()?.let {
+            if (!vm.easy) edit.undo.lastOrNull()?.let {
                 Text("Last change: ${it.what}", style = MaterialTheme.typography.bodySmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -349,7 +349,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 SingleChoiceSegmentedButtonRow {
                     listOf(true to "Easy", false to "Pro").forEachIndexed { i, (easy, label) ->
                         SegmentedButton(selected = vm.easy == easy, onClick = { vm.chooseEasy(easy) },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                            shape = SegmentedButtonDefaults.itemShape(i, 2), colors = greenSegments()) { Text(label) }
                     }
                 }
             }
@@ -359,7 +359,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 modes.forEachIndexed { i, (m, label) ->
                     SegmentedButton(
                         selected = vm.mode == m, onClick = { vm.chooseMode(m) },
-                        shape = SegmentedButtonDefaults.itemShape(i, modes.size),
+                        shape = SegmentedButtonDefaults.itemShape(i, modes.size), colors = greenSegments(),
                         enabled = vm.export !is ExportState.Running,
                     ) { Text(label) }
                 }
@@ -426,7 +426,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = vm.sound && info.audio != null, onCheckedChange = { vm.sound = it },
+                Switch(checked = vm.sound && info.audio != null, onCheckedChange = { vm.sound = it }, colors = greenSwitch(),
                     enabled = info.audio != null && vm.export !is ExportState.Running)
             }
             when (val e = vm.export) {
@@ -738,3 +738,14 @@ val PlayIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
             fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
     }.build()
 }
+
+/** Chosen options are green (user): segmented buttons and switches that are on. */
+val ChosenGreen = Color(0xFF2E9E4F)
+
+@Composable
+fun greenSegments() = SegmentedButtonDefaults.colors(
+    activeContainerColor = ChosenGreen, activeContentColor = Color.White, activeBorderColor = ChosenGreen)
+
+@Composable
+fun greenSwitch() = androidx.compose.material3.SwitchDefaults.colors(
+    checkedTrackColor = ChosenGreen, checkedThumbColor = Color.White, checkedBorderColor = ChosenGreen)

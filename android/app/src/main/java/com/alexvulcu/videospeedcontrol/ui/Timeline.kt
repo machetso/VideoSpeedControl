@@ -67,6 +67,7 @@ fun Timeline(
     onBorderDrag: (frame: Int) -> Unit = {},
     onBorderDragEnd: () -> Unit = {},
     onTrimDrag: (isIn: Boolean, frame: Int) -> Unit = { _, _ -> },
+    easy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val count = edit.info.frames.count
@@ -174,7 +175,12 @@ fun Timeline(
             val c = if (s.fps < real) colors.primary else colors.tertiary
             drawRect(c.copy(alpha = if (i == selected) 0.55f else 0.35f), Offset(left, stripTop), Size(right - left, stripH))
             drawRect(c, Offset(left, stripTop + stripH - 4.dp.toPx()), Size(right - left, 4.dp.toPx()))
-            val label = measurer.measure(ClipEdit.fpsLabel(s.fps), TextStyle(fontSize = 11.sp, color = c))
+            // Easy: the speed ("4× slower", short "4×" if it does not fit); Pro: the frame rate
+            var label = measurer.measure(if (easy) easySpeedShort(real, s.fps, long = true) else ClipEdit.fpsLabel(s.fps),
+                TextStyle(fontSize = 11.sp, color = c))
+            if (easy && label.size.width >= right - left) {
+                label = measurer.measure(easySpeedShort(real, s.fps, long = false), TextStyle(fontSize = 11.sp, color = c))
+            }
             if (label.size.width < right - left) {
                 drawText(label, topLeft = Offset(left + (right - left - label.size.width) / 2, 0f))
             }
