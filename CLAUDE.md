@@ -28,7 +28,7 @@ IDEAS.md – add new ones there instead of building them unasked.
   About), code in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
   `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
   MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
-  Version in `vsc/__init__.py` (0.9.1).
+  Version in `vsc/__init__.py` (0.92; Android versionName 0.92 / versionCode 2).
 - Milestone 7 – packaging (in progress, 2026-10-26). User decisions: GitHub Actions, private
   repo, Inno Setup installer (per-user install, admin optional), build on tag `v*` + manual,
   AV2 NOT on Windows yet (later: build AVM with MSVC in the workflow).
@@ -43,9 +43,34 @@ IDEAS.md – add new ones there instead of building them unasked.
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 - ANDROID – RESUME HERE: milestone 7 (batch list, .cst, export service) done on 2026-10-28.
-  Then own clip gallery + "＋ Clip" button (1cf4820); 2026-10-29 new logo for desktop + Android.
-  Next: the user has more changes for the app; then milestone 8 (signed release APK, licence
-  notices). adb "no permissions" = phone in "charging only" USB mode →
+  Then own clip gallery + "＋ Clip" button (1cf4820); 2026-10-29 new logo for desktop + Android;
+  2026-10-29 v0.92 changes on both platforms (see below). Next: the user tests v0.92; then
+  milestone 8 (signed release APK, licence notices).
+- v0.92 (2026-10-29, user request, Android first, then desktop):
+  * Transport: start / end of clip, "− 🔑" / "+ 🔑" keyframe buttons (own key vector / QIcon),
+    "◀ 1" / "1 ▶"; Android's ±10 buttons removed.
+  * Quick section end: without a marked start a section starts right after the section before
+    (inside a section: its start → split; else trim start) – `ClipEdit.quickStart` /
+    `segments.quick_start`. Android adds at once; desktop keeps its "Add section" step.
+  * Borders: drawn clearly (white line + grip), draggable (`borderRange` / `movedBorder`, one
+    undo step per drag, the preview follows the border). Selecting a section (timeline tap /
+    list or table click) edits it: rate, "Start = playhead", "End = playhead", smooth switches.
+  * SMOOTH TRANSITIONS (speed ramps), per border (user choice), centred on the border (user
+    choice): Segment.smoothStart / smoothEnd (.cst sections "smooth_start" / "smooth_end"; a
+    cut edge drops the flag). `Segments.rampSteps` == `segments.ramp_steps`: rate linear in
+    output time over 0.5 s, 10 steps, exact fractions + half-even rounding (same frames on both
+    – RampTest / test_ramp_steps_like_android), a short side scales the whole ramp, computed over
+    the WHOLE clip (trim only cuts it). Applied only for export / preview: Android
+    `rampedSegments()`, desktop `Job.timing_segments` (pieces, smart plan, audio; smart part jobs
+    get the ramped list without flags). Smart: Android re-encodes steps at the output fps,
+    desktop like the re-encoded neighbour (same result for Android .cst files).
+  * Undo / redo buttons show the step count. Android: "▶ Play" after export is a filled button;
+    "Clip Speed Treatment" naming (Android card, desktop actions / dialogs / manual).
+  * Android AV1: AV1_FAST = hardware (Pixel: c2.google.av1.encoder, min 256×256), AV1_BEST =
+    software c2.android.av1.encoder at max complexity (`Encoders.pick`); .cst keys svtav1 / aom;
+    default re-encode codec AV1 fast (pref "codec_default_v092" switches old installs once).
+    Desktop re-encode default codec: svtav1 (x264 if FFmpeg lacks it).
+ adb "no permissions" = phone in "charging only" USB mode →
   switch to "File transfer".
 - Android M7 (2026-10-28): `core/Treatment.kt` = port of treatment.py (fingerprint identical,
   unit test with desktop_smart.cst). Mapping: Lossless → codec "copy"; Smart → smart true +

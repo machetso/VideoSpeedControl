@@ -20,7 +20,8 @@ object Treatment {
     private const val CHUNK = 1 shl 20
 
     /** Desktop quality levels (formats.QUALITY_LEVELS) and the codec values (QUALITY_VALUES). */
-    private val QUALITY_VALUES = mapOf("x264" to listOf(14, 18, 23, 28, 34), "x265" to listOf(16, 20, 25, 30, 35))
+    private val QUALITY_VALUES = mapOf("x264" to listOf(14, 18, 23, 28, 34), "x265" to listOf(16, 20, 25, 30, 35),
+        "svtav1" to listOf(22, 30, 37, 44, 52), "aom" to listOf(22, 30, 36, 43, 50))
 
     class TreatmentError(message: String) : Exception(message)
 
@@ -31,7 +32,7 @@ object Treatment {
         val mode: Mode = Mode.LOSSLESS,
         val fps: Rational = Rational.of(25),
         val speed: Rational? = null,               // re-encode without sections; null = every frame once
-        val codec: VideoCodec = VideoCodec.HEVC,
+        val codec: VideoCodec = VideoCodec.AV1_FAST,
         val quality: Quality = Quality.HIGH,
         val shortSide: Int? = null,
         val sound: Boolean = true,
@@ -98,7 +99,7 @@ object Treatment {
         val desktopCodec = when (s.mode) {
             Mode.LOSSLESS -> "copy"
             Mode.SMART -> if (sourceCodec == android.media.MediaFormat.MIMETYPE_VIDEO_AVC) "x264" else "x265"
-            Mode.REENCODE -> if (s.codec == VideoCodec.AVC) "x264" else "x265"
+            Mode.REENCODE -> s.codec.desktopKey
         }
         val quality = if (s.mode == Mode.LOSSLESS) null else QUALITY_VALUES.getValue(desktopCodec)[
             when (s.quality) { Quality.VERY_HIGH -> 0; Quality.HIGH -> 1; Quality.GOOD -> 2 }]
@@ -154,6 +155,8 @@ object Treatment {
                     put("fps", seg.fps.toString())
                     put("reencode", seg.reencode)
                     put("out_fps", seg.outFps?.toString() ?: JSONObject.NULL)
+                    put("smooth_start", seg.smoothStart)
+                    put("smooth_end", seg.smoothEnd)
                 })
             })
         }
@@ -180,9 +183,9 @@ object Treatment {
                 codecKey == "copy" -> Mode.LOSSLESS
                 else -> Mode.REENCODE
             }
-            // desktop codecs: x264 / h264_* → H.264, everything else (x265, hevc_*, prores …) → HEVC
+            // desktop codecs: x264 / h264_* → H.264, svtav1 / av1_* → AV1 fast, aom → AV1 best, others → HEVC
             val codec = android?.optString("codec")?.let { runCatching { VideoCodec.valueOf(it) }.getOrNull() }
-                ?: if (codecKey == "x264" || codecKey.startsWith("h264")) VideoCodec.AVC else VideoCodec.HEVC
+                ?: VideoCodec.fromDesktop(codecKey)
             val quality = android?.optString("quality")?.let { runCatching { Quality.valueOf(it) }.getOrNull() }
                 ?: st.optNullInt("quality")?.let { q ->
                     when (QUALITY_VALUES[codecKey]?.indexOf(q)) { 0 -> Quality.VERY_HIGH; 1, -1, null -> Quality.HIGH; else -> Quality.GOOD }
@@ -210,7 +213,8 @@ object Treatment {
             val segments = (0 until secs.length()).map { i ->
                 val o = secs.getJSONObject(i)
                 Segment(o.getInt("start"), o.getInt("end"), Rational.parse(o.getString("fps")),
-                    o.optBoolean("reencode", false), o.optNullString("out_fps")?.let(Rational::parse))
+                    o.optBoolean("reencode", false), o.optNullString("out_fps")?.let(Rational::parse),
+                    o.optBoolean("smooth_start", false), o.optBoolean("smooth_end", false))
             }
             return Data(src.getString("name"), src.getLong("size"), src.getString("fingerprint"),
                 src.getInt("frames"), settings, trim, segments, src.optString("path", ""), ui)

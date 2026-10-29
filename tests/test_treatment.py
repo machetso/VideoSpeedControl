@@ -73,3 +73,17 @@ def test_name_additions(h264_clip, tmp_path):
     items = batch.plan([(copy_job, None), (job, None)], tmp_path, "{name}", batch.RENAME,
                        [(), ("codec", "res")])
     assert [it.output.stem for it in items] == ["h264_240", "h264_240_x265_640x360"]
+
+
+def test_smooth_flags_round_trip(tmp_path):
+    """v0.92: the smooth borders are stored per section (old files: none)."""
+    from fractions import Fraction
+    from vsc.core import segments as seg, treatment
+    from vsc.core.job import OutputSettings, Trim
+    src = tmp_path / "clip.bin"
+    src.write_bytes(b"x" * 5000)
+    sections = [seg.Segment(10, 50, Fraction(25), smooth_end=True),
+                seg.Segment(50, 90, Fraction(60), smooth_start=True)]
+    path = tmp_path / "c.cst"
+    treatment.save(path, src, 100, OutputSettings(), {}, Trim(), sections)
+    assert treatment.load(path).segments == sections

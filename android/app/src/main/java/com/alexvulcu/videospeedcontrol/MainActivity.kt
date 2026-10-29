@@ -219,7 +219,10 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 is ClipState.Loaded -> {
                     val edit = vm.edit ?: return@Column
                     PreviewPane(vm, s.info)
-                    Timeline(edit, vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress, vm::seekFromTimeline)
+                    Timeline(edit, vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress,
+                        vm::seekFromTimeline, onTap = vm::tapTimeline, ramps = vm.rampZones(),
+                        draggedBorder = vm.draggedBorder, onBorderDragStart = vm::beginBorderDrag,
+                        onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag)
                     TransportPanel(vm, edit)
                     SectionsPanel(vm, edit)
                     TrimPanel(vm, edit)

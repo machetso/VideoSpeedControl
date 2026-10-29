@@ -23,6 +23,7 @@ import com.alexvulcu.videospeedcontrol.core.ReencodeExport
 import com.alexvulcu.videospeedcontrol.core.ReencodeJob
 import com.alexvulcu.videospeedcontrol.core.Timing
 import com.alexvulcu.videospeedcontrol.core.VideoCodec
+import com.alexvulcu.videospeedcontrol.core.Encoders
 import com.alexvulcu.videospeedcontrol.core.Muxing
 import com.alexvulcu.videospeedcontrol.core.OutputStore
 import com.alexvulcu.videospeedcontrol.core.Probe
@@ -30,6 +31,7 @@ import com.alexvulcu.videospeedcontrol.core.Proxy
 import com.alexvulcu.videospeedcontrol.core.Segments
 import com.alexvulcu.videospeedcontrol.core.Segment
 import com.alexvulcu.videospeedcontrol.core.Trim
+import com.alexvulcu.videospeedcontrol.core.rampedSegments
 import com.alexvulcu.videospeedcontrol.core.Smart
 import com.alexvulcu.videospeedcontrol.core.SmartExport
 import com.alexvulcu.videospeedcontrol.core.SmartJob
@@ -84,7 +86,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** Re-encode speed without sections: null = every frame once at [fps]. */
     var speed by mutableStateOf(prefs.getString("speed", "")!!.takeIf { it.isNotEmpty() }?.let(Rational::parse))
         private set
-    var codec by mutableStateOf(runCatching { VideoCodec.valueOf(prefs.getString("codec", "HEVC")!!) }.getOrDefault(VideoCodec.HEVC))
+    /** Codecs this phone can encode (AV1 needs an encoder, HEVC / H.264 are always there). */
+    val codecs: List<VideoCodec> = VideoCodec.entries.filter { Encoders.available(it) }
+    /** Re-encode codec; AV1 fast is the default (user, v0.92 – also replaces an older stored choice once). */
+    var codec by mutableStateOf(run {
+        val default = if (VideoCodec.AV1_FAST in codecs) VideoCodec.AV1_FAST else VideoCodec.HEVC
+        if (!prefs.getBoolean("codec_default_v092", false)) {
+            prefs.edit().putBoolean("codec_default_v092", true).putString("codec", default.name).apply()
+        }
+        runCatching { VideoCodec.valueOf(prefs.getString("codec", default.name)!!) }.getOrDefault(default)
+            .takeIf { it in codecs } ?: default
+    })
         private set
     var shortSide by mutableStateOf(prefs.getInt("short_side", 0).takeIf { it > 0 })
         private set
@@ -137,11 +149,20 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         smartOverride[piece.key] = on
     }
 
-    private fun smartJob(e: ClipEdit): SmartJob {
-        // every part becomes an explicit section – the desktop's .cst format (reencode + out_fps)
-        val segs = smartPieces().map { Segment(it.start, it.end, it.rate, it.reencode, if (it.reencode) fps else null) }
-        return SmartJob(e.info, fps, e.trim, segs, joins ?: emptyList(), quality)
+    /**
+     * Every part as an explicit section – the desktop's .cst format (reencode + out_fps); the
+     * smooth borders of the sections are kept on the parts (the ramps are computed from them).
+     */
+    private fun smartParts(e: ClipEdit): List<Segment> {
+        val smooth = Segments.smoothBorders(e.segments)
+        return smartPieces().map {
+            Segment(it.start, it.end, it.rate, it.reencode, if (it.reencode) fps else null,
+                smoothStart = it.start in smooth, smoothEnd = it.end in smooth)
+        }
     }
+
+    private fun smartJob(e: ClipEdit): SmartJob =
+        SmartJob(e.info, fps, e.trim, rampedSegments(smartParts(e), e.trim, e.info, fps), joins ?: emptyList(), quality)
 
     /** The export as currently set up (timing for preview, labels and export). */
     fun job(): Timing? {
@@ -321,7 +342,6 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val e = edit ?: return
         val f = frame.coerceIn(0, e.info.frames.count - 1)
         playhead = f
-        selectedSection = e.sectionAt(f)
         frameJob?.cancel()
         val quick = proxy?.takeIf { it.has(f) }?.bitmap(f)
         if (quick != null) {
@@ -343,6 +363,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun step(delta: Int) = seek(playhead + delta)
+
+    fun toStart() = seek(0)
+    fun toEnd() { edit?.let { seek(it.info.frames.count - 1) } }
+
+    /** Timeline tap: move there and select the section tapped (or none). */
+    fun tapTimeline(frame: Int, radius: Int) {
+        val e = edit ?: return
+        val f = if (magnet) e.snap(frame, radius, pendingStart) else frame
+        seek(f)
+        selectedSection = e.sectionAt(f)
+    }
 
     /** Timeline tap / drag: with the magnet on, snaps to section borders within [radius] frames. */
     fun seekFromTimeline(frame: Int, radius: Int) {
@@ -390,10 +421,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             playingVideo = true
             previewPlayer.play(job, playhead,
-                onFrame = { f ->
-                    playhead = f
-                    selectedSection = e.sectionAt(f)
-                },
+                onFrame = { f -> playhead = f },
                 onEnd = {
                     playing = false
                     playingVideo = false
@@ -419,7 +447,6 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     p.bitmap(f)?.let { preview = it }
                     previewExact = false
                     playhead = f
-                    selectedSection = job.segments.indexOfFirst { f >= it.start && f < it.end }
                 }
                 delay(4)
             }
@@ -443,10 +470,91 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         pendingStart = playhead
     }
 
+    /**
+     * End a section at the playhead. Without a marked start it begins right after the section
+     * before (or at the clip start; inside a section: that section's start) – see [ClipEdit.quickStart].
+     */
     fun markEnd() {
-        val start = pendingStart ?: return
-        edit = edit?.addSection(start, playhead, sectionFps)
+        stopPlayback()
+        val e = edit ?: return
+        val start = pendingStart ?: e.quickStart(playhead)
+        edit = e.addSection(start, playhead, sectionFps)
         pendingStart = null
+        selectedSection = edit?.sectionAt(playhead) ?: -1
+    }
+
+    /** Select section [index] for editing (list tap); the playhead goes to its start. */
+    fun selectSection(index: Int) {
+        val s = edit?.segments?.getOrNull(index) ?: return
+        seek(s.start)
+        selectedSection = index
+    }
+
+    fun deselectSection() { selectedSection = -1 }
+
+    /** The selected section now starts / ends at the playhead. */
+    fun setSectionStartHere(index: Int) = changeRange(index) { s -> playhead to s.end - 1 }
+    fun setSectionEndHere(index: Int) = changeRange(index) { s -> s.start to playhead }
+
+    private fun changeRange(index: Int, range: (Segment) -> Pair<Int, Int>) {
+        stopPlayback()
+        val e = edit ?: return
+        val s = e.segments.getOrNull(index) ?: return
+        val (a, b) = range(s)
+        edit = e.setSectionRange(index, a, b)
+        selectedSection = edit?.segments?.indexOfFirst { it.start == minOf(a, b) } ?: -1
+    }
+
+    fun setSmooth(index: Int, atStart: Boolean, on: Boolean) {
+        stopPlayback()
+        edit = edit?.setSmooth(index, atStart, on)
+    }
+
+    /** The speed ramps (timeline): frames and the rates they go from / to. */
+    fun rampZones(): List<RampZone> {
+        val e = edit ?: return emptyList()
+        val steps = Segments.rampSteps(e.segments, 0, e.info.frames.count, e.info.realFps)
+        val out = mutableListOf<RampZone>()
+        for (st in steps) {
+            val last = out.lastOrNull()
+            if (last != null && last.end == st.start) out[out.lastIndex] = last.copy(end = st.end, to = st.fps)
+            else out += RampZone(st.start, st.end, st.fps, st.fps)
+        }
+        return out
+    }
+
+    // ------------------------------------------------------------------ dragging a section border
+
+    private var dragBase: ClipEdit? = null
+    private var dragBorder = -1
+    /** Border being dragged and where it is now (timeline highlight), or null. */
+    var draggedBorder by mutableStateOf<Int?>(null)
+        private set
+
+    /** Start dragging the border at [border]; the neighbouring sections follow live. */
+    fun beginBorderDrag(border: Int) {
+        stopPlayback()
+        dragBase = edit
+        dragBorder = border
+        draggedBorder = border
+    }
+
+    fun dragBorderTo(frame: Int) {
+        val base = dragBase ?: return
+        val (lo, hi) = base.borderRange(dragBorder)
+        val q = frame.coerceIn(lo, hi)
+        edit = base.previewSegments(base.movedBorder(dragBorder, q))
+        draggedBorder = q
+        seek(minOf(q, base.info.frames.count - 1))          // preview: the first frame after the border
+    }
+
+    fun endBorderDrag() {
+        val base = dragBase ?: return
+        val now = edit ?: return
+        val q = draggedBorder ?: dragBorder
+        edit = base.editSegments(now.segments, "Move border to frame ${q + 1}")
+        dragBase = null
+        draggedBorder = null
         selectedSection = edit?.sectionAt(playhead) ?: -1
     }
 
@@ -524,7 +632,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val fp = fingerprint ?: withContext(Dispatchers.IO) {
             Treatment.fingerprint(info.sizeBytes) { getApplication<Application>().contentResolver.openInputStream(info.uri)!! }
         }.also { fingerprint = it }
-        val segs = if (mode == Mode.SMART) (job() as SmartJob).segments else e.segments
+        val segs = if (mode == Mode.SMART) smartParts(e) else e.segments
         return Treatment.Data(info.name, info.sizeBytes, fp, info.frames.count,
             Treatment.Settings(treatmentMode, fps, speed, codec, quality, shortSide, sound, smartAuto,
                 size = (job() as? ReencodeJob)?.outputSize()),

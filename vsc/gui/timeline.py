@@ -16,7 +16,8 @@ import math
 import time
 
 from PySide6.QtCore import QPointF, QRectF, QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPen, QShortcut
+from PySide6.QtGui import (QColor, QIcon, QImage, QKeySequence, QPainter, QPainterPath, QPen,
+                           QPixmap, QShortcut)
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView,
                                QLabel, QMessageBox,
                                QPushButton, QSizePolicy, QSpinBox, QTableWidget,
@@ -43,6 +44,7 @@ SECTION_COLOR = QColor(52, 152, 219, 210)
 PENDING_COLOR = QColor(26, 188, 156)
 SECTION_BAND = 14
 MAGNET_PX = 8           # the cursor snaps to section borders closer than this
+BORDER_GRAB = 5         # a press this close to a section border drags the border
 EXACT_DELAY_MS = 120    # sharp frame once the cursor rests this long (small copy meanwhile)
 SPEEDUP_FACTORS = (2, 3, 4, 6, 8)   # sections faster than real time: rate = k × original
 LABEL_INTERVAL = 0.1    # seconds between label updates while playing
@@ -52,6 +54,10 @@ class Timeline(QWidget):
     seek = Signal(int)          # frame index
     in_moved = Signal(int)      # requested first frame
     out_moved = Signal(int)     # requested last frame (inclusive)
+    section_clicked = Signal(int)       # index of the section clicked, -1 = none
+    border_grabbed = Signal(int)        # a section border is being dragged (its position)
+    border_moved = Signal(int)          # … to this position
+    border_released = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -61,6 +67,7 @@ class Timeline(QWidget):
         self.magnetic = True
         self.magnet_hit: int | None = None    # boundary the cursor snapped to (drawn)
         self.snaps = False
+        self.dragged_border: int | None = None   # border being dragged (drawn highlighted)
         self._drag: str | None = None
         self.setMinimumHeight(THUMB_BAND + KEY_BAND + 10)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -155,6 +162,28 @@ class Timeline(QWidget):
             p.setPen(QPen(PENDING_COLOR, 2, Qt.DashLine))
             p.drawRect(QRectF(self.x_of(lo), 1, self.x_of(hi) - self.x_of(lo), THUMB_BAND - 2))
 
+        # speed ramps: dark field with a slanted line – up = getting faster, down = slower
+        for a, b, faster in self.ramp_zones():
+            x0, x1 = self.x_of(a), max(self.x_of(a) + 3, self.x_of(b))
+            top = THUMB_BAND * 0.35
+            p.fillRect(QRectF(x0, top, x1 - x0, band_top - top), QColor(0, 0, 0, 150))
+            p.setPen(QPen(QColor("white"), 2))
+            lo, hi = band_top - 3, top + 3
+            p.drawLine(QPointF(x0, lo if faster else hi), QPointF(x1, hi if faster else lo))
+
+        # section borders: clearly visible lines with a grip in the keyframe band (drag to move)
+        for b in seg.borders(clip.segments, self.count):
+            x = self.x_of(b)
+            color = PENDING_COLOR if b == self.dragged_border else QColor("white")
+            p.setPen(QPen(QColor(0, 0, 0, 200), 4))
+            p.drawLine(QPointF(x, 0), QPointF(x, THUMB_BAND))
+            p.setPen(QPen(color, 2))
+            p.drawLine(QPointF(x, 0), QPointF(x, THUMB_BAND))
+            p.setPen(QPen(QColor(0, 0, 0, 200), 1))
+            p.setBrush(color)
+            p.drawRoundedRect(QRectF(x - 4, THUMB_BAND + 2, 8, KEY_BAND - 4), 2, 2)
+            p.setBrush(Qt.NoBrush)
+
         # the section border the cursor is magnetically attached to
         if self.magnet_hit is not None:
             x = self.x_of(self.magnet_hit)
@@ -176,6 +205,23 @@ class Timeline(QWidget):
 
     # ------------------------------------------------------------------ mouse
 
+    def ramp_zones(self) -> list[tuple[int, int, bool]]:
+        """(first frame, end, getting faster) of every speed ramp."""
+        clip = self.clip
+        steps = seg.ramp_steps(clip.segments, 0, self.count, clip.info.real_fps)
+        zones: list[list] = []
+        for st in steps:
+            if zones and zones[-1][1] == st.start:
+                zones[-1][1], zones[-1][3] = st.end, st.fps
+            else:
+                zones.append([st.start, st.end, st.fps, st.fps])
+        return [(a, b, last > first) for a, b, first, last in zones]
+
+    def _border_at(self, x: float) -> int | None:
+        near = [(abs(x - self.x_of(b)), b) for b in seg.borders(self.clip.segments, self.count)]
+        near = [n for n in near if n[0] <= BORDER_GRAB]
+        return min(near)[1] if near else None
+
     def _handle_at(self, x: float) -> str | None:
         x_in, x_out = self._trim_edges()
         d_in, d_out = abs(x - x_in), abs(x - x_out)
@@ -187,7 +233,17 @@ class Timeline(QWidget):
         if not self.count or event.button() != Qt.LeftButton:
             return
         x = event.position().x()
-        self._drag = self._handle_at(x) or "seek"
+        self._drag = self._handle_at(x)
+        if self._drag is None and (border := self._border_at(x)) is not None:
+            self._drag = "border"
+            self.dragged_border = border
+            self.border_grabbed.emit(border)
+            return
+        self._drag = self._drag or "seek"
+        if self._drag == "seek":
+            frame = self.frame_at(x)
+            self.section_clicked.emit(next((i for i, s in enumerate(self.clip.segments)
+                                            if s.start <= frame < s.end), -1))
         self._drag_to(x)
 
     def mouseMoveEvent(self, event) -> None:
@@ -197,9 +253,13 @@ class Timeline(QWidget):
         if self._drag:
             self._drag_to(x)
         else:
-            self.setCursor(Qt.SizeHorCursor if self._handle_at(x) else Qt.ArrowCursor)
+            grab = self._handle_at(x) or self._border_at(x) is not None
+            self.setCursor(Qt.SizeHorCursor if grab else Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._drag == "border":
+            self.dragged_border = None
+            self.border_released.emit()
         self._drag = None
         if self.magnet_hit is not None:
             self.magnet_hit = None
@@ -238,6 +298,8 @@ class Timeline(QWidget):
             self.in_moved.emit(self.boundary_at(x))
         elif self._drag == "out":
             self.out_moved.emit(self.boundary_at(x) - 1)
+        elif self._drag == "border":
+            self.border_moved.emit(self.boundary_at(x))
 
     def wheelEvent(self, event) -> None:
         if self.count and self.clip:
@@ -323,6 +385,7 @@ class PreviewPanel(QWidget):
         self._labels_at = 0.0
         self._table_key = None
         self._show_row: int | None = None     # section row to scroll into view after a rebuild
+        self._selected: int | None = None     # section being edited (table row)
         self._exact_size = (0, 0)
         self._exact_timer = QTimer(self, singleShot=True, interval=EXACT_DELAY_MS,
                                    timeout=self._request_exact)
@@ -337,6 +400,12 @@ class PreviewPanel(QWidget):
         self.timeline.seek.connect(self.seek)
         self.timeline.in_moved.connect(self.set_in)
         self.timeline.out_moved.connect(self.set_out)
+        self.timeline.section_clicked.connect(self._select_section)
+        self.timeline.border_grabbed.connect(self._border_grabbed)
+        self.timeline.border_moved.connect(self._border_moved)
+        self.timeline.border_released.connect(self._border_released)
+        self._drag_base: list | None = None       # sections before a border drag
+        self._drag_from = 0
 
         def button(text, tip, slot):
             b = QToolButton()
@@ -361,12 +430,19 @@ class PreviewPanel(QWidget):
         self.play_button.clicked.connect(self.toggle_play)
         transport = QHBoxLayout()
         transport.addWidget(self.play_button)
+        def key_button(sign, tip, slot):
+            """"− 🔑" / "+ 🔑": the sign, then the key (icon right of the text)."""
+            b = button(sign, tip, slot)
+            b.setIcon(key_icon(self.palette().buttonText().color()))
+            b.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            b.setLayoutDirection(Qt.RightToLeft)
+            return b
         transport.addWidget(button("⏮", "First frame (Home)", lambda: self.seek(0)))
-        transport.addWidget(button("◀◀", "Previous keyframe (Shift+←)", lambda: self.step_key(-1)))
-        transport.addWidget(button("◀", "Previous frame (←)", lambda: self.step(-1)))
+        transport.addWidget(key_button("−", "Previous keyframe (Shift+←)", lambda: self.step_key(-1)))
+        transport.addWidget(button("◀ 1", "Previous frame (←)", lambda: self.step(-1)))
         transport.addWidget(self.frame_spin)
-        transport.addWidget(button("▶", "Next frame (→)", lambda: self.step(1)))
-        transport.addWidget(button("▶▶", "Next keyframe (Shift+→)", lambda: self.step_key(1)))
+        transport.addWidget(button("1 ▶", "Next frame (→)", lambda: self.step(1)))
+        transport.addWidget(key_button("+", "Next keyframe (Shift+→)", lambda: self.step_key(1)))
         transport.addWidget(button("⏭", "Last frame (End)", lambda: self.seek(10**9)))
         transport.addWidget(self.position, 1)
         transport.addWidget(self.zoom.combo())
@@ -617,20 +693,30 @@ class PreviewPanel(QWidget):
         self.magnet_button.setChecked(_setting("preview/magnetic", True))
         self.timeline.magnetic = self.magnet_button.isChecked()
         self.magnet_button.toggled.connect(self._set_magnetic)
+        self.sel_start_button = QPushButton("Start = playhead")
+        self.sel_start_button.setToolTip("The selected section now starts at the playhead")
+        self.sel_start_button.clicked.connect(lambda: self._set_selected_range(start=True))
+        self.sel_end_button = QPushButton("End = playhead")
+        self.sel_end_button.setToolTip("The selected section now ends at the playhead")
+        self.sel_end_button.clicked.connect(lambda: self._set_selected_range(start=False))
         self.sec_label = QLabel()
         self.sec_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         row = QHBoxLayout()
         for w in (self.magnet_button, self.sec_start_button, self.sec_end_button, self.sec_fps,
-                  self.sec_add):
+                  self.sec_add, self.sel_start_button, self.sel_end_button):
             row.addWidget(w)
         row.addWidget(self.sec_label, 1)
 
-        t = self.sections_table = QTableWidget(0, 7)
-        t.setHorizontalHeaderLabels(["Frames", "Frame rate", "Speed", "Length", "Re-encode",
-                                     "Output fps", ""])
-        t.horizontalHeaderItem(4).setToolTip("Smart re-encode: re-encode this section (source "
+        t = self.sections_table = QTableWidget(0, 9)
+        t.setHorizontalHeaderLabels(["Frames", "Frame rate", "Speed", "Length", "Smooth in",
+                                     "Smooth out", "Re-encode", "Output fps", ""])
+        for col in (4, 5):
+            t.horizontalHeaderItem(col).setToolTip(
+                "Smooth transition: the speed changes evenly over 0.5 s, centred on the border\n"
+                "(e.g. from 9.6× slow motion to real time), instead of jumping.")
+        t.horizontalHeaderItem(6).setToolTip("Smart re-encode: re-encode this section (source "
                                              "codec) – everything else is copied.")
-        t.horizontalHeaderItem(5).setToolTip("Constant frame rate of the re-encoded section.")
+        t.horizontalHeaderItem(7).setToolTip("Constant frame rate of the re-encoded section.")
         t.verticalHeader().hide()
         t.setSelectionBehavior(QAbstractItemView.SelectRows)
         t.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -641,6 +727,7 @@ class PreviewPanel(QWidget):
         t.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         t.setFixedHeight(t.horizontalHeader().sizeHint().height() + 3 * 28 + 4)
         t.cellClicked.connect(lambda row, _: self._seek_section(row))
+        t.itemSelectionChanged.connect(self._selection_changed)
         t.hide()
         return row
 
@@ -735,8 +822,9 @@ class PreviewPanel(QWidget):
     def section_end(self) -> None:
         if self._ready():
             start = self.timeline.pending[0]
-            self.timeline.pending = (self.clip.trim.start if start is None else start,
-                                     self.clip.playhead)
+            if start is None:           # right after the section before (or the trim start)
+                start = seg.quick_start(self.clip.segments, self.clip.playhead, self.clip.trim.start)
+            self.timeline.pending = (start, self.clip.playhead)
             self._sections_changed(emit=False)
 
     def add_section(self) -> None:
@@ -785,6 +873,84 @@ class PreviewPanel(QWidget):
         if self.clip and row < len(self.clip.segments):
             self.seek(self.clip.segments[row].start)
 
+    def _select_section(self, index: int) -> None:
+        """Timeline click: the section there becomes the one to edit (-1: none)."""
+        self._selected = index if index >= 0 else None
+        t = self.sections_table
+        t.blockSignals(True)
+        if index >= 0 and index < t.rowCount():
+            t.selectRow(index)
+            t.scrollTo(t.model().index(index, 0))
+        else:
+            t.clearSelection()
+        t.blockSignals(False)
+        self._update_selection_buttons()
+
+    def _selection_changed(self) -> None:
+        rows = {i.row() for i in self.sections_table.selectedIndexes()}
+        self._selected = min(rows) if rows else None
+        self._update_selection_buttons()
+
+    def _update_selection_buttons(self) -> None:
+        on = (self._ready() and self._selected is not None
+              and self._selected < len(self.clip.segments))
+        self.sel_start_button.setEnabled(on)
+        self.sel_end_button.setEnabled(on)
+
+    def _set_selected_range(self, start: bool) -> None:
+        i = self._selected
+        if not self._ready() or i is None or i >= len(self.clip.segments):
+            return
+        s, ph = self.clip.segments[i], self.clip.playhead
+        a, b = (ph, s.end - 1) if start else (s.start, ph)
+        a, b = min(a, b), max(a, b) + 1
+        others = self.clip.segments[:i] + self.clip.segments[i + 1:]
+        new = seg.add(others, replace(s, start=a, end=b))
+        self.clip.edit_segments(new, f"section now {a}–{b - 1}")
+        self._selected = next((k for k, x in enumerate(new) if x.start == a), None)
+        self._sections_changed()
+
+    def _set_smooth(self, index: int, at_start: bool, on: bool) -> None:
+        if not self._ready() or index >= len(self.clip.segments):
+            return
+        s = self.clip.segments[index]
+        border = s.start if at_start else s.end
+        self.clip.edit_segments(seg.with_smooth(self.clip.segments, border, on),
+                                f"smooth transition at frame {border} {'on' if on else 'off'}")
+        self._show_row = index
+        self._sections_changed()
+
+    # ------------------------------------------------------------------ dragging a border
+
+    def _border_grabbed(self, border: int) -> None:
+        if not self._ready():
+            return
+        self._stop_playback()
+        self._drag_base = list(self.clip.segments)
+        self._drag_from = border
+
+    def _border_moved(self, to: int) -> None:
+        if self._drag_base is None:
+            return
+        count = self.clip.frames.count
+        lo, hi = seg.border_range(self._drag_base, self._drag_from, count)
+        q = max(lo, min(to, hi))
+        self.clip.segments[:] = seg.moved_border(self._drag_base, self._drag_from, q, count)
+        self.timeline.dragged_border = q
+        self.seek(min(q, count - 1))            # preview: the first frame after the border
+
+    def _border_released(self) -> None:
+        if self._drag_base is None:
+            return
+        moved = list(self.clip.segments)
+        self.clip.segments[:] = self._drag_base     # the drag becomes one undo step
+        q = next((b for b in seg.borders(moved, self.clip.frames.count)
+                  if b not in seg.borders(self._drag_base, self.clip.frames.count)), None)
+        self._drag_base = None
+        self.clip.edit_segments(moved, f"move border to frame {q}" if q is not None
+                                else "move border")
+        self._sections_changed()
+
     def sections_replaced(self) -> None:
         """The clip's sections (or trim) were replaced from outside, e.g. by loading a file."""
         self.timeline.pending = (None, None)
@@ -804,9 +970,14 @@ class PreviewPanel(QWidget):
         for w in (self.sec_start_button, self.sec_end_button, self.sec_fps, self.batch_button):
             w.setEnabled(ready)
         self.clear_sections_button.setEnabled(ready and bool(clip and clip.segments))
+        if self._selected is not None and (not clip or self._selected >= len(clip.segments)):
+            self._selected = None
+        self._update_selection_buttons()
         for button, steps, verb in ((self.undo_button, clip.undo_steps if clip else [], "Undo"),
                                     (self.redo_button, clip.redo_steps if clip else [], "Redo")):
             button.setEnabled(bool(steps))
+            arrow = "↶" if verb == "Undo" else "↷"
+            button.setText(f"{arrow} {verb} ({len(steps)})" if steps else f"{arrow} {verb}")
             key = "Ctrl+Z" if verb == "Undo" else "Ctrl+Shift+Z / Ctrl+Y"
             button.setToolTip(f"{verb}: {steps[-1][0]} ({key}, {len(steps)} step"
                               f"{'s' * (len(steps) != 1)})" if steps
@@ -841,8 +1012,8 @@ class PreviewPanel(QWidget):
         t = self.sections_table
         t.setVisible(bool(clip.segments))
         smart_mode = clip.settings.smart
-        t.setColumnHidden(4, not smart_mode)
-        t.setColumnHidden(5, not smart_mode)
+        t.setColumnHidden(6, not smart_mode)
+        t.setColumnHidden(7, not smart_mode)
         key = (id(clip), tuple(clip.segments), tuple(items), smart_mode)
         if key == self._table_key:          # rebuild only on change (refresh runs on every seek)
             return
@@ -865,12 +1036,31 @@ class PreviewPanel(QWidget):
             combo.activated.connect(lambda _, row=row, c=combo: QTimer.singleShot(
                 0, lambda: self._set_section_fps(row, c.currentData())))
             t.setCellWidget(row, 1, combo)
+            for col, at_start in ((4, True), (5, False)):
+                other = seg.neighbour_rate(clip.segments, row, at_start, clip.frames.count,
+                                           clip.info.real_fps)
+                on = s.smooth_start if at_start else s.smooth_end
+                smooth = QCheckBox()
+                smooth.setChecked(on)
+                smooth.setEnabled(on or (other is not None and other != s.fps))
+                if other is None:
+                    smooth.setToolTip("The clip starts here" if at_start else "The clip ends here")
+                elif other == s.fps:
+                    smooth.setToolTip("Same speed on the other side")
+                else:
+                    a, b = (other, s.fps) if at_start else (s.fps, other)
+                    smooth.setToolTip(f"{fmt_slowdown(float(clip.info.real_fps / a))} → "
+                                      f"{fmt_slowdown(float(clip.info.real_fps / b))}, "
+                                      "changing evenly over 0.5 s")
+                smooth.toggled.connect(lambda v, row=row, at_start=at_start: QTimer.singleShot(
+                    0, lambda: self._set_smooth(row, at_start, v)))
+                t.setCellWidget(row, col, _centered(smooth))
             check = QCheckBox()
             check.setChecked(s.reencode)
             check.setToolTip("Re-encode this section with the source codec (smart re-encode)")
             check.toggled.connect(lambda on, row=row: QTimer.singleShot(
                 0, lambda: self._set_section(row, reencode=on)))
-            t.setCellWidget(row, 4, _centered(check))
+            t.setCellWidget(row, 6, _centered(check))
             out = QComboBox()
             for label, fps in formats.FRAME_RATES:
                 out.addItem(f"{label} fps", str(fps))
@@ -881,14 +1071,18 @@ class PreviewPanel(QWidget):
             out.setEnabled(s.reencode)
             out.activated.connect(lambda _, row=row, c=out: QTimer.singleShot(
                 0, lambda: self._set_section(row, out_fps=Fraction(c.currentData()))))
-            t.setCellWidget(row, 5, out)
+            t.setCellWidget(row, 7, out)
             remove = QToolButton()
             remove.setText("✕")
             remove.setToolTip("Remove this section")
             remove.clicked.connect(lambda _=False, row=row: QTimer.singleShot(
                 0, lambda: self.remove_section(row)))
-            t.setCellWidget(row, 6, remove)
+            t.setCellWidget(row, 8, remove)
         t.verticalScrollBar().setValue(scroll)
+        if self._selected is not None and self._selected < t.rowCount():
+            t.blockSignals(True)
+            t.selectRow(self._selected)
+            t.blockSignals(False)
         if self._show_row is not None and self._show_row < t.rowCount():
             index = t.model().index(self._show_row, 0)
             t.scrollTo(index)
@@ -1022,3 +1216,21 @@ def _key_interval(fm) -> int:
 
 def _key_text(fm, frame: int) -> str:
     return "  · keyframe" if fm.keyframe_at_or_before(frame) == frame else ""
+
+
+def key_icon(color: QColor) -> QIcon:
+    """Stylised key (keyframe buttons): a ring, the shaft and two teeth – like the Android app."""
+    pix = QPixmap(48, 48)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.scale(2, 2)
+    ring = QPainterPath()
+    ring.setFillRule(Qt.OddEvenFill)
+    ring.addEllipse(QPointF(7, 12), 4.5, 4.5)
+    ring.addEllipse(QPointF(7, 12), 2, 2)
+    p.fillPath(ring, color)
+    for rect in (QRectF(11, 11, 11, 2.2), QRectF(18.5, 13, 2.2, 3.5), QRectF(15, 13, 2.2, 2.5)):
+        p.fillRect(rect, color)
+    p.end()
+    return QIcon(pix)

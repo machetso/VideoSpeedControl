@@ -30,7 +30,7 @@ data class ExportTask(
                     val enc = inTrim.count { it.reencode }
                     "Smart @ $fps ($enc of ${inTrim.size} parts re-encoded)"
                 }
-                Treatment.Mode.REENCODE -> "Re-encode ${s.codec.label.substringBefore(" (")} @ $fps" +
+                Treatment.Mode.REENCODE -> "Re-encode ${s.codec.short} @ $fps" +
                     if (inTrim.isNotEmpty()) ", ${inTrim.size} section${if (inTrim.size != 1) "s" else ""}" else ""
             }
         }
@@ -60,7 +60,7 @@ object Exporter {
         val sound = s.sound
         return when (s.mode) {
             Treatment.Mode.LOSSLESS -> {
-                val job = LosslessJob(info, s.fps, t.trim, t.segments)
+                val job = LosslessJob(info, s.fps, t.trim, rampedSegments(t.segments, t.trim, info))
                 val blockers = job.blockers()
                 if (blockers.isNotEmpty()) throw IllegalStateException(blockers.joinToString("; "))
                 val c = Muxing.containerFor(info.videoMime)!!
@@ -68,14 +68,14 @@ object Exporter {
                 Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, job.fileStem(), c.extension, c.mime)
             }
             Treatment.Mode.SMART -> {
-                val job = SmartJob(info, s.fps, t.trim, t.segments, Smart.joinPoints(context, info), s.quality)
+                val job = SmartJob(info, s.fps, t.trim, rampedSegments(t.segments, t.trim, info, s.fps), Smart.joinPoints(context, info), s.quality)
                 val blockers = job.blockers()
                 if (blockers.isNotEmpty()) throw IllegalStateException(blockers.joinToString("; "))
                 val x = SmartExport(context, job, sound)
                 Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, job.fileStem(), "mp4", "video/mp4")
             }
             Treatment.Mode.REENCODE -> {
-                val job = ReencodeJob(info, s.fps, s.speed, t.trim, t.segments, s.codec, s.shortSide, s.quality)
+                val job = ReencodeJob(info, s.fps, s.speed, t.trim, rampedSegments(t.segments, t.trim, info), s.codec, s.shortSide, s.quality)
                 val blockers = job.blockers()
                 if (blockers.isNotEmpty()) throw IllegalStateException(blockers.joinToString("; "))
                 val x = ReencodeExport(context, job, sound)

@@ -77,7 +77,8 @@ def test_settings_change_mode(window):
     assert clip.job.mode == Mode.RETIME
     assert not panel.speed_custom.isEnabled()               # lossless: speed is locked
     panel.set_process("reencode")
-    assert clip.settings.codec == "x264"                    # re-encode needs a real codec
+    assert clip.settings.codec == "svtav1"                  # re-encode default: AV1 fast (v0.92)
+    _pick(panel.codec_combo, "x264")
     panel.speed_custom.setChecked(True)
     panel.speed_spin.setValue(0.05)
     assert clip.settings.speed == Fraction(1, 20)
@@ -394,14 +395,14 @@ def test_processing_modes_and_smart(qapp, window):
     _pick(preview.sec_fps, "25")
     preview.add_section()
     t = preview.sections_table
-    assert not t.isColumnHidden(4) and not t.isColumnHidden(5)
+    assert not t.isColumnHidden(6) and not t.isColumnHidden(7)
     preview._set_section(0, reencode=True, out_fps=Fraction(25))
     parts = clip.job.smart_parts()
     assert [p.kind for p in parts] == ["copy", "encode", "copy"]
     assert "re-encoded in 1 part" in settings.summary.text()
 
     settings.set_process("reencode")
-    assert not clip.settings.smart and t.isColumnHidden(4) and settings.codec_combo.isEnabled()
+    assert not clip.settings.smart and t.isColumnHidden(6) and settings.codec_combo.isEnabled()
     settings.set_process("lossless")
     assert clip.settings.codec == "copy" and not settings.quality_combo.isEnabled()
 
@@ -555,6 +556,7 @@ def test_section_table_keeps_position_and_out_fps(qapp, window):
 def test_quality_levels_and_custom(window):
     panel, clip = window.settings, window.current_clip()
     panel.set_process("reencode")
+    _pick(panel.codec_combo, "x264")
     names = [panel.quality_combo.itemText(i) for i in range(panel.quality_combo.count())]
     assert names[0].startswith("Visually lossless") and names[-1] == "Custom…"
     assert not panel.quality_spin.isVisibleTo(panel)
@@ -645,6 +647,7 @@ def test_treatment_save_and_load(qapp, window, tmp_path, monkeypatch):
     clip = window.current_clip()
     _add_sections(preview, ((24, 71, "25"), (72, 119, "60")))
     settings.set_process("reencode")
+    _pick(settings.codec_combo, "x264")
     clip.settings.preset = "slow"
     clip.trim = type(clip.trim)(0, 192)
     cst = tmp_path / "h264.cst"
@@ -686,6 +689,7 @@ def test_batch_entry_edit_and_another_encoding(qapp, window, tmp_path, monkeypat
     export.pattern.setText("{name}")
     _add_sections(preview, ((24, 71, "25"),))
     settings.set_process("reencode")
+    _pick(settings.codec_combo, "x264")
     preview.batch_button.click()
     assert len(window.batch_entries) == 1           # first one: no question
 
@@ -725,3 +729,44 @@ def test_batch_entry_edit_and_another_encoding(qapp, window, tmp_path, monkeypat
     monkeypatch.setattr(AdditionDialog, "exec", lambda dialog: False)   # cancelled
     preview.batch_button.click()
     assert len(window.batch_entries) == 2
+
+
+def test_v092_section_editing(qapp, window):
+    """Quick end, editing a selected section, dragging a border, smooth transitions, undo count."""
+    panel, settings, clip = window.preview, window.settings, window.current_clip()
+    settings.set_process("lossless")
+    panel.seek(99)
+    panel.section_end()                                # no start: from the clip start
+    _pick(panel.sec_fps, "25")
+    panel.add_section()
+    panel.seek(199)
+    panel.section_end()                                # right after the section before
+    _pick(panel.sec_fps, "60")
+    panel.add_section()
+    assert [(s.start, s.end) for s in clip.segments] == [(0, 100), (100, 200)]
+    assert panel.undo_button.text() == "↶ Undo (2)"
+
+    # a timeline click selects the section; start / end follow the playhead
+    panel._select_section(1)
+    assert panel.sel_end_button.isEnabled()
+    panel.seek(249)
+    panel._set_selected_range(start=False)
+    assert clip.segments[1].end == 250
+
+    # dragging the border between the two sections moves both, as one undo step
+    panel._border_grabbed(100)
+    for x in (110, 130, 150):
+        panel._border_moved(x)
+    assert clip.playhead == 150                        # the preview follows the border
+    panel._border_released()
+    assert [(s.start, s.end) for s in clip.segments] == [(0, 150), (150, 250)]
+    assert clip.undo_steps[-1][0] == "move border to frame 150"
+
+    # smooth transition at the border: the ramp shows up in the export timing
+    before = clip.job.output_duration
+    panel._set_smooth(1, True, True)
+    assert clip.segments[0].smooth_end and clip.segments[1].smooth_start
+    assert len(clip.job.timing_segments) > len(clip.segments)
+    assert clip.job.output_duration != before
+    panel.undo()
+    assert not clip.segments[1].smooth_start

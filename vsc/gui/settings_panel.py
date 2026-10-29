@@ -357,7 +357,9 @@ class SettingsPanel(QGroupBox):
         if process == REENCODE:
             s.smart = False
             if s.codec == COPY:
-                s.codec = "x264"
+                # AV1 fast (SVT-AV1) is the default (user, v0.92); x264 if FFmpeg lacks it
+                st = self.encoders.get("svtav1") if self.encoders else None
+                s.codec = "svtav1" if st is None or st.available else "x264"
                 s.container = s.profile = s.preset = s.quality = None
             return
         if process == LOSSLESS:

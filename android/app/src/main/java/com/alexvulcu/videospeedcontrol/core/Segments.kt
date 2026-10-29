@@ -14,6 +14,8 @@ data class Segment(
     val fps: Rational,              // each frame lasts 1/fps seconds
     val reencode: Boolean = false,  // smart re-encode: encode this section …
     val outFps: Rational? = null,   // … at this constant frame rate
+    val smoothStart: Boolean = false, // speed ramp at the start border (see Segments.rampSteps)
+    val smoothEnd: Boolean = false,   // … and at the end border
 )
 
 /** A run of source frames [start, end) with one rate, starting at output time [t] (seconds). */
@@ -29,8 +31,9 @@ object Segments {
                 out += s
                 continue
             }
-            if (s.start < new.start) out += s.copy(end = new.start)
-            if (s.end > new.end) out += s.copy(start = new.end)
+            // the cut edges are new borders – no speed ramp there
+            if (s.start < new.start) out += s.copy(end = new.start, smoothEnd = false)
+            if (s.end > new.end) out += s.copy(start = new.end, smoothStart = false)
         }
         if (new.end > new.start) out += new
         return out.sortedBy { it.start }
@@ -64,6 +67,64 @@ object Segments {
         }
         return out
     }
+
+    /** Output seconds of a speed ramp (user: 0.5 s, centred on the border). */
+    val RAMP_SECONDS: Rational = Rational.of(1, 2)
+    /** A ramp is played as this many steps of equal output length, each with its own rate. */
+    const val RAMP_STEPS = 10
+
+    /** Borders (frame positions) marked smooth by a section's smoothStart / smoothEnd. */
+    fun smoothBorders(segments: List<Segment>): Set<Int> =
+        segments.flatMap { listOfNotNull(it.start.takeIf { _ -> it.smoothStart }, it.end.takeIf { _ -> it.smoothEnd }) }.toSet()
+
+    /**
+     * Speed ramps at the smooth borders of [segments] within [start, end) (gaps at [base]): the
+     * rate changes linearly in output time over [RAMP_SECONDS], centred on the border, played as
+     * [RAMP_STEPS] sections. A side shorter than twice its share shortens the whole ramp. Exact
+     * rational arithmetic with half-even rounding – the desktop computes the same frames.
+     * [encodeAt] (smart export): the steps are re-encoded at this rate.
+     */
+    fun rampSteps(segments: List<Segment>, start: Int, end: Int, base: Rational, encodeAt: Rational? = null): List<Segment> {
+        val smooth = smoothBorders(segments)
+        if (smooth.isEmpty()) return emptyList()
+        val ps = pieces(segments, start, end, base)
+        val steps = mutableListOf<Segment>()
+        val n = Rational.of(RAMP_STEPS.toLong())
+        for (i in 0 until ps.size - 1) {
+            val border = ps[i].end
+            if (border !in smooth) continue
+            val ra = ps[i].rate
+            val rb = ps[i + 1].rate
+            // source frames used before / after the border for a ramp of t seconds
+            val before = { t: Rational -> t * (ra * 3 + rb) / 8 }
+            val after = { t: Rational -> t * (ra + rb * 3) / 8 }
+            val halfA = Rational.of((ps[i].end - ps[i].start).toLong(), 2)
+            val halfB = Rational.of((ps[i + 1].end - ps[i + 1].start).toLong(), 2)
+            val scale = minOf(Rational.ONE, halfA / before(RAMP_SECONDS), halfB / after(RAMP_SECONDS))
+            val t = RAMP_SECONDS * scale
+            val a = border - before(t).roundHalfEven().toInt()
+            val b = border + after(t).roundHalfEven().toInt()
+            if (b <= a) continue
+            // frames played by the end of step k: integral of the linear rate, as a share of all
+            val mean = (ra + rb) / 2
+            fun pos(k: Int): Int {
+                val x = Rational.of(k.toLong()) / n
+                val share = (x * ra + (rb - ra) * x * x / 2) / mean
+                return a + (share * (b - a).toLong()).roundHalfEven().toInt()
+            }
+            for (k in 0 until RAMP_STEPS) {
+                val p0 = pos(k)
+                val p1 = pos(k + 1)
+                if (p1 <= p0) continue
+                val rate = ra + (rb - ra) * Rational.of((2 * k + 1).toLong()) / (n * 2)
+                steps += Segment(p0, p1, rate, encodeAt != null, encodeAt)
+            }
+        }
+        return steps
+    }
+
+    /** [target] with the ramp [steps] laid over it (steps win, like added sections). */
+    fun withRamps(target: List<Segment>, steps: List<Segment>): List<Segment> = steps.fold(target) { acc, s -> add(acc, s) }
 
     fun duration(ps: List<Piece>): Rational {
         val last = ps.lastOrNull() ?: return Rational.ZERO

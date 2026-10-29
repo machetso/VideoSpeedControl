@@ -74,4 +74,38 @@ class ReencodeDeviceTest {
         export(job, "re_pixel.mp4", sound = true)
         File(outDir, "re_pixel.mp4").delete()                 // private footage: not pulled
     }
+
+    /** AV1 fast (hardware) with a speed ramp from 8× slower to real time, with sound. */
+    @Test fun av1FastWithRamp() {
+        val info = Probe.probe(ctx, Uri.fromFile(TestClips.get("synth_slowmo.mp4")))
+        val segs = rampedSegments(listOf(Segment(0, 120, info.fps, smoothEnd = true)), Trim(), info)
+        assertTrue(segs.size > 5)                                       // the ramp steps are in
+        val job = ReencodeJob(info, Rational.of(30), segments = segs, codec = VideoCodec.AV1_FAST)
+        val out = export(job, "re_av1_fast.mp4", sound = true)
+        assertEquals("video/av01", out.videoMime)
+    }
+
+    /** AV1 best (software, highest complexity), short and small. */
+    @Test fun av1Best() {
+        val info = Probe.probe(ctx, Uri.fromFile(TestClips.get("synth_hevc240.mp4")))
+        val job = ReencodeJob(info, Rational.of(30), trim = Trim(0, 60), codec = VideoCodec.AV1_BEST, shortSide = 480)
+        val out = export(job, "re_av1_best.mp4")
+        assertEquals("video/av01", out.videoMime)
+    }
+
+    /** Lossless with a ramp: every frame kept, timestamps rising, length as computed. */
+    @Test fun losslessWithRamp() {
+        val info = Probe.probe(ctx, Uri.fromFile(TestClips.get("synth_hevc240.mp4")))
+        val segs = rampedSegments(listOf(Segment(240, 480, Rational.of(30), smoothStart = true, smoothEnd = true)), Trim(), info)
+        val job = LosslessJob(info, Rational.of(30), Trim(), segs)
+        val out = File(outDir, "lossless_ramp.mp4")
+        val n = FileOutputStream(out).use { LosslessExport(ctx, job).run(it.fd) }
+        assertEquals(info.frames.count, n)
+        val o = Probe.probe(ctx, Uri.fromFile(out))
+        val p = o.frames.ptsUs
+        for (k in 1 until p.size) assertTrue("frame $k", p[k] > p[k - 1])
+        val want = job.outputDuration.toDouble() * 1e6
+        val got = (p.last() - p.first()) + (p.last() - p[p.size - 2])
+        assertTrue("length $got µs, want $want", abs(got - want) < 10_000)
+    }
 }

@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import kotlin.math.abs
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -30,12 +36,17 @@ import com.alexvulcu.videospeedcontrol.core.ClipEdit
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
+/** A speed ramp on the timeline: source frames [start, end), rate going from [from] to [to]. */
+data class RampZone(val start: Int, val end: Int, val from: com.alexvulcu.videospeedcontrol.core.Rational,
+                    val to: com.alexvulcu.videospeedcontrol.core.Rational)
+
 /** Keyframe thumbnail for the strip: source frame index + picture. */
 data class Thumb(val frame: Int, val image: ImageBitmap, val bitmap: android.graphics.Bitmap)
 
 /**
- * Thumbnail strip with speed sections, trim (dimmed outside), keyframe ticks, the pending
- * section start and the playhead. Tap or drag to move the playhead.
+ * Thumbnail strip with speed sections, their borders (with grips), speed ramps, trim (dimmed
+ * outside), keyframe ticks, the pending section start and the playhead. Tap: move the playhead
+ * and select the section there; drag: scrub – or, starting on a border, move that border.
  */
 @Composable
 fun Timeline(
@@ -46,6 +57,12 @@ fun Timeline(
     thumbs: List<Thumb>,
     proxyProgress: Float,
     onSeek: (frame: Int, magnetRadius: Int) -> Unit,
+    onTap: (frame: Int, magnetRadius: Int) -> Unit = onSeek,
+    ramps: List<RampZone> = emptyList(),
+    draggedBorder: Int? = null,
+    onBorderDragStart: (border: Int) -> Unit = {},
+    onBorderDrag: (frame: Int) -> Unit = {},
+    onBorderDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val count = edit.info.frames.count
@@ -54,7 +71,14 @@ fun Timeline(
     val colors = MaterialTheme.colorScheme
     val measurer = rememberTextMeasurer()
     val seek by rememberUpdatedState(onSeek)
+    val tap by rememberUpdatedState(onTap)
+    val borders by rememberUpdatedState(edit.borders())
+    val dragStart by rememberUpdatedState(onBorderDragStart)
+    val dragMove by rememberUpdatedState(onBorderDrag)
+    val dragEnd by rememberUpdatedState(onBorderDragEnd)
+    val grabPx = with(androidx.compose.ui.platform.LocalDensity.current) { 16.dp.toPx() }
 
+    var downX by remember { mutableFloatStateOf(0f) }
     fun frameAt(x: Float, width: Float) = (x / width * count).toInt().coerceIn(0, count - 1)
     val magnetPx = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.toPx() }
     /** Magnet radius in frames: 12 dp on screen (a fingertip; the desktop uses 8 px). */
@@ -63,16 +87,30 @@ fun Timeline(
     Canvas(
         modifier
             .fillMaxWidth()
-            .height(76.dp)
+            .height(84.dp)
             .pointerInput(count) {
-                detectTapGestures { seek(frameAt(it.x, size.width.toFloat()), radius(size.width.toFloat())) }
+                detectTapGestures { tap(frameAt(it.x, size.width.toFloat()), radius(size.width.toFloat())) }
             }
             .pointerInput(count) {
+                // where the finger went down (onDragStart only reports the point after the touch slop)
+                awaitEachGesture { downX = awaitFirstDown(requireUnconsumed = false).position.x }
+            }
+            .pointerInput(count) {
+                var border: Int? = null
                 detectHorizontalDragGestures(
-                    onDragStart = { seek(frameAt(it.x, size.width.toFloat()), radius(size.width.toFloat())) },
+                    onDragStart = {
+                        val w = size.width.toFloat()
+                        border = borders.minByOrNull { b -> abs(b.toFloat() / count * w - downX) }
+                            ?.takeIf { b -> abs(b.toFloat() / count * w - downX) <= grabPx }
+                        border?.let(dragStart) ?: seek(frameAt(it.x, w), radius(w))
+                    },
+                    onDragEnd = { if (border != null) dragEnd(); border = null },
+                    onDragCancel = { if (border != null) dragEnd(); border = null },
                 ) { change, _ ->
                     change.consume()
-                    seek(frameAt(change.position.x, size.width.toFloat()), radius(size.width.toFloat()))
+                    val w = size.width.toFloat()
+                    if (border != null) dragMove((change.position.x / w * count).roundToInt().coerceIn(0, count))
+                    else seek(frameAt(change.position.x, w), radius(w))
                 }
             },
     ) {
@@ -112,6 +150,34 @@ fun Timeline(
             if (label.size.width < right - left) {
                 drawText(label, topLeft = Offset(left + (right - left - label.size.width) / 2, 0f))
             }
+        }
+
+        // speed ramps: dark field with a slanted line – up = getting faster, down = slower
+        for (z in ramps) {
+            val top = stripTop + stripH * 0.4f
+            val h = stripH * 0.6f - 5.dp.toPx()
+            val left = x(z.start)
+            val right = maxOf(left + 3f, x(z.end))
+            drawRect(Color.Black.copy(alpha = 0.55f), Offset(left, top), Size(right - left, h))
+            val faster = z.to > z.from
+            val yLow = top + h - 3.dp.toPx()
+            val yHigh = top + 3.dp.toPx()
+            drawLine(Color.White, Offset(left, if (faster) yLow else yHigh), Offset(right, if (faster) yHigh else yLow),
+                2.5f.dp.toPx())
+        }
+
+        // section borders: clearly visible lines with a grip below the strip (drag to move)
+        for (b in edit.borders()) {
+            val bx = x(b)
+            val active = b == draggedBorder
+            val line = if (active) colors.error else Color.White
+            drawLine(Color.Black.copy(alpha = 0.7f), Offset(bx, stripTop), Offset(bx, stripTop + stripH), 4.dp.toPx())
+            drawLine(line, Offset(bx, stripTop), Offset(bx, stripTop + stripH), 2.dp.toPx())
+            val gy = stripTop + stripH + 5.dp.toPx()
+            drawRoundRect(Color.Black.copy(alpha = 0.7f), Offset(bx - 5.dp.toPx(), gy - 5.dp.toPx()),
+                Size(10.dp.toPx(), 10.dp.toPx()), CornerRadius(3.dp.toPx()))
+            drawRoundRect(line, Offset(bx - 4.dp.toPx(), gy - 4.dp.toPx()), Size(8.dp.toPx(), 8.dp.toPx()),
+                CornerRadius(2.dp.toPx()))
         }
 
         // trim: dim what is cut away

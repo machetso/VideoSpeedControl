@@ -65,7 +65,7 @@ Phones such as the Google Pixel record slow motion at e.g. 240 fps but store it 
 
 ### Moving around
 
-- Click or drag in the **timeline** (thumbnails with keyframe ticks below them), use the **frame number** box, or the buttons and keys: **←/→** one frame, **Shift+←/→** previous / next keyframe, **Home/End** first / last frame, mouse wheel.
+- Click or drag in the **timeline** (thumbnails with keyframe ticks below them), use the **frame number** box, or the buttons and keys: **◀ 1 / 1 ▶** (**←/→**) one frame, **− 🔑 / + 🔑** (**Shift+←/→**) previous / next keyframe, **⏮ / ⏭** (**Home/End**) first / last frame, mouse wheel.
 - While you drag, the picture comes from the small preview copy – instantly. When the cursor rests for a moment, the sharp full-size frame replaces it.
 - **Fit / 100 % / 200 %** zooms the picture; drag to pan, double-click to toggle.
 
@@ -101,7 +101,7 @@ Only the settings that the chosen mode can use are enabled.
 
 ### Codec and container
 
-The codec list is grouped into **Lossless** (FFV1, Ut Video, MagicYUV, HuffYUV, H.264 / HEVC / VP9 / AV1 / AV2 lossless, QuickTime Animation, image sequences), **Lossy** (H.264, HEVC, AV1, VP9, ProRes, DNxHR, CineForm, MJPEG, AV2) and **Hardware** (NVIDIA, Intel, AMD – only offered if a test encode on your computer worked). Every entry has a tooltip explaining what it is good for. The **container** list only offers formats that can hold the chosen codec.
+The codec list is grouped into **Lossless** (FFV1, Ut Video, MagicYUV, HuffYUV, H.264 / HEVC / VP9 / AV1 / AV2 lossless, QuickTime Animation, image sequences), **Lossy** (H.264, HEVC, AV1, VP9, ProRes, DNxHR, CineForm, MJPEG, AV2) and **Hardware** (NVIDIA, Intel, AMD – only offered if a test encode on your computer worked). Every entry has a tooltip explaining what it is good for. The **container** list only offers formats that can hold the chosen codec. When you switch to *Re-encode*, **AV1 (SVT-AV1, fast)** is preselected – small files at good quality; *AV1 (libaom, best quality)* compresses a little better but is much slower.
 
 ### Preset
 
@@ -157,15 +157,21 @@ Speed sections give parts of a clip their own frame rate – for example the jum
 2. Move to the last frame and click **Section end ]** (key **]**). A dashed frame marks the range.
 3. Choose the frame rate (from 23.976 fps up to **8× faster** than the original) and click **Add section**.
 
+**Quicker:** skip step 1. Without a marked start, **Section end ]** starts the section right after the section before it – or at the start of the clip (trim) if there is none – so sections follow each other without gaps. Inside an existing section it starts at that section's start (the section is split).
+
 Sections appear as blue bands in the timeline and in the table below it, where you can change their frame rate, jump to them (click) or remove them (✕). Everything outside sections plays in **real time**. A new section that overlaps an existing one wins.
+
+- **Editing a section:** click it in the timeline or in the table to select it. **Start = playhead** / **End = playhead** move its first / last frame to the cursor; the frame rate is changed in the table.
+- **Moving a border:** the borders between sections (and between a section and real time) are white lines with a grip below the thumbnails. Drag a border to make one section longer and its neighbour shorter; the picture shows the frame at the border while you drag. One drag is one undo step.
+- **Smooth transitions:** tick **Smooth in** / **Smooth out** in the table to let the speed change evenly instead of jumping – e.g. from 9.6× slow motion to real time. The change takes **0.5 s** of the output and is centred on the border (shorter if a section is too short); the timeline shows it as a dark field with a slanted line (rising = getting faster). It works in every processing mode; in smart re-encode the transition is re-encoded when a section next to it is.
 
 - **Magnetic cursor 🧲:** when you drag near a section, the cursor snaps to the frame right after it (to continue seamlessly) or – while you mark an end – to the frame right before the next section. Click 🧲 to switch it off.
 - **Clear sections** (right) removes all sections after asking.
-- **↶ Undo** (**Ctrl+Z**) and **↷ Redo** (**Ctrl+Shift+Z** or **Ctrl+Y**) step back and forward through every change to the sections – adding, changing, removing, clearing, loading – up to 200 steps, separately for each clip. Hover over the button to see which change it undoes.
+- **↶ Undo** (**Ctrl+Z**) and **↷ Redo** (**Ctrl+Shift+Z** or **Ctrl+Y**) step back and forward through every change to the sections – adding, changing, moving, removing, clearing, loading – up to 200 steps, separately for each clip. The number on the button shows how many steps you can go back (or forward); hover over it to see which change it undoes.
 
-### Saving and loading a treatment (.cst)
+### Saving and loading a Clip Speed Treatment (.cst)
 
-**Save treatment…** in the toolbar (**Ctrl+S**) saves the current clip's sections, trim and output settings as a *clip speed treatment* file (`.cst`, next to the clip by default). **Load treatment…** (**Ctrl+L**) – or dropping a `.cst` onto the window – loads it again.
+**Save Clip Speed Treatment…** in the toolbar (**Ctrl+S**) saves the current clip's sections, trim and output settings as a *Clip Speed Treatment* file (`.cst`, next to the clip by default). **Load Clip Speed Treatment…** (**Ctrl+L**) – or dropping a `.cst` onto the window – loads it again. The Android app reads and writes the same files.
 
 A treatment belongs to exactly one video: it stores a fingerprint of the file's content and only loads onto that video. The file name does not matter – a renamed or moved copy still matches. If the video is not in the list yet but is still where it was when you saved, it is added automatically. A treatment never loads onto a different video, because its frame numbers would not fit.
 
@@ -236,8 +242,8 @@ AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30
 | [ / ] | Section start / end |
 | Ctrl+Z | Undo the last change to the sections |
 | Ctrl+Shift+Z / Ctrl+Y | Redo |
-| Ctrl+S | Save treatment (.cst) |
-| Ctrl+L | Load treatment (.cst) |
+| Ctrl+S | Save Clip Speed Treatment (.cst) |
+| Ctrl+L | Load Clip Speed Treatment (.cst) |
 
 ## 12. Tips and troubleshooting
 

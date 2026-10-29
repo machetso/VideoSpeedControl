@@ -17,7 +17,7 @@ data class ClipEdit(
 
     private val frames get() = info.frames
 
-    fun job(fps: Rational) = LosslessJob(info, fps, trim, segments)
+    fun job(fps: Rational) = LosslessJob(info, fps, trim, rampedSegments(segments, trim, info))
 
     // ------------------------------------------------------------------ sections
 
@@ -43,6 +43,81 @@ data class ClipEdit(
         val b = maxOf(first, last).coerceIn(0, frames.count - 1) + 1
         return editSegments(Segments.add(segments, Segment(a, b, fps)),
             "Add section ${a + 1}–$b at ${fpsLabel(fps)} fps")
+    }
+
+    /**
+     * Start of a section that ends at [last] when no start was marked: right after the section
+     * before it (so sections follow each other seamlessly), the start of the section [last] lies
+     * in (that section is split), or the start of the clip / trim range.
+     */
+    fun quickStart(last: Int): Int {
+        val inside = sectionAt(last)
+        if (inside >= 0) return segments[inside].start
+        return segments.filter { it.end <= last }.maxOfOrNull { it.end } ?: trim.start
+    }
+
+    /** Positions where a section starts or ends (inside the clip) – draggable on the timeline. */
+    fun borders(): List<Int> =
+        segments.flatMap { listOf(it.start, it.end) }.filter { it in 1 until frames.count }.distinct().sorted()
+
+    /** How far the border at [border] may move: (lowest, highest) new position. */
+    fun borderRange(border: Int): Pair<Int, Int> {
+        val endingHere = segments.filter { it.end == border }
+        val startingHere = segments.filter { it.start == border }
+        val lo = endingHere.maxOfOrNull { it.start + 1 }
+            ?: segments.filter { it.end < border }.maxOfOrNull { it.end } ?: 0
+        val hi = startingHere.minOfOrNull { it.end - 1 }
+            ?: segments.filter { it.start > border }.minOfOrNull { it.start } ?: frames.count
+        return lo to hi
+    }
+
+    /** Sections with the border at [border] moved to [to] (neighbours follow); no undo step. */
+    fun movedBorder(border: Int, to: Int): List<Segment> {
+        val (lo, hi) = borderRange(border)
+        val q = to.coerceIn(lo, hi)
+        return segments.map {
+            when {
+                it.end == border && it.start == border -> it
+                it.end == border -> it.copy(end = q)
+                it.start == border -> it.copy(start = q)
+                else -> it
+            }
+        }
+    }
+
+    /** Show [new] sections without an undo step (live preview while a border is dragged). */
+    fun previewSegments(new: List<Segment>): ClipEdit = copy(segments = new)
+
+    /** New first / last frame of section [index]; overlapped neighbours are cut back. */
+    fun setSectionRange(index: Int, first: Int, last: Int): ClipEdit {
+        val s = segments.getOrNull(index) ?: return this
+        val a = minOf(first, last).coerceIn(0, frames.count - 1)
+        val b = maxOf(first, last).coerceIn(0, frames.count - 1) + 1
+        val others = segments.filterIndexed { i, _ -> i != index }
+        return editSegments(Segments.add(others, s.copy(start = a, end = b)), "Section now frames ${a + 1}–$b")
+    }
+
+    /** Neighbour rate at the start / end of section [index] (another section or real time). */
+    fun neighbourRate(index: Int, atStart: Boolean): Rational? {
+        val s = segments.getOrNull(index) ?: return null
+        val border = if (atStart) s.start else s.end
+        if (border <= 0 || border >= frames.count) return null
+        val other = segments.firstOrNull { if (atStart) it.end == border else it.start == border }
+        return other?.fps ?: info.realFps
+    }
+
+    /** Speed ramp on / off at one border of section [index] (and the neighbour sharing it). */
+    fun setSmooth(index: Int, atStart: Boolean, on: Boolean): ClipEdit {
+        val s = segments.getOrNull(index) ?: return this
+        val border = if (atStart) s.start else s.end
+        val new = segments.map {
+            when {
+                it.start == border -> it.copy(smoothStart = on)
+                it.end == border -> it.copy(smoothEnd = on)
+                else -> it
+            }
+        }
+        return editSegments(new, "Smooth transition at frame ${border + 1} ${if (on) "on" else "off"}")
     }
 
     fun setSectionFps(index: Int, fps: Rational): ClipEdit {
@@ -108,7 +183,7 @@ data class ClipEdit(
     }
 
     fun reencodeJob(fps: Rational, speed: Rational?, codec: VideoCodec, shortSide: Int?, quality: Quality) =
-        ReencodeJob(info, fps, speed, trim, segments, codec, shortSide, quality)
+        ReencodeJob(info, fps, speed, trim, rampedSegments(segments, trim, info), codec, shortSide, quality)
 
     val trimEnd: Int get() = trim.end ?: frames.count
 

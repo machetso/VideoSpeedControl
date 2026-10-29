@@ -34,8 +34,8 @@ from . import help, workers
 
 VIDEO_FILTER = ("Video files (*.mp4 *.mov *.mkv *.avi *.mts *.m2ts *.mxf *.webm *.m4v *.wmv "
                 "*.flv *.360 *.lrv *.MP4 *.MOV *.MKV *.AVI *.MTS);;"
-                "Clip speed treatments (*.cst);;All files (*)")
-CST_FILTER = "Clip speed treatments (*.cst);;All files (*)"
+                "Clip Speed Treatments (*.cst);;All files (*)")
+CST_FILTER = "Clip Speed Treatments (*.cst);;All files (*)"
 
 
 @dataclass
@@ -136,11 +136,11 @@ class MainWindow(QMainWindow):
         for action in (add, remove, clear):
             toolbar.addAction(action)
         toolbar.addSeparator()
-        load_cst = QAction("Load treatment…", self, shortcut=QKeySequence("Ctrl+L"),
+        load_cst = QAction("Load Clip Speed Treatment…", self, shortcut=QKeySequence("Ctrl+L"),
                            triggered=self.load_treatment_dialog)
         load_cst.setToolTip("Load a clip speed treatment (.cst): sections, trim and output "
                             "settings – only onto the video it was saved for (Ctrl+L)")
-        save_cst = QAction("Save treatment…", self, shortcut=QKeySequence.Save,
+        save_cst = QAction("Save Clip Speed Treatment…", self, shortcut=QKeySequence.Save,
                            triggered=self.save_treatment)
         save_cst.setToolTip("Save the sections, trim and output settings of the current clip "
                             "as a clip speed treatment (.cst) (Ctrl+S)")
@@ -578,7 +578,7 @@ class MainWindow(QMainWindow):
     def load_treatment_dialog(self) -> None:
         clip = self.current_clip()
         start = str(clip.path.with_suffix(treatment.SUFFIX)) if clip else ""
-        path, _ = QFileDialog.getOpenFileName(self, "Load clip speed treatment", start,
+        path, _ = QFileDialog.getOpenFileName(self, "Load Clip Speed Treatment", start,
                                               CST_FILTER)
         if path:
             self.open_treatment(Path(path))
@@ -589,7 +589,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Select a loaded clip to save its treatment", 5000)
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save clip speed treatment", str(clip.path.with_suffix(treatment.SUFFIX)),
+            self, "Save Clip Speed Treatment", str(clip.path.with_suffix(treatment.SUFFIX)),
             CST_FILTER)
         if not path:
             return
@@ -600,7 +600,7 @@ class MainWindow(QMainWindow):
             treatment.save(target, clip.path, clip.frames.count, clip.settings, clip.ui,
                            clip.trim, clip.segments)
         except OSError as e:
-            QMessageBox.warning(self, "Save treatment", f"Could not save {target.name}:\n{e}")
+            QMessageBox.warning(self, "Save Clip Speed Treatment", f"Could not save {target.name}:\n{e}")
             return
         n = len(clip.segments)
         self.statusBar().showMessage(f"Saved {target.name} ({n} section{'s' * (n != 1)}, trim "
@@ -612,7 +612,7 @@ class MainWindow(QMainWindow):
         try:
             t = treatment.load(path)
         except treatment.TreatmentError as e:
-            QMessageBox.warning(self, "Load treatment", str(e))
+            QMessageBox.warning(self, "Load Clip Speed Treatment", str(e))
             return
         clips = [self.current_clip()] + [c for c in self.model.clips if c is not self.current_clip()]
         for clip in clips:
@@ -634,7 +634,7 @@ class MainWindow(QMainWindow):
                     self._select(clip)
                 return
         QMessageBox.warning(
-            self, "Load treatment",
+            self, "Load Clip Speed Treatment",
             f"{path.name} belongs to {t.source_name} ({t.source_size:,} bytes, {t.frames} "
             "frames).\n\nNone of the clips in the list is that video, and it was not found "
             "where it was saved. Add the video first (a renamed copy works too), then load "
@@ -652,12 +652,12 @@ class MainWindow(QMainWindow):
         try:
             t.check(clip.path, clip.frames.count)
         except (treatment.TreatmentError, OSError) as e:
-            QMessageBox.warning(self, "Load treatment", str(e))
+            QMessageBox.warning(self, "Load Clip Speed Treatment", str(e))
             return
         if clip.segments:
             n = len(clip.segments)
             answer = QMessageBox.question(
-                self, "Load treatment",
+                self, "Load Clip Speed Treatment",
                 f"Replace the {n} speed section{'s' * (n != 1)}, the trim and the output "
                 f"settings of {clip.path.name} with {path.name}?\n\n"
                 "The current sections can be brought back with “↶ Undo”.",
@@ -677,7 +677,7 @@ class MainWindow(QMainWindow):
         st = self.settings.encoders.get(clip.settings.codec) if self.settings.encoders else None
         if st is not None and not st.available:
             QMessageBox.information(
-                self, "Load treatment",
+                self, "Load Clip Speed Treatment",
                 f"{text}.\n\nIts codec ({CODECS_BY_KEY[clip.settings.codec].label}) is not "
                 f"available on this computer ({st.reason}). Choose another codec before "
                 "exporting.")

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
@@ -98,10 +98,26 @@ class Job:
         """Sections inside the trim range: they replace the global speed."""
         return any(s.start < self.trim_end and s.end > self.trim.start for s in self.segments)
 
+    @property
+    def timing_segments(self) -> list[seg.Segment]:
+        """The sections with the speed ramps of their smooth borders laid over them – what is
+        exported and previewed (the editor and .cst files keep `segments` without ramp steps).
+
+        Ramps are computed over the whole clip, so a trim only cuts them. Smart re-encode: a
+        ramp is re-encoded (at that section's output rate) when a section next to its border is.
+        """
+        total = self.total_frames
+        steps = seg.ramp_steps(self.segments, 0, total, self.info.real_fps)
+        if not steps:
+            return self.segments
+        if self.settings.smart:
+            steps = _smart_ramps(self.segments, steps)
+        return seg.with_ramps(self.segments, steps)
+
     def pieces(self, start: int | None = None) -> list[seg.Piece]:
         """The trim range (from `start`) as runs of one rate; outside sections: real time."""
         first = self.trim.start if start is None else start
-        return seg.pieces(self.segments, first, self.trim_end, self.info.real_fps)
+        return seg.pieces(self.timing_segments, first, self.trim_end, self.info.real_fps)
 
     def output_time(self, frame: int) -> float:
         """Time in the output at which source frame `frame` appears."""
@@ -318,6 +334,20 @@ class Job:
         sp = f"{float(self.speed):.3g}".replace(".", "_")
         fps = f"{float(self.settings.fps):.5g}".replace(".", "_")
         return f"{self.info.path.stem}_{sp}x_{fps}fps"
+
+
+def _smart_ramps(segments: list[seg.Segment], steps: list[seg.Segment]) -> list[seg.Segment]:
+    """Ramp steps re-encoded like the section next to their border (left one first)."""
+    borders = sorted(seg.smooth_borders(segments))
+    out = []
+    for s in steps:
+        border = next((b for b in borders if s.start <= b <= s.end), None)
+        if border is None:      # a step beside the border: the ramp's border is the nearest one
+            border = min(borders, key=lambda b: min(abs(b - s.start), abs(b - s.end)))
+        side = ([x for x in segments if x.end == border and x.reencode]
+                + [x for x in segments if x.start == border and x.reencode])
+        out.append(replace(s, reencode=True, out_fps=side[0].out_fps) if side else s)
+    return out
 
 
 def _even(v: float) -> int:

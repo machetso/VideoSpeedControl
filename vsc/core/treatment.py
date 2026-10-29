@@ -82,7 +82,8 @@ def save(target: Path, source: Path, frames: int, settings: OutputSettings, ui: 
         "trim": {"start": trim.start, "end": trim.end},
         "sections": [{"start": s.start, "end": s.end, "fps": str(s.fps),
                       "reencode": s.reencode,
-                      "out_fps": str(s.out_fps) if s.out_fps is not None else None}
+                      "out_fps": str(s.out_fps) if s.out_fps is not None else None,
+                      "smooth_start": s.smooth_start, "smooth_end": s.smooth_end}
                      for s in segments],
     }
     target.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -106,7 +107,8 @@ def load(path: Path) -> Treatment:
                     None if data["trim"]["end"] is None else int(data["trim"]["end"]))
         sections = [seg.Segment(int(s["start"]), int(s["end"]), Fraction(s["fps"]),
                                 bool(s.get("reencode", False)),
-                                Fraction(s["out_fps"]) if s.get("out_fps") else None)
+                                Fraction(s["out_fps"]) if s.get("out_fps") else None,
+                                bool(s.get("smooth_start", False)), bool(s.get("smooth_end", False)))
                     for s in data["sections"]]
         return Treatment(src["name"], int(src["size"]), src["fingerprint"], int(src["frames"]),
                          settings, dict(data.get("ui") or {}), trim, sections,

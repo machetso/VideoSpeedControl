@@ -74,4 +74,43 @@ class ClipEditTest {
         assertTrue(c.segments.isEmpty())
         assertEquals(e.segments, c.undo().segments)
     }
+
+    @Test fun quickEndFollowsTheSectionBefore() {
+        val e = clip()
+        assertEquals(0, e.quickStart(300))                              // nothing yet: from the start
+        val a = e.addSection(e.quickStart(299), 299, r("25"))
+        assertEquals(listOf(Segment(0, 300, r("25"))), a.segments)
+        assertEquals(300, a.quickStart(500))                           // right after the section before
+        val b = a.addSection(a.quickStart(499), 499, r("60"))
+        assertEquals(listOf(Segment(0, 300, r("25")), Segment(300, 500, r("60"))), b.segments)
+        assertEquals(300, b.quickStart(400))                           // inside a section: split it
+        assertEquals(10, e.withIn(10, snap = false).quickStart(100))   // from the trim start
+    }
+
+    @Test fun draggingABorderMovesBothNeighbours() {
+        val e = clip().addSection(0, 299, r("25")).addSection(300, 499, r("60"))
+        assertEquals(listOf(300, 500), e.borders())
+        assertEquals(1 to 499, e.borderRange(300))
+        assertEquals(listOf(Segment(0, 350, r("25")), Segment(350, 500, r("60"))), e.movedBorder(300, 350))
+        assertEquals(499, e.movedBorder(300, 900)[0].end)              // stops before the next border
+        // a border to real time: the gap grows / shrinks
+        assertEquals(301 to 960, e.borderRange(500))         // the section keeps at least one frame
+        assertEquals(Segment(300, 700, r("60")), e.movedBorder(500, 700)[1])
+    }
+
+    @Test fun smoothFlagsSitOnBothSidesOfABorder() {
+        val e = clip().addSection(0, 299, r("25")).addSection(300, 499, r("60"))
+        val s = e.setSmooth(1, atStart = true, on = true)
+        assertTrue(s.segments[0].smoothEnd && s.segments[1].smoothStart)
+        assertEquals(r("25"), s.neighbourRate(1, atStart = true))
+        assertEquals(r("240"), s.neighbourRate(1, atStart = false))      // real time after it
+        assertEquals(null, s.neighbourRate(0, atStart = true))           // clip start
+        assertEquals(e.segments, s.undo().segments)
+    }
+
+    @Test fun editingASectionRange() {
+        val e = clip().addSection(100, 199, r("25")).addSection(300, 399, r("60"))
+        val m = e.setSectionRange(0, 150, 349)                          // overlaps the next: cut back
+        assertEquals(listOf(Segment(150, 350, r("25")), Segment(350, 400, r("60"))), m.segments)
+    }
 }

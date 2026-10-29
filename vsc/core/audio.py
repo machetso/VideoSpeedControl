@@ -97,7 +97,7 @@ def pieces(job: Job) -> list[tuple[float, float, float]]:
     if job.settings.smart:
         out = []
         for part in job.smart_parts():
-            ps = seg.pieces(job.segments, part.start, part.end, job.info.real_fps)
+            ps = seg.pieces(job.timing_segments, part.start, part.end, job.info.real_fps)
             scale = Fraction(part.duration) / seg.duration(ps) if part.kind == "encode" else 1
             out += [(_file_time(job, p.start) / k, _file_time(job, p.end) / k,
                      float(Fraction(p.end - p.start) / p.rate * scale)) for p in ps]

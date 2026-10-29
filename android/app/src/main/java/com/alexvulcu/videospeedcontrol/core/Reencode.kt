@@ -66,7 +66,7 @@ class ReencodeExport(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
         sourceVideoFormat(context, info)?.let { copyColorAspects(it, encFormat) }   // tagged like the source
-        val encName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(encFormat)
+        val encName = Encoders.pick(job.codec, encFormat)
             ?: error("No ${job.codec.label} encoder for ${w}×$h at ${fps.toDouble()} fps on this phone")
 
         val encThread = HandlerThread("vsc-encoder").apply { start() }
@@ -246,5 +246,34 @@ class ReencodeExport(
         } finally {
             r.release()
         }
+    }
+}
+
+/** Encoder choice per codec (see [VideoCodec]); sets the complexity for AV1 in [format]. */
+object Encoders {
+    private fun candidates(mime: String, format: MediaFormat?): List<MediaCodecInfo> =
+        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { info ->
+            info.isEncoder && mime in info.supportedTypes &&
+                (format == null || runCatching { info.getCapabilitiesForType(mime).isFormatSupported(format) }.getOrDefault(false))
+        }
+
+    /** The phone has an encoder for [codec] at all (the codec list only offers these). */
+    fun available(codec: VideoCodec): Boolean = candidates(codec.mime, null).isNotEmpty()
+
+    fun pick(codec: VideoCodec, format: MediaFormat): String? {
+        val all = candidates(codec.mime, format)
+        val info = when (codec) {
+            VideoCodec.AV1_FAST -> all.firstOrNull { it.isHardwareAccelerated } ?: all.firstOrNull()
+            VideoCodec.AV1_BEST -> all.firstOrNull { it.isSoftwareOnly } ?: all.firstOrNull()
+            else -> all.firstOrNull()
+        } ?: return null
+        if (codec == VideoCodec.AV1_FAST || codec == VideoCodec.AV1_BEST) {
+            info.getCapabilitiesForType(codec.mime).encoderCapabilities?.complexityRange?.let { range ->
+                if (range.upper > range.lower) {
+                    format.setInteger(MediaFormat.KEY_COMPLEXITY, if (codec == VideoCodec.AV1_BEST) range.upper else range.lower)
+                }
+            }
+        }
+        return info.name
     }
 }

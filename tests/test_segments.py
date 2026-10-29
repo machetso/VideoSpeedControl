@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -127,3 +128,79 @@ def test_speedup_section_lossless_and_cfr(h264_clip, tmp_path):
     ts = _frame_times(out)
     assert abs(len(ts) - cfr.output_frame_count) <= 1
     assert {round(b - a, 4) for a, b in zip(ts, ts[1:])} == {round(1 / 60, 4)}
+
+
+# ---------------------------------------------------------------------- speed ramps (v0.92)
+
+RAMP_WANT = """
+    292 293 107/4|293 295 121/4|295 296 135/4|296 298 149/4|298 300 163/4|300 303 177/4|303 305 191/4|
+    305 307 205/4|307 310 219/4|310 313 233/4|374 377 69|377 382 87|382 387 105|387 393 123|393 400 141|
+    400 408 159|408 417 177|417 427 195|427 437 213|437 449 231|477 483 459/2|483 488 417/2|488 492 375/2|
+    492 496 333/2|496 500 291/2|500 503 249/2|503 505 207/2|505 508 165/2|508 509 123/2|509 510 81/2
+"""
+
+
+def test_ramp_steps_like_android():
+    """The same frames as the Android app's RampTest (exact fractions, half-even rounding)."""
+    segs = [seg.Segment(100, 300, Fraction(25), smooth_end=True),
+            seg.Segment(300, 400, Fraction(60), smooth_end=True),
+            seg.Segment(500, 520, Fraction(30), smooth_start=True)]
+    got = [f"{s.start} {s.end} {s.fps}" for s in seg.ramp_steps(segs, 0, 600, Fraction(240))]
+    assert got == "".join(RAMP_WANT.split("\n")).replace("    ", "").split("|")
+
+
+def test_cut_drops_the_smooth_flag():
+    s = seg.Segment(100, 300, Fraction(25), smooth_start=True, smooth_end=True)
+    assert seg.add([s], seg.Segment(150, 200, Fraction(60))) == [
+        seg.Segment(100, 150, Fraction(25), smooth_start=True),
+        seg.Segment(150, 200, Fraction(60)),
+        seg.Segment(200, 300, Fraction(25), smooth_end=True)]
+
+
+def test_smart_ramps_follow_the_reencoded_neighbour(h264_clip):
+    job = _job(h264_clip, codec="x264")
+    job.settings.smart = True
+    job.segments = [seg.Segment(100, 300, Fraction(25), smooth_end=True),
+                    seg.Segment(300, 600, Fraction(60), True, Fraction(30), smooth_start=True)]
+    steps = [s for s in job.timing_segments if s.fps not in (Fraction(25), Fraction(60))]
+    assert steps and all(s.reencode and s.out_fps == Fraction(30) for s in steps)
+    job.segments = [replace(s, reencode=False, out_fps=None) for s in job.segments]
+    assert not any(s.reencode for s in job.timing_segments)        # both copied: the ramp too
+
+
+def test_lossless_ramp_vfr(h264_clip, tmp_path):
+    """Frame durations grow step by step from real time to the section's rate."""
+    job = _job(h264_clip, codec=COPY)
+    job.segments = [seg.Segment(300, 500, Fraction(30), smooth_start=True)]
+    out = output_path(job, tmp_path)
+    res = Runner(job, out).run()
+    assert res.ok, res.error
+    ts = _frame_times(out)
+    assert len(ts) == job.source_frame_count
+    gaps = [b - a for a, b in zip(ts, ts[1:])]
+    ramp = gaps[240:340]                     # the ramp: frames 253–321
+    assert all(b >= a - 2e-4 for a, b in zip(ramp, ramp[1:]))     # slowing down evenly
+    assert ramp[0] == pytest.approx(1 / float(job.info.real_fps), abs=2e-4)
+    assert ramp[-1] == pytest.approx(1 / 30, abs=2e-4)
+    real = 1 / float(job.info.real_fps)
+    assert ts[-1] - ts[0] + real == pytest.approx(job.output_duration, abs=3e-3)
+
+
+def test_editing_rules_like_android():
+    F = Fraction
+    assert seg.quick_start([], 300) == 0
+    a = [seg.Segment(0, 300, F(25))]
+    assert seg.quick_start(a, 500) == 300                    # right after the section before
+    b = a + [seg.Segment(300, 500, F(60))]
+    assert seg.quick_start(b, 400) == 300                    # inside a section: split it
+    assert seg.quick_start([], 100, trim_start=10) == 10
+    assert seg.borders(b, 960) == [300, 500]
+    assert seg.border_range(b, 300, 960) == (1, 499)
+    assert seg.moved_border(b, 300, 350, 960) == [seg.Segment(0, 350, F(25)), seg.Segment(350, 500, F(60))]
+    assert seg.moved_border(b, 300, 900, 960)[0].end == 499
+    assert seg.border_range(b, 500, 960) == (301, 960)
+    s = seg.with_smooth(b, 300, True)
+    assert s[0].smooth_end and s[1].smooth_start
+    assert seg.neighbour_rate(s, 1, True, 960, F(240)) == F(25)
+    assert seg.neighbour_rate(s, 1, False, 960, F(240)) == F(240)
+    assert seg.neighbour_rate(s, 0, True, 960, F(240)) is None

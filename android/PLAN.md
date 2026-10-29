@@ -61,5 +61,8 @@ test encode + comparison view.
    (single or batch) is an `ExportTask` (clip uri + treatment snapshot) run by `ExportManager`
    in the foreground `ExportService`; the batch list survives a restart (files/batch.json).
    .cst files are the desktop format (fingerprint check, both directions verified).
+7b. ✅ v0.92 (user requests): new transport buttons, quick section end, draggable borders,
+   section editing, smooth speed transitions (ramps), undo count, AV1 fast / best (default
+   AV1 fast). Same on the desktop.
 8. Signed release APK, licence notices. (Icon done: tools/make_android_icons.py; own clip
    gallery with newest recordings first.)

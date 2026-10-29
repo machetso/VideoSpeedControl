@@ -48,6 +48,18 @@ interface Timing {
     }
 }
 
+/**
+ * [segments] with the speed ramps of their smooth borders laid over them – what is exported and
+ * previewed (the editor and .cst files keep the sections without the ramp steps). Ramps are
+ * computed over the whole clip, so a trim only cuts them and never changes them.
+ * [encodeAt] (smart export): the steps are re-encoded at this rate.
+ */
+@Suppress("UNUSED_PARAMETER")
+fun rampedSegments(segments: List<Segment>, trim: Trim, info: ClipInfo, encodeAt: Rational? = null): List<Segment> {
+    val steps = Segments.rampSteps(segments, 0, info.frames.count, info.realFps, encodeAt)
+    return if (steps.isEmpty()) segments else Segments.withRamps(segments, steps)
+}
+
 private val UNSAFE_NAME = Regex("""[<>:"/\\|?*\x00-\x1f]""")
 
 /**
@@ -89,9 +101,26 @@ data class LosslessJob(
     }
 }
 
-enum class VideoCodec(val label: String, val mime: String, val bitsFactor: Double) {
-    HEVC("HEVC (H.265)", MediaFormat.MIMETYPE_VIDEO_HEVC, 1.0),
-    AVC("H.264", MediaFormat.MIMETYPE_VIDEO_AVC, 1.5),
+/**
+ * Re-encode codecs. AV1 fast: a hardware encoder if the phone has one, else the software encoder
+ * at its lowest complexity; AV1 best: the software encoder at its highest complexity (slow).
+ * [desktopKey]: the desktop's codec in .cst files (formats.CODECS).
+ */
+enum class VideoCodec(val label: String, val short: String, val mime: String, val bitsFactor: Double, val desktopKey: String) {
+    AV1_FAST("AV1 (fast)", "AV1 fast", MediaFormat.MIMETYPE_VIDEO_AV1, 0.75, "svtav1"),
+    AV1_BEST("AV1 (best quality, slow)", "AV1 best", MediaFormat.MIMETYPE_VIDEO_AV1, 0.65, "aom"),
+    HEVC("HEVC (H.265)", "HEVC", MediaFormat.MIMETYPE_VIDEO_HEVC, 1.0, "x265"),
+    AVC("H.264", "H.264", MediaFormat.MIMETYPE_VIDEO_AVC, 1.5, "x264");
+
+    companion object {
+        /** Desktop codec key → Android codec (H.264 / AV1 families; everything else → HEVC). */
+        fun fromDesktop(key: String): VideoCodec = when {
+            key == "x264" || key.startsWith("h264") -> AVC
+            key == "aom" || key == "aom_lossless" -> AV1_BEST
+            key == "svtav1" || key.startsWith("av1_") -> AV1_FAST
+            else -> HEVC
+        }
+    }
 }
 
 /** Named quality levels (desktop: QUALITY_LEVELS) as bits per pixel and frame for HEVC. */

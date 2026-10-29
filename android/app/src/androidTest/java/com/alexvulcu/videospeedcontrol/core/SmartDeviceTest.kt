@@ -168,4 +168,22 @@ class SmartDeviceTest {
             Segment(0, 300, Rational.of(60), true, Rational.of(25)),
         ), "smart_long.mp4")
     }
+
+    /** Smart with a speed ramp: 9.6× slower (copied at 25p) easing into real time (encoded). */
+    @Test fun smartWithRamp() {
+        val (info, joins) = joins("synth_hevc_closed.mp4")
+        val fps = Rational.of(25)
+        val parts = listOf(
+            Segment(0, 442, fps, smoothEnd = true),
+            Segment(442, 960, info.realFps, reencode = true, outFps = fps, smoothStart = true),
+        )
+        val segs = rampedSegments(parts, Trim(), info, fps)
+        val job = SmartJob(info, fps, segments = segs, joins = joins)
+        val file = java.io.File(java.io.File(ctx.cacheDir, "out").apply { mkdirs() }, "smart_ramp.mp4")
+        val n = java.io.FileOutputStream(file).use { SmartExport(ctx, job, true).run(it.fd) }
+        Log.i("VscSmart", "smart_ramp: parts ${job.parts.map { "${if (it.encode) "E" else "C"}${it.start}-${it.end}:${it.frames}" }}, $n frames")
+        assertEquals(job.parts.sumOf { it.frames }, n)
+        val out = Probe.probe(ctx, android.net.Uri.fromFile(file))
+        assertEquals(n, out.frames.count)
+    }
 }

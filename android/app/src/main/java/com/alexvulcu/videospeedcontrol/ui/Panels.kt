@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -124,14 +126,19 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
             else "Drag on the picture to move frame by frame.",
             style = MaterialTheme.typography.bodySmall,
         )
+        // start of clip · previous keyframe · one frame back / ahead · next keyframe · end of clip
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             val pad = PaddingValues(horizontal = 6.dp)
-            FilledTonalButton(vm::previousKeyframe, contentPadding = pad) { Text("|◀") }
-            FilledTonalButton({ vm.step(-10) }, contentPadding = pad) { Text("−10") }
-            FilledTonalButton({ vm.step(-1) }, contentPadding = pad) { Text("◀") }
-            FilledTonalButton({ vm.step(1) }, contentPadding = pad) { Text("▶") }
-            FilledTonalButton({ vm.step(10) }, contentPadding = pad) { Text("+10") }
-            FilledTonalButton(vm::nextKeyframe, contentPadding = pad) { Text("▶|") }
+            FilledTonalButton(vm::toStart, contentPadding = pad) { Text("|◀") }
+            FilledTonalButton(vm::previousKeyframe, contentPadding = pad) {
+                Text("−"); Icon(KeyIcon, "previous keyframe", Modifier.size(20.dp))
+            }
+            FilledTonalButton({ vm.step(-1) }, contentPadding = pad) { Text("◀ 1") }
+            FilledTonalButton({ vm.step(1) }, contentPadding = pad) { Text("1 ▶") }
+            FilledTonalButton(vm::nextKeyframe, contentPadding = pad) {
+                Text("+"); Icon(KeyIcon, "next keyframe", Modifier.size(20.dp))
+            }
+            FilledTonalButton(vm::toEnd, contentPadding = pad) { Text("▶|") }
         }
     }
 }
@@ -170,39 +177,50 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Speed sections", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(vm::undo, enabled = edit.undo.isNotEmpty()) { Text("↶ Undo") }
-                TextButton(vm::redo, enabled = edit.redo.isNotEmpty()) { Text("↷ Redo") }
+                TextButton(vm::undo, enabled = edit.undo.isNotEmpty()) {
+                    Text(if (edit.undo.isEmpty()) "↶ Undo" else "↶ Undo (${edit.undo.size})")
+                }
+                TextButton(vm::redo, enabled = edit.redo.isNotEmpty()) {
+                    Text(if (edit.redo.isEmpty()) "↷ Redo" else "↷ Redo (${edit.redo.size})")
+                }
             }
             edit.undo.lastOrNull()?.let {
                 Text("Last change: ${it.what}", style = MaterialTheme.typography.bodySmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            edit.segments.getOrNull(vm.selectedSection)?.let { SectionEditor(vm, edit, vm.selectedSection, rates) }
             RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
                 vm::chooseSectionFps)
             val start = vm.pendingStart
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(vm::markStart) { Text("[ Start") }
-                Button(vm::markEnd, enabled = start != null) { Text("End ]") }
+                Button(vm::markEnd) { Text("End ]") }
                 if (start != null) {
                     TextButton(vm::cancelMark) { Text("Cancel") }
                 }
             }
+            val from = start ?: edit.quickStart(vm.playhead)
             Text(
-                if (start == null) "Move the playhead to the first frame and tap “Start”, then to the last frame and tap “End”."
+                if (start == null) "“End” makes a section from frame ${from + 1} to the playhead (right after the " +
+                    "section before it, or from the start). For another start, tap “Start” first."
                 else "Start at frame ${start + 1} – now move to the last frame and tap “End”.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (edit.segments.isNotEmpty()) HorizontalDivider()
+            if (edit.segments.isNotEmpty()) {
+                HorizontalDivider()
+                Text("Tap a section (here or on the timeline) to edit it; drag a border on the timeline to " +
+                    "move it.", style = MaterialTheme.typography.bodySmall)
+            }
             edit.segments.forEachIndexed { i, s ->
                 val len = (Rational.of((s.end - s.start).toLong()) / s.fps).toDouble()
                 val bg = if (i == vm.selectedSection) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-                Column(Modifier.fillMaxWidth().background(bg).clickable { vm.seek(s.start) }.padding(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Frames ${s.start + 1}–${s.end} · plays ${secs(len)}",
-                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        TextButton({ vm.removeSection(i) }) { Text("Remove") }
+                Row(Modifier.fillMaxWidth().background(bg).clickable { vm.selectSection(i) }.padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Frames ${s.start + 1}–${s.end} · plays ${secs(len)}", style = MaterialTheme.typography.bodyMedium)
+                        Text(sectionFpsLabel(real, s.fps) + smoothNote(s), style = MaterialTheme.typography.bodySmall)
                     }
-                    RateDropdown("Frame rate", s.fps, rates, { sectionFpsLabel(real, it) }, { vm.setSectionFps(i, it) })
+                    Text("Edit ›", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
             }
             if (edit.segments.isNotEmpty()) {
@@ -218,6 +236,61 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
             confirmButton = { TextButton({ vm.clearSections(); confirmClear = false }) { Text("Clear") } },
             dismissButton = { TextButton({ confirmClear = false }) { Text("Keep") } },
         )
+    }
+}
+
+private fun smoothNote(s: com.alexvulcu.videospeedcontrol.core.Segment): String = when {
+    s.smoothStart && s.smoothEnd -> " · smooth in and out"
+    s.smoothStart -> " · smooth in"
+    s.smoothEnd -> " · smooth out"
+    else -> ""
+}
+
+/** Editing the selected section: rate, start / end at the playhead, smooth transitions, remove. */
+@Composable
+private fun SectionEditor(vm: EditorViewModel, edit: ClipEdit, index: Int, rates: List<Rational>) {
+    val s = edit.segments[index]
+    val real = edit.info.realFps
+    Card(colors = androidx.compose.material3.CardDefaults.cardColors(
+        containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val len = (Rational.of((s.end - s.start).toLong()) / s.fps).toDouble()
+                Text("Section ${index + 1}: frames ${s.start + 1}–${s.end} · plays ${secs(len)}",
+                    style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                TextButton(vm::deselectSection) { Text("Done") }
+            }
+            RateDropdown("Frame rate", s.fps, rates, { sectionFpsLabel(real, it) }, { vm.setSectionFps(index, it) })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ vm.setSectionStartHere(index) }) { Text("Start = playhead") }
+                OutlinedButton({ vm.setSectionEndHere(index) }) { Text("End = playhead") }
+            }
+            for (atStart in listOf(true, false)) {
+                val other = edit.neighbourRate(index, atStart)
+                val on = if (atStart) s.smoothStart else s.smoothEnd
+                val possible = other != null && other != s.fps
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (atStart) "Smooth transition in" else "Smooth transition out",
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            when {
+                                other == null -> if (atStart) "Starts with the clip" else "Ends with the clip"
+                                !possible -> "Same speed on the other side"
+                                else -> {
+                                    val a = speedWords((if (atStart) other / real else s.fps / real).toDouble())
+                                    val b = speedWords((if (atStart) s.fps / real else other / real).toDouble())
+                                    "$a → $b, changing evenly over 0.5 s"
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(on, { vm.setSmooth(index, atStart, it) }, enabled = possible || on)
+                }
+            }
+            TextButton({ vm.removeSection(index) }) { Text("Remove section", color = MaterialTheme.colorScheme.error) }
+        }
     }
 }
 
@@ -302,7 +375,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                     SpeedDropdown(vm.speed, speeds, everyOnce, vm::chooseSpeed)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    EnumDropdown("Codec", vm.codec, VideoCodec.entries, { it.label }, vm::chooseCodec, Modifier.weight(1f))
+                    EnumDropdown("Codec", vm.codec, vm.codecs, { it.label }, vm::chooseCodec, Modifier.weight(1f))
                     EnumDropdown("Quality", vm.quality, Quality.entries, { it.label }, vm::chooseQuality, Modifier.weight(1f))
                 }
                 val sides = listOf<Int?>(null) + listOf(2160, 1440, 1080, 720, 480)
@@ -346,10 +419,10 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                     when (e) {
                         is ExportState.Done -> {
                             Text("Saved ${e.name} in Movies/VideoSpeedControl (${e.frames} frames, ${fmt(e.seconds)} s)")
-                            OutlinedButton({
+                            Button({
                                 ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(e.uri, "video/*")
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                            }) { Text("Play") }
+                            }) { Text("▶ Play") }
                         }
                         is ExportState.Failed -> Text(e.message, color = MaterialTheme.colorScheme.error)
                         else -> {}
@@ -364,9 +437,9 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
 fun TreatmentCard(vm: EditorViewModel, onSave: () -> Unit, onLoad: () -> Unit, onShare: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Treatment (.cst)", style = MaterialTheme.typography.titleMedium)
+            Text("Clip Speed Treatment (.cst)", style = MaterialTheme.typography.titleMedium)
             Text("Sections, trim and export settings of this clip – the same file format as the desktop " +
-                "app. A treatment only loads onto the video it was made for (any file name).",
+                "app. A clip speed treatment only loads onto the video it was made for (any file name).",
                 style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onSave) { Text("Save") }
@@ -568,4 +641,16 @@ fun ClipInfoCard(info: ClipInfo) {
             }
         }
     }
+}
+
+/** Stylised key (keyframe buttons): a ring, the shaft and two teeth. */
+val KeyIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("Key", 24.dp, 24.dp, 24f, 24f).apply {
+        addPath(androidx.compose.ui.graphics.vector.addPathNodes(
+            "M7,7.5a4.5,4.5 0 1,0 0,9a4.5,4.5 0 1,0 0,-9z M7,10a2,2 0 1,1 0,4a2,2 0 1,1 0,-4z"),
+            pathFillType = androidx.compose.ui.graphics.PathFillType.EvenOdd,
+            fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
+        addPath(androidx.compose.ui.graphics.vector.addPathNodes("M11,11h11v2.2h-11z M18.5,13h2.2v3.5h-2.2z M15,13h2.2v2.5h-2.2z"),
+            fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
+    }.build()
 }

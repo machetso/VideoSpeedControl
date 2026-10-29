@@ -259,7 +259,7 @@ def encode_ranges(job: Job, joins: list[int]) -> list[tuple[int, int, Fraction]]
     """Source ranges to re-encode (widened to safe keyframes, merged) with their output fps."""
     start, end = job.trim.start, job.trim_end
     ranges = []
-    for s in sorted(job.segments, key=lambda s: s.start):
+    for s in sorted(job.timing_segments, key=lambda s: s.start):
         if not s.reencode or s.end <= start or s.start >= end:
             continue
         a, b = max(s.start, start), min(s.end, end)
@@ -279,12 +279,13 @@ def plan(job: Job, joins: list[int]) -> list[Part]:
     start, end = job.trim.start, job.trim_end
     parts = []
     pos = start
+    segments = job.timing_segments
     for a, b, fps in encode_ranges(job, joins) + [(end, end, None)]:
         if a > pos:
-            ps = seg.pieces(job.segments, pos, a, job.info.real_fps)
+            ps = seg.pieces(segments, pos, a, job.info.real_fps)
             parts.append(Part("copy", pos, a, None, a - pos, seg.duration(ps)))
         if b > a:
-            ps = seg.pieces(job.segments, a, b, job.info.real_fps)
+            ps = seg.pieces(segments, a, b, job.info.real_fps)
             n = max(1, round(seg.duration(ps) * fps))
             parts.append(Part("encode", a, b, fps, n, Fraction(n) / fps))
         pos = max(pos, b)
@@ -298,7 +299,9 @@ def part_job(job: Job, part: Part) -> Job:
     else:
         settings = replace(s, smart=False, fps=part.fps, speed=None, resize="source",
                            chroma=None, depth=None, container="mkv")
-    return Job(job.info, settings, Trim(part.start, part.end), job.frames, job.segments)
+    # the ramps are already laid in – without the smooth flags the part does not add them again
+    segments = [replace(s, smooth_start=False, smooth_end=False) for s in job.timing_segments]
+    return Job(job.info, settings, Trim(part.start, part.end), job.frames, segments)
 
 
 # --------------------------------------------------------------------------- run
