@@ -215,10 +215,12 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                 Text("Last change: ${it.what}", style = MaterialTheme.typography.bodySmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            edit.segments.getOrNull(vm.selectedSection)?.let { SectionEditor(vm, edit, vm.selectedSection, rates) }
-            if (vm.easy) RateDropdown("Video speed of new sections", vm.sectionFps, rates,
+            val selected = edit.segments.getOrNull(vm.selectedSection)
+            selected?.let { SectionEditor(vm, edit, vm.selectedSection, rates) }
+            // Easy: while a section is open its own "Video speed" is enough
+            if (vm.easy && selected == null) RateDropdown("Video speed of new sections", vm.sectionFps, rates,
                 { easySpeedLabel(real, vm.fps, it) }, vm::chooseSectionFps)
-            else RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
+            else if (!vm.easy) RateDropdown("New sections play at", vm.sectionFps, rates, { sectionFpsLabel(real, it) },
                 vm::chooseSectionFps)
             val start = vm.pendingStart
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -29,4 +29,16 @@ class AudioSpansTest {
         val job = LosslessJob(info(), Rational.of(240), segments = listOf(Segment(10, 47, Rational.of(70))))
         assertEquals(job.outputDuration.toDouble(), Audio.spans(job).sumOf { it.out }, 1e-9)
     }
+
+    /** The ten steps of a ramp become one sound span; long spans stay as they are. */
+    @Test fun rampStepsAreJoined() {
+        val long1 = Audio.Span(0.0, 1.0, 4.0)
+        val steps = (0 until 10).map { Audio.Span(1.0 + it * 0.02, 1.0 + (it + 1) * 0.02, 0.05) }
+        val long2 = Audio.Span(1.2, 3.0, 1.8)
+        val out = Audio.mergeShort(listOf(long1) + steps + listOf(long2))
+        org.junit.Assert.assertEquals(3, out.size)
+        org.junit.Assert.assertEquals(Audio.Span(1.0, 1.2, 0.5).out, out[1].out, 1e-9)
+        org.junit.Assert.assertEquals(1.0, out[1].start, 1e-9)
+        org.junit.Assert.assertEquals(1.2, out[1].end, 1e-9)
+    }
 }

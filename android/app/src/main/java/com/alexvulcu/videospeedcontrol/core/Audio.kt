@@ -54,19 +54,19 @@ object Audio {
             return job.parts.flatMap { part ->
                 val ps = Segments.pieces(job.segments, part.start, part.end, job.info.realFps)
                 val scale = if (part.encode) (part.duration / Segments.duration(ps)).toDouble() else 1.0
-                ps.map { p ->
+                mergeShort(ps.map { p ->
                     Span(fileTime(job.info, p.start) / k, fileTime(job.info, p.end) / k,
                         (Rational.of((p.end - p.start).toLong()) / p.rate).toDouble() * scale)
-                }
+                })
             }
         }
         val spans = if (!job.hasSegments) {
             listOf(Span(fileTime(job.info, job.trim.start) / k, fileTime(job.info, job.trimEnd) / k,
                 job.outputDuration.toDouble()))
-        } else job.pieces().map { p ->
+        } else mergeShort(job.pieces().map { p ->
             Span(fileTime(job.info, p.start) / k, fileTime(job.info, p.end) / k,
                 (Rational.of((p.end - p.start).toLong()) / p.rate).toDouble())
-        }
+        })
         // re-encoded video lasts a whole number of frames – the sound ends exactly with it
         if (job is ReencodeJob) {
             val video = job.outputFrameCount / job.fps.toDouble()
@@ -75,6 +75,32 @@ object Audio {
             if (out > 0) return spans.dropLast(1) + last.copy(out = out)
         }
         return spans
+    }
+
+    /** Spans shorter than this (output seconds) are joined with their short neighbours. */
+    private const val SHORT_SPAN = 0.15
+    /** A run of joined steps stops growing at about the length of a ramp (0.5 s). */
+    private const val RAMP_RUN = 0.6
+
+    /**
+     * Joins runs of short spans – the steps of a speed ramp (0.05 s each) – into one span with
+     * their total length: every span costs a Sonic run with 0.5 s of context, so 10 steps per
+     * ramp made the sound several times slower to render. Inside a ramp the tempo is then the
+     * mean; its start and end stay exactly on the video.
+     */
+    fun mergeShort(spans: List<Span>): List<Span> {
+        val out = mutableListOf<Span>()
+        val merged = mutableListOf<Boolean>()          // out[i] is a run of joined steps
+        for (s in spans) {
+            val last = out.lastOrNull()
+            // a short step joins the run before it while that run is still shorter than a ramp
+            if (last != null && s.out < SHORT_SPAN && last.out < RAMP_RUN && last.end == s.start &&
+                (last.out < SHORT_SPAN || merged.lastOrNull() == true)) {
+                merged[merged.lastIndex] = true
+                out[out.lastIndex] = Span(last.start, s.end, last.out + s.out)
+            } else { out += s; merged += false }
+        }
+        return out
     }
 
     /** Decode, restore, stretch and encode the sound for [job]. [progress] gets 0..1. */
