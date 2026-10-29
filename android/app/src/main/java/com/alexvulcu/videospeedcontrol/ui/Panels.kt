@@ -419,10 +419,13 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                     when (e) {
                         is ExportState.Done -> {
                             Text("Saved ${e.name} in Movies/VideoSpeedControl (${e.frames} frames, ${fmt(e.seconds)} s)")
-                            Button({
-                                ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(e.uri, "video/*")
-                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                            }) { Text("▶ Play") }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button({
+                                    ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(e.uri, "video/*")
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                                }) { Text("▶ Play") }
+                                OutlinedButton({ openOutputFolder(ctx) }) { Text("📁 Open folder") }
+                            }
                         }
                         is ExportState.Failed -> Text(e.message, color = MaterialTheme.colorScheme.error)
                         else -> {}
@@ -459,7 +462,10 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
     val open = entries.count { it.status != ExportManager.Status.DONE }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Batch list", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Batch list", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton({ openOutputFolder(ctx) }) { Text("📁 Open folder") }
+            }
             for (e in entries) {
                 val editing = vm.editingEntry == e.task.id
                 Row(
@@ -653,4 +659,23 @@ val KeyIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
         addPath(androidx.compose.ui.graphics.vector.addPathNodes("M11,11h11v2.2h-11z M18.5,13h2.2v3.5h-2.2z M15,13h2.2v2.5h-2.2z"),
             fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
     }.build()
+}
+
+/**
+ * Show the export folder (Movies/VideoSpeedControl) in the system's Files app. Android has no
+ * general "open folder" – the Files app (DocumentsUI) accepts its document URI with the
+ * directory type; without it, a message.
+ */
+fun openOutputFolder(ctx: android.content.Context) {
+    val folder = android.provider.DocumentsContract.buildDocumentUri(
+        "com.android.externalstorage.documents", "primary:" + com.alexvulcu.videospeedcontrol.core.OutputStore.RELATIVE_PATH.trimEnd('/'))
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(folder, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        ctx.startActivity(intent)
+    } catch (e: android.content.ActivityNotFoundException) {
+        android.widget.Toast.makeText(ctx, "No file manager found – the exports are in " +
+            com.alexvulcu.videospeedcontrol.core.OutputStore.RELATIVE_PATH, android.widget.Toast.LENGTH_LONG).show()
+    }
 }
