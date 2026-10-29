@@ -610,8 +610,9 @@ class MainWindow(QMainWindow):
         if target.suffix.lower() != treatment.SUFFIX:
             target = target.with_name(target.name + treatment.SUFFIX)
         try:
+            # the sections as exported (Easy: every speed change smooth)
             treatment.save(target, clip.path, clip.frames.count, clip.settings, clip.ui,
-                           clip.trim, clip.segments)
+                           clip.trim, clip.job.segments)
         except OSError as e:
             QMessageBox.warning(self, "Save Clip Speed Treatment", f"Could not save {target.name}:\n{e}")
             return

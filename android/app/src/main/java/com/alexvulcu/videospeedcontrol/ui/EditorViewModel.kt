@@ -111,6 +111,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     val usedCodec: VideoCodec get() = if (easy) defaultCodec else codec
     val usedQuality: Quality get() = if (easy) Quality.HIGH else quality
 
+    /** The sections as exported: Easy smooths every speed change (no switches), Pro as set. */
+    fun usedSegments(e: ClipEdit): List<Segment> = if (easy) Segments.allSmooth(e.segments) else e.segments
+
     fun chooseEasy(on: Boolean) {
         easy = on
         prefs.edit().putBoolean("pro", !on).apply()
@@ -167,7 +170,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
      * smooth borders of the sections are kept on the parts (the ramps are computed from them).
      */
     private fun smartParts(e: ClipEdit): List<Segment> {
-        val smooth = Segments.smoothBorders(e.segments)
+        val smooth = Segments.smoothBorders(usedSegments(e))
         return smartPieces().map {
             Segment(it.start, it.end, it.rate, it.reencode, if (it.reencode) fps else null,
                 smoothStart = it.start in smooth, smoothEnd = it.end in smooth)
@@ -181,9 +184,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun job(): Timing? {
         val e = edit ?: return null
         return when (mode) {
-            Mode.LOSSLESS -> e.job(fps)
+            Mode.LOSSLESS -> e.copy(segments = usedSegments(e)).job(fps)
             Mode.SMART -> smartJob(e)
-            Mode.REENCODE -> e.reencodeJob(fps, speed, usedCodec, shortSide, usedQuality)
+            Mode.REENCODE -> e.copy(segments = usedSegments(e)).reencodeJob(fps, speed, usedCodec, shortSide, usedQuality)
         }
     }
 
@@ -530,7 +533,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** The speed ramps (timeline): frames and the rates they go from / to. */
     fun rampZones(): List<RampZone> {
         val e = edit ?: return emptyList()
-        val steps = Segments.rampSteps(e.segments, 0, e.info.frames.count, e.info.realFps)
+        val steps = Segments.rampSteps(usedSegments(e), 0, e.info.frames.count, e.info.realFps)
         val out = mutableListOf<RampZone>()
         for (st in steps) {
             val last = out.lastOrNull()
@@ -649,7 +652,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val fp = fingerprint ?: withContext(Dispatchers.IO) {
             Treatment.fingerprint(info.sizeBytes) { getApplication<Application>().contentResolver.openInputStream(info.uri)!! }
         }.also { fingerprint = it }
-        val segs = if (mode == Mode.SMART) smartParts(e) else e.segments
+        val segs = if (mode == Mode.SMART) smartParts(e) else usedSegments(e)
         return Treatment.Data(info.name, info.sizeBytes, fp, info.frames.count,
             Treatment.Settings(treatmentMode, fps, speed, usedCodec, usedQuality, shortSide, sound, smartAuto,
                 size = (job() as? ReencodeJob)?.outputSize()),

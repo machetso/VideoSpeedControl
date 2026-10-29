@@ -29,7 +29,7 @@ from fractions import Fraction
 from ..core import formats, playback, preview, segments as seg, smart
 from ..core.job import Mode
 from ..core.job import KEYFRAME_TRIM_REASON
-from .clips import (Clip, Status, fmt_duration, fmt_rate, fmt_seconds, fmt_slowdown,
+from .clips import (Clip, Status, easy_mode, fmt_duration, fmt_rate, fmt_seconds, fmt_slowdown,
                     frame_rate_choices)
 from . import workers
 from .zoom import ZoomState
@@ -208,7 +208,8 @@ class Timeline(QWidget):
     def ramp_zones(self) -> list[tuple[int, int, bool]]:
         """(first frame, end, getting faster) of every speed ramp."""
         clip = self.clip
-        steps = seg.ramp_steps(clip.segments, 0, self.count, clip.info.real_fps)
+        segments = seg.all_smooth(clip.segments) if easy_mode() else clip.segments
+        steps = seg.ramp_steps(segments, 0, self.count, clip.info.real_fps)
         zones: list[list] = []
         for st in steps:
             if zones and zones[-1][1] == st.start:
@@ -1008,6 +1009,8 @@ class PreviewPanel(QWidget):
         smart_mode = clip.settings.smart
         t.setColumnHidden(6, not smart_mode)
         t.setColumnHidden(7, not smart_mode)
+        t.setColumnHidden(4, easy_mode())       # Easy: every speed change is smoothed anyway
+        t.setColumnHidden(5, easy_mode())
         key = (id(clip), tuple(clip.segments), tuple(items), smart_mode)
         if key == self._table_key:          # rebuild only on change (refresh runs on every seek)
             return

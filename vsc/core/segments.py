@@ -132,6 +132,11 @@ def ramp_steps(segments: list[Segment], start: int, end: int, base: Fraction,
     return steps
 
 
+def all_smooth(segments: list[Segment]) -> list[Segment]:
+    """Every border smooth (Easy mode: speed changes are always smoothed)."""
+    return [replace(s, smooth_start=True, smooth_end=True) for s in segments]
+
+
 def with_ramps(target: list[Segment], steps: list[Segment]) -> list[Segment]:
     """`target` with the ramp `steps` laid over it (steps win, like added sections)."""
     for s in steps:

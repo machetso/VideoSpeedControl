@@ -218,7 +218,8 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Frames ${s.start + 1}–${s.end} · plays ${secs(len)}", style = MaterialTheme.typography.bodyMedium)
-                        Text(sectionFpsLabel(real, s.fps) + smoothNote(s), style = MaterialTheme.typography.bodySmall)
+                        Text(sectionFpsLabel(real, s.fps) + if (vm.easy) "" else smoothNote(s),
+                            style = MaterialTheme.typography.bodySmall)
                     }
                     Text("Edit ›", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
@@ -265,7 +266,11 @@ private fun SectionEditor(vm: EditorViewModel, edit: ClipEdit, index: Int, rates
                 OutlinedButton({ vm.setSectionStartHere(index) }) { Text("Start = playhead") }
                 OutlinedButton({ vm.setSectionEndHere(index) }) { Text("End = playhead") }
             }
-            for (atStart in listOf(true, false)) {
+            if (vm.easy) {
+                Text("Speed changes are smoothed automatically (0.5 s). Pro: choose per border.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            for (atStart in if (vm.easy) emptyList() else listOf(true, false)) {
                 val other = edit.neighbourRate(index, atStart)
                 val on = if (atStart) s.smoothStart else s.smoothEnd
                 val possible = other != null && other != s.fps

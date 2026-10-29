@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSettings, Qt
 from PySide6.QtGui import QColor
 
-from ..core import formats, testencode
+from ..core import formats, segments as seg, testencode
 from ..core.job import Job, Mode, OutputSettings, Trim
 from ..core.probe import FrameMap, MediaInfo
 
@@ -104,7 +104,15 @@ class Clip:
             if self._smart_frames is None or self._smart_frames.pts is not frames.pts:
                 self._smart_frames = FrameMap(frames.pts, frames.time_base, self.joins)
             frames = self._smart_frames
-        return Job(self.info, self.settings, self.trim, frames, self.segments, self.joins)
+        # Easy mode smooths every speed change (no switches); Pro uses the sections' own flags
+        segments = seg.all_smooth(self.segments) if easy_mode() else self.segments
+        return Job(self.info, self.settings, self.trim, frames, segments, self.joins)
+
+
+def easy_mode() -> bool:
+    """Easy / Pro switch of the output settings (Easy is the default)."""
+    value = QSettings().value("settings/pro", False)
+    return value not in (True, "true", "1", 1)
 
 
 def fmt_rate(r) -> str:

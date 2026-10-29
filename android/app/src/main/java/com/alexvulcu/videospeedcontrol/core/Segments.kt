@@ -123,6 +123,10 @@ object Segments {
         return steps
     }
 
+    /** Every border smooth (Easy mode: speed changes are always smoothed). */
+    fun allSmooth(segments: List<Segment>): List<Segment> =
+        segments.map { it.copy(smoothStart = true, smoothEnd = true) }
+
     /** [target] with the ramp [steps] laid over it (steps win, like added sections). */
     fun withRamps(target: List<Segment>, steps: List<Segment>): List<Segment> = steps.fold(target) { acc, s -> add(acc, s) }
 

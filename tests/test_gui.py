@@ -794,5 +794,12 @@ def test_easy_and_pro(qapp, window):
         assert not w.isVisibleTo(panel)
     panel.set_process("smart")
     assert clip.settings.codec == "x264" and clip.settings.smart     # source codec (H.264 clip)
+    # Easy smooths every speed change – no switches in the table
+    assert all(s.smooth_start and s.smooth_end for s in clip.job.segments)
+    assert not any(s.smooth_start or s.smooth_end for s in clip.segments)   # the clip's own flags
+    assert preview.sections_table.isColumnHidden(4) and preview.sections_table.isColumnHidden(5)
+    assert len(clip.job.timing_segments) > len(clip.segments)               # the ramps are in
     panel.pro_button.click()
     assert panel.codec_combo.isVisibleTo(panel)
+    assert not preview.sections_table.isColumnHidden(4)
+    assert not any(s.smooth_start for s in clip.job.segments)               # Pro: as set

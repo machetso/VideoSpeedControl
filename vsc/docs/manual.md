@@ -91,7 +91,7 @@ In **Lossless** and **Smart re-encode** mode, in and out points **snap to keyfra
 
 Only the settings that the chosen mode can use are enabled.
 
-**Easy / Pro** (top of the output settings): *Easy* hides the codec details – the codec itself, profile, preset, quality, chroma and bit depth. Smart re-encode then always uses the source codec and re-encode always **AV1 (fast)**, each with its default preset and quality. *Pro* shows every setting (the pictures in this guide show Pro). Switching to Easy applies the easy settings to all clips.
+**Easy / Pro** (top of the output settings): *Easy* hides the codec details – the codec itself, profile, preset, quality, chroma and bit depth. Smart re-encode then always uses the source codec and re-encode always **AV1 (fast)**, each with its default preset and quality. In Easy every speed change between sections is also **smoothed** automatically (0.5 s, see chapter 6) – the *Smooth in / out* switches appear only in Pro. *Pro* shows every setting (the pictures in this guide show Pro). Switching to Easy applies the easy settings to all clips.
 
 - Choosing **Smart re-encode** marks every speed section whose frame rate differs from its output frame rate for re-encoding; sections that already play at it stay copied (you can change the ticks in the table).
 - Switching from Smart to **Re-encode** selects AV1 (fast) again.

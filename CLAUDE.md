@@ -81,6 +81,10 @@ IDEAS.md – add new ones there instead of building them unasked.
   * Transport symbols drawn (desktop `transport_icon`, Android FirstIcon / KeyMinusIcon /
     KeyPlusIcon / LastIcon, same 24-unit coordinates): bar centred, "− key", "key +".
   * build_docs.py --screenshots did not write the PDF – run it again without the flag.
+  * Easy = every speed change smooth, no switches (derived, the clip's own flags untouched):
+    Android `usedSegments()` (job, smart parts, snapshot, ramp zones), desktop `Clip.job` with
+    `seg.all_smooth` when `clips.easy_mode()` (QSettings settings/pro), table columns 4/5 hidden,
+    .cst saved from clip.job.segments. Pro shows the per-border switches.
  adb "no permissions" = phone in "charging only" USB mode →
   switch to "File transfer".
 - Android M7 (2026-10-28): `core/Treatment.kt` = port of treatment.py (fingerprint identical,
