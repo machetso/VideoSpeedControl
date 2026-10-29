@@ -103,6 +103,19 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var quality by mutableStateOf(runCatching { Quality.valueOf(prefs.getString("quality", "HIGH")!!) }.getOrDefault(Quality.HIGH))
         private set
 
+    /** Easy (default): no codec / quality choice – re-encode AV1 fast, smart the source codec, quality High. */
+    var easy by mutableStateOf(!prefs.getBoolean("pro", false))
+        private set
+    val defaultCodec: VideoCodec get() = if (VideoCodec.AV1_FAST in codecs) VideoCodec.AV1_FAST else VideoCodec.HEVC
+    /** What the export uses (Easy ignores the Pro choices). */
+    val usedCodec: VideoCodec get() = if (easy) defaultCodec else codec
+    val usedQuality: Quality get() = if (easy) Quality.HIGH else quality
+
+    fun chooseEasy(on: Boolean) {
+        easy = on
+        prefs.edit().putBoolean("pro", !on).apply()
+    }
+
     enum class Mode { LOSSLESS, SMART, REENCODE }
 
     /** Lossless and smart cut only at keyframes. */
@@ -162,7 +175,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun smartJob(e: ClipEdit): SmartJob =
-        SmartJob(e.info, fps, e.trim, rampedSegments(smartParts(e), e.trim, e.info, fps), joins ?: emptyList(), quality)
+        SmartJob(e.info, fps, e.trim, rampedSegments(smartParts(e), e.trim, e.info, fps), joins ?: emptyList(), usedQuality)
 
     /** The export as currently set up (timing for preview, labels and export). */
     fun job(): Timing? {
@@ -170,7 +183,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         return when (mode) {
             Mode.LOSSLESS -> e.job(fps)
             Mode.SMART -> smartJob(e)
-            Mode.REENCODE -> e.reencodeJob(fps, speed, codec, shortSide, quality)
+            Mode.REENCODE -> e.reencodeJob(fps, speed, usedCodec, shortSide, usedQuality)
         }
     }
 
@@ -182,6 +195,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun chooseMode(m: Mode) {
         stopPlayback()
+        // smart: the parts that differ from the output frame rate start out ticked (user, v0.92);
+        // smart → re-encode: back to the default codec, AV1 fast
+        if (m == Mode.SMART && mode != Mode.SMART) chooseSmartAuto(true)
+        if (m == Mode.REENCODE && mode == Mode.SMART) chooseCodec(defaultCodec)
         mode = m
         prefs.edit().putString("mode", m.name.lowercase()).apply()
         if (m != Mode.REENCODE) edit = edit?.snappedTrim()       // lossless / smart cut only at keyframes
@@ -634,7 +651,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }.also { fingerprint = it }
         val segs = if (mode == Mode.SMART) smartParts(e) else e.segments
         return Treatment.Data(info.name, info.sizeBytes, fp, info.frames.count,
-            Treatment.Settings(treatmentMode, fps, speed, codec, quality, shortSide, sound, smartAuto,
+            Treatment.Settings(treatmentMode, fps, speed, usedCodec, usedQuality, shortSide, sound, smartAuto,
                 size = (job() as? ReencodeJob)?.outputSize()),
             e.trim, segs, info.uri.toString())
     }

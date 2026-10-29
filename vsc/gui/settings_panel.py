@@ -13,9 +13,10 @@ always match the chosen codec.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from fractions import Fraction
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QSizePolicy, QDoubleSpinBox, QFormLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
@@ -75,6 +76,7 @@ def parse_fps(text: str) -> Fraction | None:
 
 class SettingsPanel(QGroupBox):
     changed = Signal()       # the current clip's settings were edited
+    easy_changed = Signal(bool)   # Easy / Pro switched (True = Easy)
     apply_to_all = Signal()
 
     def __init__(self, parent=None):
@@ -87,6 +89,21 @@ class SettingsPanel(QGroupBox):
         form_widget = QWidget()
         form = self.form = QFormLayout(form_widget)
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        # --- easy / pro: easy hides the codec details (codec, profile, preset, quality, chroma)
+        self.easy_button = QRadioButton("Easy")
+        self.easy_button.setToolTip(
+            "Fewer settings: no codec choice – smart re-encode uses the source codec,\n"
+            "re-encode always AV1 (fast) – and the codec's default preset, quality and chroma.")
+        self.pro_button = QRadioButton("Pro")
+        self.pro_button.setToolTip("All settings: codec, profile, preset, quality, chroma and bit depth.")
+        self.level_group = QButtonGroup(self)
+        self.level_group.addButton(self.easy_button)
+        self.level_group.addButton(self.pro_button)
+        self.easy = not _setting_bool("settings/pro", False)
+        (self.easy_button if self.easy else self.pro_button).setChecked(True)
+        self.level_group.buttonClicked.connect(self._level_clicked)
+        form.addRow("Settings:", _row(self.easy_button, self.pro_button))
 
         # --- processing: lossless / smart / re-encode
         self.proc_lossless = QRadioButton("Lossless")
@@ -162,7 +179,8 @@ class SettingsPanel(QGroupBox):
         self.codec_combo = Combo()
         self.container_combo = Combo()
         self.container_combo.setToolTip("File format that holds the video stream.")
-        form.addRow("Codec:", self.codec_combo)
+        self.codec_label = QLabel("Codec:")
+        form.addRow(self.codec_label, self.codec_combo)
         form.addRow("Container:", self.container_combo)
         self.profile_combo = Combo()
         self.profile_label = QLabel("Profile:")
@@ -179,8 +197,10 @@ class SettingsPanel(QGroupBox):
         form.addRow(self.quality_label, self.quality_row)
         self.chroma_combo = Combo()
         self.depth_combo = Combo()
-        form.addRow("Chroma:", self.chroma_combo)
-        form.addRow("Bit depth:", self.depth_combo)
+        self.chroma_label = QLabel("Chroma:")
+        self.depth_label = QLabel("Bit depth:")
+        form.addRow(self.chroma_label, self.chroma_combo)
+        form.addRow(self.depth_label, self.depth_combo)
 
         # --- size
         self.res_combo = Combo()
@@ -355,12 +375,13 @@ class SettingsPanel(QGroupBox):
         clip = self.clip
         s, ui, info = clip.settings, clip.ui, clip.info
         if process == REENCODE:
-            s.smart = False
-            if s.codec == COPY:
-                # AV1 fast (SVT-AV1) is the default (user, v0.92); x264 if FFmpeg lacks it
-                st = self.encoders.get("svtav1") if self.encoders else None
-                s.codec = "svtav1" if st is None or st.available else "x264"
+            was_smart, s.smart = s.smart, False
+            # coming from lossless or smart: AV1 fast, the default (user, v0.92); Easy: always
+            if s.codec == COPY or was_smart or (self.easy and s.codec != self.default_codec()):
+                s.codec = self.default_codec()
                 s.container = s.profile = s.preset = s.quality = None
+            if self.easy:
+                force_easy(clip)
             return
         if process == LOSSLESS:
             if s.codec != COPY or s.smart:
@@ -368,15 +389,31 @@ class SettingsPanel(QGroupBox):
                 s.container = s.profile = s.preset = s.quality = None
         else:  # SMART: the source codec, so that copied and re-encoded parts fit together
             key = smart.SMART_CODECS[info.codec][0]
+            entering = not s.smart
             if not s.smart or s.codec != key:
                 s.codec, s.smart = key, True
                 s.container = s.profile = s.preset = s.quality = None
             s.chroma = s.depth = None
+            if entering:
+                preselect_smart_sections(clip)
+            if self.easy:
+                force_easy(clip)
         s.speed = None
         ui["res"] = "source"
         _apply_resolution(clip)
         if clip.frames:
             clip.trim = clip.job.snapped_trim()
+
+    def default_codec(self) -> str:
+        """AV1 fast (SVT-AV1) – x264 if this FFmpeg lacks it."""
+        st = self.encoders.get("svtav1") if self.encoders else None
+        return "svtav1" if st is None or st.available else "x264"
+
+    def _level_clicked(self, *_):
+        self.easy = self.easy_button.isChecked()
+        QSettings().setValue("settings/pro", not self.easy)
+        self.easy_changed.emit(self.easy)
+        self._sync()
 
     def _process(self, clip: Clip) -> str:
         s = clip.settings
@@ -479,9 +516,13 @@ class SettingsPanel(QGroupBox):
         q = codec.quality if codec else None
         if q:
             self._sync_quality(clip, codec, q)
-        for widget, visible in ((self.profile_combo, bool(profiles)),
-                                (self.preset_combo, bool(presets)),
-                                (self.quality_row, bool(q))):
+        pro = not self.easy
+        for widget, visible in ((self.profile_combo, bool(profiles) and pro),
+                                (self.preset_combo, bool(presets) and pro),
+                                (self.quality_row, bool(q) and pro),
+                                (self.codec_combo, pro),
+                                (self.chroma_combo, pro),
+                                (self.depth_combo, pro)):
             self.form.setRowVisible(widget, visible)
 
         self._sync_pixel_format(clip)
@@ -830,6 +871,33 @@ def _apply_resolution(clip: Clip) -> None:
         s.resize = "exact"
         h = _even(w / ratio)
     s.width, s.height = w, h
+
+
+def _setting_bool(key: str, default: bool) -> bool:
+    value = QSettings().value(key, default)
+    return value in (True, "true", "1", 1)
+
+
+def force_easy(clip: Clip) -> None:
+    """Easy settings: the codec's default preset, quality and profile, chroma / depth like the
+    source (re-encode: the codec itself is AV1 fast – set by the caller)."""
+    s = clip.settings
+    if s.codec == COPY:
+        return
+    s.profile = s.preset = s.quality = None
+    s.chroma = s.depth = None
+    clip.ui.pop("quality", None)
+
+
+def preselect_smart_sections(clip: Clip) -> None:
+    """Smart re-encode chosen: every section whose playing rate differs from its output frame
+    rate is marked for re-encoding, the others are copied (user, v0.92 – like Android)."""
+    from .timeline import default_out_fps
+    new = []
+    for g in clip.segments:
+        out = g.out_fps or default_out_fps()
+        new.append(replace(g, reencode=g.fps != out, out_fps=out))
+    clip.edit_segments(new, "smart re-encode: mark sections that differ from their output rate")
 
 
 def _row(*widgets, grow: QWidget | None = None) -> QWidget:

@@ -70,6 +70,17 @@ IDEAS.md – add new ones there instead of building them unasked.
     software c2.android.av1.encoder at max complexity (`Encoders.pick`); .cst keys svtav1 / aom;
     default re-encode codec AV1 fast (pref "codec_default_v092" switches old installs once).
     Desktop re-encode default codec: svtav1 (x264 if FFmpeg lacks it).
+- After v0.92 (2026-10-29, user request, all versions):
+  * EASY / PRO switch (default Easy; desktop QSettings "settings/pro", Android pref "pro"). Easy
+    hides codec, profile, preset, quality, chroma, bit depth (Android: codec, quality); re-encode
+    = AV1 fast, smart = source codec, codec defaults (Android `usedCodec` / `usedQuality`,
+    desktop `force_easy` + main_window `_easy_changed` for all clips). Tests run in Pro
+    (fixture sets settings/pro); build_docs screenshots too.
+  * Choosing smart preselects: desktop `preselect_smart_sections` (section fps != its out_fps →
+    reencode; one undo step), Android chooseSmartAuto(true). Smart → re-encode: AV1 fast.
+  * Transport symbols drawn (desktop `transport_icon`, Android FirstIcon / KeyMinusIcon /
+    KeyPlusIcon / LastIcon, same 24-unit coordinates): bar centred, "− key", "key +".
+  * build_docs.py --screenshots did not write the PDF – run it again without the flag.
  adb "no permissions" = phone in "charging only" USB mode →
   switch to "File transfer".
 - Android M7 (2026-10-28): `core/Treatment.kt` = port of treatment.py (fingerprint identical,

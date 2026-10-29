@@ -62,6 +62,7 @@ def screenshots(app: QApplication) -> None:
     work.mkdir(exist_ok=True)
     QSettings.setDefaultFormat(QSettings.IniFormat)          # keep the user's settings out
     QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(work / "settings"))
+    QSettings().setValue("settings/pro", True)        # the guide shows every setting (Pro)
     clip_path = demo_clip(work)
     IMAGES.mkdir(parents=True, exist_ok=True)
 

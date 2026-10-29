@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLab
 
 from ..core import batch, testencode, treatment
 from ..core.command import CommandError
-from ..core.formats import CODECS_BY_KEY
+from ..core.formats import CODECS_BY_KEY, COPY
 from ..core.job import Job
 from .clips import Clip, ClipModel, Status, fmt_bytes, fmt_seconds
 from .export_panel import ExportPanel
@@ -114,6 +114,7 @@ class MainWindow(QMainWindow):
         self._tests: dict[int, testencode.TestEncode] = {}   # id(clip) → running test
         self.settings = SettingsPanel()
         self.settings.changed.connect(self._settings_changed)
+        self.settings.easy_changed.connect(self._easy_changed)
         self.settings.apply_to_all.connect(self._apply_to_all)
 
         bottom = QSplitter(Qt.Horizontal)
@@ -370,6 +371,18 @@ class MainWindow(QMainWindow):
             self.test_panel.refresh()   # the test may be stale now
             self.model.refresh_all()    # derived estimates of other clips
             self._plan_export()         # names contain speed, fps, codec …
+
+    def _easy_changed(self, easy: bool) -> None:
+        """Easy chosen: every clip gets the easy codec settings (re-encode: AV1 fast)."""
+        if easy:
+            from .settings_panel import force_easy
+            for clip in self.model.clips:
+                if clip.info and clip.settings.codec != COPY and not clip.settings.smart:
+                    clip.settings.codec = self.settings.default_codec()
+                    clip.settings.container = None
+                force_easy(clip)
+        self.settings.refresh()
+        self._settings_changed()
 
     def _trim_changed(self) -> None:
         clip = self.current_clip()

@@ -129,16 +129,16 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
         // start of clip · previous keyframe · one frame back / ahead · next keyframe · end of clip
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             val pad = PaddingValues(horizontal = 6.dp)
-            FilledTonalButton(vm::toStart, contentPadding = pad) { Text("|◀") }
+            FilledTonalButton(vm::toStart, contentPadding = pad) { Icon(FirstIcon, "first frame", Modifier.size(22.dp)) }
             FilledTonalButton(vm::previousKeyframe, contentPadding = pad) {
-                Text("−"); Icon(KeyIcon, "previous keyframe", Modifier.size(20.dp))
+                Icon(KeyMinusIcon, "previous keyframe", Modifier.size(width = 30.dp, height = 26.dp))
             }
             FilledTonalButton({ vm.step(-1) }, contentPadding = pad) { Text("◀ 1") }
             FilledTonalButton({ vm.step(1) }, contentPadding = pad) { Text("1 ▶") }
             FilledTonalButton(vm::nextKeyframe, contentPadding = pad) {
-                Text("+"); Icon(KeyIcon, "next keyframe", Modifier.size(20.dp))
+                Icon(KeyPlusIcon, "next keyframe", Modifier.size(width = 30.dp, height = 26.dp))
             }
-            FilledTonalButton(vm::toEnd, contentPadding = pad) { Text("▶|") }
+            FilledTonalButton(vm::toEnd, contentPadding = pad) { Icon(LastIcon, "last frame", Modifier.size(22.dp)) }
         }
     }
 }
@@ -331,7 +331,16 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
     val fpsChoices = if (lossless) (FPS_CHOICES + info.realFps).distinct().sorted() else FPS_CHOICES
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Export", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Export", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                // Easy hides the codec details (codec, quality); Pro shows everything
+                SingleChoiceSegmentedButtonRow {
+                    listOf(true to "Easy", false to "Pro").forEachIndexed { i, (easy, label) ->
+                        SegmentedButton(selected = vm.easy == easy, onClick = { vm.chooseEasy(easy) },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                    }
+                }
+            }
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 val modes = listOf(EditorViewModel.Mode.LOSSLESS to "Lossless", EditorViewModel.Mode.SMART to "Smart",
                     EditorViewModel.Mode.REENCODE to "Re-encode")
@@ -374,9 +383,14 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                     val speeds = listOf<Rational?>(null) + listOf(1L, 2L, 4L, 8L, 16L).map { Rational.of(1, it) }
                     SpeedDropdown(vm.speed, speeds, everyOnce, vm::chooseSpeed)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    EnumDropdown("Codec", vm.codec, vm.codecs, { it.label }, vm::chooseCodec, Modifier.weight(1f))
-                    EnumDropdown("Quality", vm.quality, Quality.entries, { it.label }, vm::chooseQuality, Modifier.weight(1f))
+                if (vm.easy) {
+                    Text("Codec ${vm.usedCodec.label} · quality ${vm.usedQuality.label} (Pro: choose them)",
+                        style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        EnumDropdown("Codec", vm.codec, vm.codecs, { it.label }, vm::chooseCodec, Modifier.weight(1f))
+                        EnumDropdown("Quality", vm.quality, Quality.entries, { it.label }, vm::chooseQuality, Modifier.weight(1f))
+                    }
                 }
                 val sides = listOf<Int?>(null) + listOf(2160, 1440, 1080, 720, 480)
                     .filter { it < minOf(info.displayWidth, info.displayHeight) }
@@ -565,7 +579,7 @@ fun SmartOptions(vm: EditorViewModel, info: ClipInfo, job: SmartJob) {
             }
         }
     }
-    EnumDropdown("Quality of re-encoded parts", vm.quality, Quality.entries, { it.label }, vm::chooseQuality)
+    if (!vm.easy) EnumDropdown("Quality of re-encoded parts", vm.quality, Quality.entries, { it.label }, vm::chooseQuality)
     Text("Codec ${info.codecName}, ${info.width}×${info.height} – always like the source, otherwise the parts " +
         "could not be joined.", style = MaterialTheme.typography.bodySmall)
     val status = when {
@@ -661,17 +675,28 @@ fun ClipInfoCard(info: ClipInfo) {
     }
 }
 
-/** Stylised key (keyframe buttons): a ring, the shaft and two teeth. */
-val KeyIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
-    androidx.compose.ui.graphics.vector.ImageVector.Builder("Key", 24.dp, 24.dp, 24f, 24f).apply {
-        addPath(androidx.compose.ui.graphics.vector.addPathNodes(
-            "M7,7.5a4.5,4.5 0 1,0 0,9a4.5,4.5 0 1,0 0,-9z M7,10a2,2 0 1,1 0,4a2,2 0 1,1 0,-4z"),
-            pathFillType = androidx.compose.ui.graphics.PathFillType.EvenOdd,
-            fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
-        addPath(androidx.compose.ui.graphics.vector.addPathNodes("M11,11h11v2.2h-11z M18.5,13h2.2v3.5h-2.2z M15,13h2.2v2.5h-2.2z"),
+/**
+ * Transport symbols on a 24-unit grid (28 wide for the key buttons) – the same shapes as the
+ * desktop (timeline.transport_icon): |◀ / ▶| with the bar centred on the triangle, "− key" and
+ * "key +" close together.
+ */
+private fun symbol(name: String, width: Float, vararg paths: Pair<String, Boolean>) =
+    androidx.compose.ui.graphics.vector.ImageVector.Builder(name, width.dp, 24.dp, width, 24f).apply {
+        for ((d, evenOdd) in paths) addPath(androidx.compose.ui.graphics.vector.addPathNodes(d),
+            pathFillType = if (evenOdd) androidx.compose.ui.graphics.PathFillType.EvenOdd
+            else androidx.compose.ui.graphics.PathFillType.NonZero,
             fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
     }.build()
-}
+
+private fun keyPaths(dx: Float): Array<Pair<String, Boolean>> = arrayOf(
+    "M${7 + dx},7.5a4.5,4.5 0 1,0 0,9a4.5,4.5 0 1,0 0,-9z M${7 + dx},10a2,2 0 1,1 0,4a2,2 0 1,1 0,-4z" to true,
+    "M${11 + dx},10.9h11v2.2h-11z M${18.5 + dx},13h2.2v3.5h-2.2z M${15 + dx},13h2.2v2.5h-2.2z" to false,
+)
+
+val KeyMinusIcon by lazy { symbol("KeyMinus", 28f, "M1,10.9h5.5v2.2h-5.5z" to false, *keyPaths(5f)) }
+val KeyPlusIcon by lazy { symbol("KeyPlus", 28f, *keyPaths(-2f), "M21.5,10.9h5.5v2.2h-5.5z M23.15,9.25h2.2v5.5h-2.2z" to false) }
+val FirstIcon by lazy { symbol("First", 24f, "M5,6h2.4v12h-2.4z M19,6v12l-10.5,-6z" to false) }
+val LastIcon by lazy { symbol("Last", 24f, "M16.6,6h2.4v12h-2.4z M5,6v12l10.5,-6z" to false) }
 
 /**
  * Show the export folder (Movies/VideoSpeedControl) in the system's Files app. Android has no

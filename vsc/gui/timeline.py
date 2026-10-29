@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import time
 
-from PySide6.QtCore import QPointF, QRectF, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (QColor, QIcon, QImage, QKeySequence, QPainter, QPainterPath, QPen,
                            QPixmap, QShortcut)
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView,
@@ -430,20 +430,19 @@ class PreviewPanel(QWidget):
         self.play_button.clicked.connect(self.toggle_play)
         transport = QHBoxLayout()
         transport.addWidget(self.play_button)
-        def key_button(sign, tip, slot):
-            """"− 🔑" / "+ 🔑": the sign, then the key (icon right of the text)."""
-            b = button(sign, tip, slot)
-            b.setIcon(key_icon(self.palette().buttonText().color()))
-            b.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-            b.setLayoutDirection(Qt.RightToLeft)
+        def icon_button(kind, tip, slot):
+            """Drawn symbols (fonts put the bar of ⏮ off-centre): first / last, − 🔑 / 🔑 +."""
+            b = button("", tip, slot)
+            b.setIcon(transport_icon(kind, self.palette().buttonText().color()))
+            b.setIconSize(transport_icon_size(kind))
             return b
-        transport.addWidget(button("⏮", "First frame (Home)", lambda: self.seek(0)))
-        transport.addWidget(key_button("−", "Previous keyframe (Shift+←)", lambda: self.step_key(-1)))
+        transport.addWidget(icon_button("first", "First frame (Home)", lambda: self.seek(0)))
+        transport.addWidget(icon_button("key-", "Previous keyframe (Shift+←)", lambda: self.step_key(-1)))
         transport.addWidget(button("◀ 1", "Previous frame (←)", lambda: self.step(-1)))
         transport.addWidget(self.frame_spin)
         transport.addWidget(button("1 ▶", "Next frame (→)", lambda: self.step(1)))
-        transport.addWidget(key_button("+", "Next keyframe (Shift+→)", lambda: self.step_key(1)))
-        transport.addWidget(button("⏭", "Last frame (End)", lambda: self.seek(10**9)))
+        transport.addWidget(icon_button("key+", "Next keyframe (Shift+→)", lambda: self.step_key(1)))
+        transport.addWidget(icon_button("last", "Last frame (End)", lambda: self.seek(10**9)))
         transport.addWidget(self.position, 1)
         transport.addWidget(self.zoom.combo())
 
@@ -840,12 +839,7 @@ class PreviewPanel(QWidget):
         self._sections_changed()
 
     def _default_out_fps(self) -> Fraction:
-        """The output frame rate chosen last – the default for further sections."""
-        value = QSettings().value("sections/out_fps", "")
-        try:
-            return Fraction(str(value)) if value else smart.DEFAULT_OUT_FPS
-        except (ValueError, ZeroDivisionError):
-            return smart.DEFAULT_OUT_FPS
+        return default_out_fps()
 
     def remove_section(self, index: int) -> None:
         s = self.clip.segments[index]
@@ -1195,6 +1189,15 @@ class PreviewPanel(QWidget):
                 "cuts – they can start at any frame.)")
 
 
+def default_out_fps() -> Fraction:
+    """The output frame rate chosen last – the default for further (smart) sections."""
+    value = QSettings().value("sections/out_fps", "")
+    try:
+        return Fraction(str(value)) if value else smart.DEFAULT_OUT_FPS
+    except (ValueError, ZeroDivisionError):
+        return smart.DEFAULT_OUT_FPS
+
+
 def _setting(key: str, default: bool) -> bool:
     value = QSettings().value(key, default)
     return value in (True, "true", "1", 1) if not isinstance(value, bool) else value
@@ -1218,19 +1221,45 @@ def _key_text(fm, frame: int) -> str:
     return "  · keyframe" if fm.keyframe_at_or_before(frame) == frame else ""
 
 
-def key_icon(color: QColor) -> QIcon:
-    """Stylised key (keyframe buttons): a ring, the shaft and two teeth – like the Android app."""
-    pix = QPixmap(48, 48)
+def transport_icon_size(kind: str) -> QSize:
+    return QSize(28, 20) if kind.startswith("key") else QSize(20, 20)
+
+
+def transport_icon(kind: str, color: QColor) -> QIcon:
+    """Transport symbols on a 24-unit grid (28 wide for the key buttons), the same shapes as the
+    Android app: |◀ and ▶| with the bar centred on the triangle; "− key" and "key +" close
+    together (sign drawn as bars, not a font glyph)."""
+    wide = kind.startswith("key")
+    w = 28 if wide else 24
+    pix = QPixmap(w * 4, 24 * 4)
     pix.fill(Qt.transparent)
     p = QPainter(pix)
     p.setRenderHint(QPainter.Antialiasing)
-    p.scale(2, 2)
-    ring = QPainterPath()
-    ring.setFillRule(Qt.OddEvenFill)
-    ring.addEllipse(QPointF(7, 12), 4.5, 4.5)
-    ring.addEllipse(QPointF(7, 12), 2, 2)
-    p.fillPath(ring, color)
-    for rect in (QRectF(11, 11, 11, 2.2), QRectF(18.5, 13, 2.2, 3.5), QRectF(15, 13, 2.2, 2.5)):
-        p.fillRect(rect, color)
+    p.scale(4, 4)
+    p.setPen(Qt.NoPen)
+    p.setBrush(color)
+
+    def key(dx: float) -> None:
+        ring = QPainterPath()
+        ring.setFillRule(Qt.OddEvenFill)
+        ring.addEllipse(QPointF(7 + dx, 12), 4.5, 4.5)
+        ring.addEllipse(QPointF(7 + dx, 12), 2, 2)
+        p.drawPath(ring)
+        for x, y, rw, rh in ((11, 10.9, 11, 2.2), (18.5, 13, 2.2, 3.5), (15, 13, 2.2, 2.5)):
+            p.drawRect(QRectF(x + dx, y, rw, rh))
+
+    if kind == "key-":
+        p.drawRect(QRectF(1, 10.9, 5.5, 2.2))
+        key(5)
+    elif kind == "key+":
+        key(-2)
+        p.drawRect(QRectF(21.5, 10.9, 5.5, 2.2))
+        p.drawRect(QRectF(23.15, 9.25, 2.2, 5.5))
+    elif kind == "first":
+        p.drawRect(QRectF(5, 6, 2.4, 12))
+        p.drawPolygon([QPointF(19, 6), QPointF(19, 18), QPointF(8.5, 12)])
+    else:   # last
+        p.drawRect(QRectF(16.6, 6, 2.4, 12))
+        p.drawPolygon([QPointF(5, 6), QPointF(5, 18), QPointF(15.5, 12)])
     p.end()
     return QIcon(pix)

@@ -43,6 +43,7 @@ def _wait(qapp, condition, timeout=30.0):
 
 @pytest.fixture
 def window(qapp, h264_clip, hevc10_clip):
+    QSettings().setValue("settings/pro", True)      # most tests set codec details (Pro)
     w = MainWindow()
     w.add_files([h264_clip, hevc10_clip, h264_clip])   # duplicate is ignored
     _wait(qapp, lambda: w.settings.encoders is not None and
@@ -770,3 +771,28 @@ def test_v092_section_editing(qapp, window):
     assert clip.job.output_duration != before
     panel.undo()
     assert not clip.segments[1].smooth_start
+
+
+def test_easy_and_pro(qapp, window):
+    """Easy: no codec details; re-encode is always AV1 fast, smart the source codec. Smart
+    preselects the sections that differ from their output rate; smart → re-encode = AV1 fast."""
+    panel, preview, clip = window.settings, window.preview, window.current_clip()
+    panel.set_process("lossless")
+    _add_sections(preview, ((24, 71, "30"), (72, 119, "60")))     # out fps default 30
+    panel.set_process("smart")
+    assert [s.reencode for s in clip.segments] == [False, True]    # 30 = 30 → copied
+    panel.set_process("reencode")
+    assert clip.settings.codec == "svtav1"                         # from smart: AV1 fast
+    _pick(panel.codec_combo, "x264")
+    panel.preset_combo.setCurrentIndex(0)
+    assert clip.settings.codec == "x264"
+
+    panel.easy_button.click()                                      # Easy
+    assert clip.settings.codec == "svtav1" and clip.settings.preset is None
+    assert clip.settings.quality is None and clip.settings.chroma is None
+    for w in (panel.codec_combo, panel.preset_combo, panel.quality_combo, panel.chroma_combo):
+        assert not w.isVisibleTo(panel)
+    panel.set_process("smart")
+    assert clip.settings.codec == "x264" and clip.settings.smart     # source codec (H.264 clip)
+    panel.pro_button.click()
+    assert panel.codec_combo.isVisibleTo(panel)
