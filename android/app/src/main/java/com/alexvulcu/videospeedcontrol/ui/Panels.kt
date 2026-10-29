@@ -201,17 +201,20 @@ fun SectionsPanel(vm: EditorViewModel, edit: ClipEdit) {
                     TextButton(vm::cancelMark) { Text("Cancel") }
                 }
             }
-            val from = start ?: edit.quickStart(vm.playhead)
-            Text(
-                if (start == null) "“End” makes a section from frame ${from + 1} to the playhead (right after the " +
-                    "section before it, or from the start). For another start, tap “Start” first."
-                else "Start at frame ${start + 1} – now move to the last frame and tap “End”.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            if (!vm.easy) {
+                val from = start ?: edit.quickStart(vm.playhead)
+                Text(
+                    if (start != null) "Start at frame ${start + 1} – now move to the last frame and tap “End”."
+                    else "Move to the last frame of a section and tap “End”: the section starts right after the " +
+                        "one before it – the first one at the start of the clip (here: frame ${from + 1}). So for a " +
+                        "second section just tap “End” again. Tap “Start” first only if a section should begin elsewhere.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             if (edit.segments.isNotEmpty()) {
                 HorizontalDivider()
-                Text("Tap a section (here or on the timeline) to edit it; drag a border on the timeline to " +
-                    "move it.", style = MaterialTheme.typography.bodySmall)
+                if (!vm.easy) Text("Tap a section (here or on the timeline) to edit it; drag a border on the timeline " +
+                    "to move it.", style = MaterialTheme.typography.bodySmall)
             }
             edit.segments.forEachIndexed { i, s ->
                 val len = (Rational.of((s.end - s.start).toLong()) / s.fps).toDouble()
@@ -311,9 +314,18 @@ fun TrimPanel(vm: EditorViewModel, edit: ClipEdit) {
     val count = edit.info.frames.count
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Trim", style = MaterialTheme.typography.titleMedium)
+            Text(if (vm.easy) "Clip length" else "Trim", style = MaterialTheme.typography.titleMedium)
+            val whole = edit.trim.start == 0 && edit.trim.end == null
             Text(
-                if (edit.trim.start == 0 && edit.trim.end == null) "Whole clip (frames 1–$count)"
+                if (vm.easy) {
+                    // real-time length of the kept part (the yellow brackets on the timeline)
+                    val pts = edit.info.frames.ptsUs
+                    fun t(f: Int) = (if (f < pts.size) pts[f] else pts.last() + (pts.last() - pts[maxOf(0, pts.size - 2)])) / 1e6
+                    val k = (edit.info.realFps / edit.info.fps).toDouble()
+                    val len = (t(edit.trimEnd) - t(edit.trim.start)) / k
+                    val all = (t(count) - t(0)) / k
+                    if (whole) "⏳ ${secs1(len)} – the whole clip" else "⏳ ${secs1(len)} of ${secs1(all)}"
+                } else if (whole) "Whole clip (frames 1–$count)"
                 else "Frames ${edit.trim.start + 1}–${edit.trimEnd} of $count",
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -322,7 +334,7 @@ fun TrimPanel(vm: EditorViewModel, edit: ClipEdit) {
                 OutlinedButton(vm::setOut) { Text("Set out") }
                 TextButton(vm::clearTrim, enabled = edit.trim.start != 0 || edit.trim.end != null) { Text("Reset") }
             }
-            Text(
+            if (!vm.easy) Text(
                 if (vm.snapsToKeyframes)
                     "Lossless and smart export can only cut at keyframes (the ticks under the timeline): only they are " +
                         "complete pictures, all other frames store differences to their neighbours. In and out " +
@@ -368,7 +380,8 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 when (vm.mode) {
                     EditorViewModel.Mode.LOSSLESS -> "Every frame is kept unchanged – only its timing changes. No quality loss, but " +
                         "fast parts of slow-motion clips keep their high frame rate, which many players can't show smoothly."
-                    EditorViewModel.Mode.SMART -> "Parts that play at the output frame rate are copied unchanged; the others " +
+                    EditorViewModel.Mode.SMART -> if (vm.easy) "Only the parts that need it are re-encoded – the rest stays untouched."
+                        else "Parts that play at the output frame rate are copied unchanged; the others " +
                         "(e.g. real time of a 240 fps recording) are re-encoded to it with the source codec."
                     EditorViewModel.Mode.REENCODE -> "New file at a constant frame rate: slow parts repeat frames, fast parts drop them – plays " +
                         "smoothly everywhere. Hardware encoder; cuts at any frame."
@@ -395,10 +408,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                     val speeds = listOf<Rational?>(null) + listOf(1L, 2L, 4L, 8L, 16L).map { Rational.of(1, it) }
                     SpeedDropdown(vm.speed, speeds, everyOnce, vm::chooseSpeed)
                 }
-                if (vm.easy) {
-                    Text("Codec ${vm.usedCodec.label} · quality ${vm.usedQuality.label} (Pro: choose them)",
-                        style = MaterialTheme.typography.bodySmall)
-                } else {
+                if (!vm.easy) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         EnumDropdown("Codec", vm.codec, vm.codecs, { it.label }, vm::chooseCodec, Modifier.weight(1f))
                         EnumDropdown("Quality", vm.quality, Quality.entries, { it.label }, vm::chooseQuality, Modifier.weight(1f))
@@ -567,12 +577,13 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
 fun SmartOptions(vm: EditorViewModel, info: ClipInfo, job: SmartJob) {
     val pieces = vm.smartPieces()
     RateDropdown("Output frame rate", vm.fps, FPS_CHOICES, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    if (!vm.easy) Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Re-encode everything that does not play at ${fmtFps(vm.fps.toDouble())} fps",
             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Switch(checked = vm.smartAuto, onCheckedChange = vm::chooseSmartAuto, enabled = vm.export !is ExportState.Running)
+        Switch(checked = vm.smartAuto, onCheckedChange = vm::chooseSmartAuto, enabled = vm.export !is ExportState.Running,
+            colors = greenSwitch())
     }
-    for (p in pieces) {
+    for (p in if (vm.easy) emptyList() else pieces) {
         val kind = if (p.rate == info.realFps) "real time" else speedWords((p.rate / info.realFps).toDouble())
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Checkbox(checked = p.reencode, onCheckedChange = { vm.setPieceReencode(p, it) },
@@ -592,7 +603,7 @@ fun SmartOptions(vm: EditorViewModel, info: ClipInfo, job: SmartJob) {
         }
     }
     if (!vm.easy) EnumDropdown("Quality of re-encoded parts", vm.quality, Quality.entries, { it.label }, vm::chooseQuality)
-    Text("Codec ${info.codecName}, ${info.width}×${info.height} – always like the source, otherwise the parts " +
+    if (!vm.easy) Text("Codec ${info.codecName}, ${info.width}×${info.height} – always like the source, otherwise the parts " +
         "could not be joined.", style = MaterialTheme.typography.bodySmall)
     val status = when {
         vm.joins == null -> "Analysing the keyframes of this clip …"
@@ -601,7 +612,7 @@ fun SmartOptions(vm: EditorViewModel, info: ClipInfo, job: SmartJob) {
     }
     if (status != null) {
         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    } else {
+    } else if (!vm.easy) {
         val enc = job.parts.filter { it.encode }
         Text("${job.parts.size} parts, ${enc.size} re-encoded (${enc.sumOf { it.frames }} of ${job.parts.sumOf { it.frames }} frames) · " +
             "output ${clock(job.outputDuration.toDouble())}. Re-encoded parts are widened to the nearest keyframes. " +

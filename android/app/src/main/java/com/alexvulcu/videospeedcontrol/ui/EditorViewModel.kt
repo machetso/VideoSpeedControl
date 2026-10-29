@@ -151,7 +151,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         return Segments.pieces(e.segments, e.trim.start, e.trimEnd, e.info.realFps).map { p ->
             val differs = p.rate != fps
             val key = "${p.start}-${p.end}-${p.rate}"
-            SmartPiece(p.start, p.end, p.rate, differs, smartOverride[key] ?: (smartAuto && differs))
+            // Easy: always the automatic rule (no switch, no ticks)
+            SmartPiece(p.start, p.end, p.rate, differs, if (easy) differs else smartOverride[key] ?: (smartAuto && differs))
         }
     }
 
