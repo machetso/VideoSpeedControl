@@ -202,8 +202,12 @@ IDEAS.md – add new ones there instead of building them unasked.
 - Tests: `.venv/bin/python -m pytest tests -q` (test clips are generated into tests/media;
   shared fixtures in tests/conftest.py).
 - Launcher (dev laptop, COSMIC): `~/.local/share/applications/videospeedcontrol.desktop`
-  (+ copy in ~/Schreibtisch) runs `.venv/bin/python -m vsc.gui %F` in the project dir; icon
-  `vsc/gui/icon.svg`, `setDesktopFileName("videospeedcontrol")` so Wayland matches it.
+  (+ copy in ~/Schreibtisch) runs `.venv/bin/python -m vsc.gui %F` in the project dir;
+  Icon=videospeedcontrol = theme icon in ~/.local/share/icons/hicolor/<size>/apps (copies of
+  vsc/gui/resources/icon_*.png – re-copy after tools/make_icons.py, then gtk-update-icon-cache;
+  COSMIC caches icons by path, a new name forces a reload). The Wine-installed Windows build
+  has its own icons (8BAF_VideoSpeedControl.0, replaced by hand 2026-10-29).
+  `setDesktopFileName("videospeedcontrol")` so Wayland matches the window.
 - CLI: `.venv/bin/python -m vsc info CLIP`, `... encode CLIP -o DIR --fps 25 [--codec x264 ...]`.
 
 ## Layout
