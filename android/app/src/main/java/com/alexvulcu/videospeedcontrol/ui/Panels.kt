@@ -502,12 +502,24 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
                     when (e.status) {
                         ExportManager.Status.RUNNING, ExportManager.Status.WAITING ->
                             TextButton({ vm.cancelBatchEntry(e.task.id) }) { Text("Cancel") }
-                        ExportManager.Status.DONE -> TextButton({
-                            e.outputUri?.let {
-                                ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(it, "video/*")
-                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                        ExportManager.Status.DONE -> {
+                            // green when the exported file is still there (it may have been deleted since)
+                            val uri = e.outputUri
+                            val playable by androidx.compose.runtime.produceState(false, uri) {
+                                value = uri != null && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    runCatching { ctx.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false }
+                                        .getOrDefault(false)
+                                }
                             }
-                        }) { Text("Play") }
+                            androidx.compose.material3.IconButton({
+                                ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                            }, enabled = playable) {
+                                Icon(PlayIcon, if (playable) "Play ${e.output}" else "File no longer there",
+                                    Modifier.size(30.dp),
+                                    tint = if (playable) PlayGreen else MaterialTheme.colorScheme.outline)
+                            }
+                        }
                         else -> {}
                     }
                     TextButton({ vm.removeBatchEntry(e.task.id) }, enabled = e.status != ExportManager.Status.RUNNING) { Text("✕") }
@@ -678,4 +690,14 @@ fun openOutputFolder(ctx: android.content.Context) {
         android.widget.Toast.makeText(ctx, "No file manager found – the exports are in " +
             com.alexvulcu.videospeedcontrol.core.OutputStore.RELATIVE_PATH, android.widget.Toast.LENGTH_LONG).show()
     }
+}
+
+/** Play symbol (batch list), green while the file can be played. */
+val PlayGreen = Color(0xFF34C759)
+
+val PlayIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("Play", 24.dp, 24.dp, 24f, 24f).apply {
+        addPath(androidx.compose.ui.graphics.vector.addPathNodes("M7,4.5v15l12.5,-7.5z"),
+            fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
+    }.build()
 }
