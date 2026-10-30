@@ -3,7 +3,7 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
-## 0.93.1 – not released yet
+## 0.93.1 – 2026-10-30
 
 ### Other phones
 - *(Android)* **AV1 (fast) only with a hardware encoder.** Phones without an AV1 chip (most
