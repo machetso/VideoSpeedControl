@@ -53,7 +53,8 @@ Not released yet – mobile UX and further tests still to come.
   when the file is gone); "Open folder" buttons next to the batch list and the finished export.
 - **48 fps** as an output frame rate (everywhere a frame rate can be chosen).
 - *(Android)* Re-encode: "Output frame rate" (no "constant"), resolution "No change (W×H)".
-  Easy: shorter lossless description, sound is just the switch.
+  Easy: shorter lossless description, sound is just the switch, "Output frame rate" with plain
+  rates (lossless too), no re-encode speed choice (the speed comes from the clip sections).
 
 ### Other
 - *(desktop)* Laptop launcher uses a themed icon (`videospeedcontrol`) so the new logo shows.

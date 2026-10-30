@@ -433,11 +433,12 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 // options above
             } else if (lossless) {
                 if (!job.hasSegments) {
-                    RateDropdown("Frame rate", vm.fps, fpsChoices, { exportFpsLabel(job as LosslessJob, it) }, vm::chooseFps)
+                    if (vm.easy) RateDropdown("Output frame rate", vm.fps, fpsChoices, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
+                    else RateDropdown("Frame rate", vm.fps, fpsChoices, { exportFpsLabel(job as LosslessJob, it) }, vm::chooseFps)
                 }
             } else {
                 RateDropdown("Output frame rate", vm.fps, fpsChoices, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
-                if (!job.hasSegments) {
+                if (!job.hasSegments && !vm.easy) {          // Easy: the speed comes from the clip sections
                     val everyOnce = vm.fps / info.realFps
                     val speeds = listOf<Rational?>(null) + listOf(1L, 2L, 4L, 8L, 16L).map { Rational.of(1, it) }
                     SpeedDropdown(vm.speed, speeds, everyOnce, vm::chooseSpeed)

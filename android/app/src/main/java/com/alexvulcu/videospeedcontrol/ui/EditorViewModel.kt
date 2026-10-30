@@ -110,6 +110,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** What the export uses (Easy ignores the Pro choices). */
     val usedCodec: VideoCodec get() = if (easy) defaultCodec else codec
     val usedQuality: Quality get() = if (easy) Quality.HIGH else quality
+    /** Re-encode speed without sections: Easy has no speed choice (every frame once). */
+    val usedSpeed: Rational? get() = if (easy) null else speed
 
     /**
      * Easy "Whole clip": the sections are set aside and the whole clip plays at [wholeRate]
@@ -223,7 +225,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         return when (mode) {
             Mode.LOSSLESS -> e.copy(segments = usedSegments(e)).job(fps)
             Mode.SMART -> smartJob(e)
-            Mode.REENCODE -> e.copy(segments = usedSegments(e)).reencodeJob(fps, speed, usedCodec, shortSide, usedQuality)
+            Mode.REENCODE -> e.copy(segments = usedSegments(e)).reencodeJob(fps, usedSpeed, usedCodec, shortSide, usedQuality)
         }
     }
 
@@ -706,7 +708,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }.also { fingerprint = it }
         val segs = if (mode == Mode.SMART) smartParts(e) else usedSegments(e)
         return Treatment.Data(info.name, info.sizeBytes, fp, info.frames.count,
-            Treatment.Settings(treatmentMode, fps, speed, usedCodec, usedQuality, shortSide, sound, smartAuto,
+            Treatment.Settings(treatmentMode, fps, usedSpeed, usedCodec, usedQuality, shortSide, sound, smartAuto,
                 size = (job() as? ReencodeJob)?.outputSize()),
             e.trim, segs, info.uri.toString())
     }
