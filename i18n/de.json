@@ -254,6 +254,9 @@
    "one": "Vorschau von %d Video gelöscht",
    "other": "Vorschauen von %d Videos gelöscht"
   },
-  "Close & return to app": "Schließen & zurück zur App"
+  "Close & return to app": "Schließen & zurück zur App",
+  "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "Dieses Handy hat keinen %s-Encoder für %d×%d bei %s fps, daher kann Smart die Teile nicht neu kodieren. Nutze „Neu kodieren“ oder eine niedrigere Ausgabe-Bildrate.",
+  "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "Dieses Handy hat keinen Encoder für %d×%d bei %s fps. Wähle eine niedrigere Ausgabe-Bildrate.",
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "Dieses Handy hat keinen %s-Encoder für %d×%d bei %s fps. Wähle einen anderen Codec, eine andere Auflösung oder Bildrate."
  }
 }

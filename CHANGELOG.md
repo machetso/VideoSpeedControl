@@ -3,6 +3,18 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
+## 0.93.1 – not released yet
+
+### Other phones
+- *(Android)* **AV1 (fast) only with a hardware encoder.** Phones without an AV1 chip (most
+  phones except recent Pixels) only have Android's software AV1 encoder, which is many times
+  slower: there AV1 (fast) is no longer offered, and Easy re-encodes with HEVC, else H.264.
+  Easy also takes the next codec when the first can't encode the clip's size and frame rate.
+- *(Android)* **Missing encoders are shown before saving**: re-encode and smart export check
+  whether this phone can encode the output size and frame rate (smart: in the source codec)
+  and say so in the export card – before, the export only failed when it started.
+- *(Android)* A Clip Speed Treatment naming a codec this phone lacks falls back to the default.
+
 ## 0.93 – 2026-10-30
 
 ### Stored previews (both)

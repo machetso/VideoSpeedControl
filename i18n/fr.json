@@ -254,6 +254,9 @@
   "Good": "Bonne",
   "High": "Haute",
   "Very high": "Très haute",
-  "Close & return to app": "Fermer et revenir à l'app"
+  "Close & return to app": "Fermer et revenir à l'app",
+  "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "Ce téléphone n’a pas d’encodeur %s pour %d×%d à %s fps, Smart ne peut donc pas réencoder les parties. Utilisez « Réencoder » ou une fréquence de sortie plus basse.",
+  "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "Ce téléphone n’a pas d’encodeur pour %d×%d à %s fps. Choisissez une fréquence de sortie plus basse.",
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "Ce téléphone n’a pas d’encodeur %s pour %d×%d à %s fps. Choisissez un autre codec, une autre résolution ou une autre fréquence."
  }
 }

@@ -254,6 +254,9 @@
    "one": "Vista previa de %d vídeo borrada",
    "other": "Vistas previas de %d vídeos borradas"
   },
-  "Close & return to app": "Cerrar y volver a la app"
+  "Close & return to app": "Cerrar y volver a la app",
+  "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "Este teléfono no tiene un codificador %s para %d×%d a %s fps, así que Smart no puede recodificar las partes. Usa «Recodificar» o menos fotogramas por segundo de salida.",
+  "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "Este teléfono no tiene un codificador para %d×%d a %s fps. Elige menos fotogramas por segundo de salida.",
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "Este teléfono no tiene un codificador %s para %d×%d a %s fps. Elige otro códec, otra resolución u otros fotogramas por segundo."
  }
 }

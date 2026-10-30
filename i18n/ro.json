@@ -258,6 +258,9 @@
       "few": "Previzualizările a %d videoclipuri au fost șterse",
       "other": "Previzualizările a %d de videoclipuri au fost șterse"
     },
-    "Close & return to app": "Închide și revino în aplicație"
+    "Close & return to app": "Închide și revino în aplicație",
+    "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "Acest telefon nu are un encoder %s pentru %d×%d la %s fps, așa că Smart nu poate recoda părțile. Folosește „Recodare” sau o rată de cadre de ieșire mai mică.",
+    "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "Acest telefon nu are un encoder pentru %d×%d la %s fps. Alege o rată de cadre de ieșire mai mică.",
+    "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "Acest telefon nu are un encoder %s pentru %d×%d la %s fps. Alege alt codec, altă rezoluție sau altă rată de cadre."
   }
 }

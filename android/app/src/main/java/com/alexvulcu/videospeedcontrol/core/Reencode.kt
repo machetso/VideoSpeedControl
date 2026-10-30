@@ -249,21 +249,45 @@ class ReencodeExport(
     }
 }
 
-/** Encoder choice per codec (see [VideoCodec]); sets the complexity for AV1 in [format]. */
+/**
+ * Encoder choice per codec (see [VideoCodec]); sets the complexity for AV1 in [format].
+ * AV1 fast = hardware only: phones without an AV1 chip only have Android's software encoder
+ * (Android 14+), many times slower – there AV1 fast is not offered and Easy uses HEVC / H.264.
+ */
 object Encoders {
+    private val infos: Array<MediaCodecInfo> by lazy { MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos }
+    private val supported = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     private fun candidates(mime: String, format: MediaFormat?): List<MediaCodecInfo> =
-        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { info ->
+        infos.filter { info ->
             info.isEncoder && mime in info.supportedTypes &&
                 (format == null || runCatching { info.getCapabilitiesForType(mime).isFormatSupported(format) }.getOrDefault(false))
         }
 
+    private fun candidates(codec: VideoCodec, format: MediaFormat?): List<MediaCodecInfo> =
+        candidates(codec.mime, format).filter { codec != VideoCodec.AV1_FAST || it.isHardwareAccelerated }
+
     /** The phone has an encoder for [codec] at all (the codec list only offers these). */
-    fun available(codec: VideoCodec): Boolean = candidates(codec.mime, null).isNotEmpty()
+    fun available(codec: VideoCodec): Boolean = candidates(codec, null).isNotEmpty()
+
+    /** An encoder for [codec] takes [width]×[height] at [fps] – checked before an export starts (cached). */
+    fun supports(codec: VideoCodec, width: Int, height: Int, fps: Double): Boolean =
+        supported.getOrPut("${codec.name} $width $height $fps") {
+            candidates(codec, probeFormat(codec.mime, width, height, fps)).isNotEmpty()
+        }
+
+    /** The same for the source codec [mime] (smart export re-encodes parts in it; cached). */
+    fun supports(mime: String, width: Int, height: Int, fps: Double): Boolean =
+        supported.getOrPut("$mime $width $height $fps") {
+            candidates(mime, probeFormat(mime, width, height, fps)).isNotEmpty()
+        }
+
+    private fun probeFormat(mime: String, width: Int, height: Int, fps: Double) =
+        MediaFormat.createVideoFormat(mime, width, height).apply { setFloat(MediaFormat.KEY_FRAME_RATE, fps.toFloat()) }
 
     fun pick(codec: VideoCodec, format: MediaFormat): String? {
-        val all = candidates(codec.mime, format)
+        val all = candidates(codec, format)
         val info = when (codec) {
-            VideoCodec.AV1_FAST -> all.firstOrNull { it.isHardwareAccelerated } ?: all.firstOrNull()
             VideoCodec.AV1_BEST -> all.firstOrNull { it.isSoftwareOnly } ?: all.firstOrNull()
             else -> all.firstOrNull()
         } ?: return null

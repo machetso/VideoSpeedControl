@@ -464,6 +464,9 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 val (w, h) = r.outputSize()
                 Text(tr("%d×%d · %d frames · %s · about %s Mbit/s", w, h, r.outputFrameCount,
                     clock(job.outputDuration.toDouble()), fmt(r.bitrate / 1e6)), style = MaterialTheme.typography.bodySmall)
+                vm.encoderProblem?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -671,7 +674,7 @@ fun SmartOptions(vm: EditorViewModel, info: ClipInfo, job: SmartJob) {
     val status = when {
         vm.joins == null -> tr("Analysing the keyframes of this clip …")
         vm.joinsError != null -> tr("Keyframe analysis failed: %s", vm.joinsError)
-        else -> job.blockers().firstOrNull()
+        else -> job.blockers().firstOrNull() ?: vm.encoderProblem
     }
     if (status != null) {
         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

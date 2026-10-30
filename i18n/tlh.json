@@ -242,6 +242,9 @@
   "Good": "QaQ",
   "High": "jen",
   "Very high": "jenqu'",
-  "Close & return to app": "yISoQmoH 'ej ghunDaq yIchegh"
+  "Close & return to app": "yISoQmoH 'ej ghunDaq yIchegh",
+  "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "ghogh HablI' vam %s chenqa'moHwI' ghajbe' – %d×%d, %s fps. 'ay'mey chenqa'moHlaHbe' Smart. chenqa'moH yIlo' pagh lel mIllogh Do yIghIjmoH.",
+  "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "ghogh HablI' vam chenqa'moHwI' ghajbe' – %d×%d, %s fps. lel mIllogh Do QIt yIwIv.",
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "ghogh HablI' vam %s chenqa'moHwI' ghajbe' – %d×%d, %s fps. latlh Codec, mIllogh tIn, Do ghap yIwIv."
  }
 }

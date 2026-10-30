@@ -62,6 +62,9 @@ sealed interface ExportState {
     data class Failed(val message: String) : ExportState
 }
 
+/** Easy's re-encode codecs in order of preference (the first this phone encodes in hardware / at all). */
+private val EASY_CODECS = listOf(VideoCodec.AV1_FAST, VideoCodec.HEVC, VideoCodec.AVC)
+
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("vsc", Context.MODE_PRIVATE)
 
@@ -89,11 +92,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** Re-encode speed without sections: null = every frame once at [fps]. */
     var speed by mutableStateOf(prefs.getString("speed", "")!!.takeIf { it.isNotEmpty() }?.let(Rational::parse))
         private set
-    /** Codecs this phone can encode (AV1 needs an encoder, HEVC / H.264 are always there). */
+    /** Codecs this phone can encode (AV1 fast needs a hardware encoder; cheap phones may lack HEVC). */
     val codecs: List<VideoCodec> = VideoCodec.entries.filter { Encoders.available(it) }
     /** Re-encode codec; AV1 fast is the default (user, v0.92 – also replaces an older stored choice once). */
     var codec by mutableStateOf(run {
-        val default = if (VideoCodec.AV1_FAST in codecs) VideoCodec.AV1_FAST else VideoCodec.HEVC
+        val default = defaultCodec
         if (!prefs.getBoolean("codec_default_v092", false)) {
             prefs.edit().putBoolean("codec_default_v092", true).putString("codec", default.name).apply()
         }
@@ -106,12 +109,20 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var quality by mutableStateOf(runCatching { Quality.valueOf(prefs.getString("quality", "HIGH")!!) }.getOrDefault(Quality.HIGH))
         private set
 
-    /** Easy (default): no codec / quality choice – re-encode AV1 fast, smart the source codec, quality High. */
+    /** Easy (default): no codec / quality choice – re-encode [easyCodec], smart the source codec, quality High. */
     var easy by mutableStateOf(!prefs.getBoolean("pro", false))
         private set
-    val defaultCodec: VideoCodec get() = if (VideoCodec.AV1_FAST in codecs) VideoCodec.AV1_FAST else VideoCodec.HEVC
+    /** AV1 fast with a hardware encoder, else HEVC, else H.264. */
+    val defaultCodec: VideoCodec get() = EASY_CODECS.firstOrNull { it in codecs } ?: VideoCodec.AVC
     /** What the export uses (Easy ignores the Pro choices). */
-    val usedCodec: VideoCodec get() = if (easy) defaultCodec else codec
+    val usedCodec: VideoCodec get() = if (easy) easyCodec else codec
+
+    /** Easy's re-encode codec: the first of [EASY_CODECS] whose encoder takes this clip's output size and rate. */
+    private val easyCodec: VideoCodec get() {
+        val e = edit ?: return defaultCodec
+        val (w, h) = e.reencodeJob(fps, usedSpeed, defaultCodec, shortSide, usedQuality).outputSize()
+        return EASY_CODECS.firstOrNull { it in codecs && Encoders.supports(it, w, h, fps.toDouble()) } ?: defaultCodec
+    }
     val usedQuality: Quality get() = if (easy) Quality.HIGH else quality
     /** Re-encode speed without sections: Easy has no speed choice (every frame once). */
     val usedSpeed: Rational? get() = if (easy) null else speed
@@ -234,7 +245,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun chooseFps(r: Rational) { fps = r; prefs.edit().putString("fps", r.toString()).apply() }
     fun chooseSpeed(r: Rational?) { speed = r; prefs.edit().putString("speed", r?.toString() ?: "").apply() }
-    fun chooseCodec(c: VideoCodec) { codec = c; prefs.edit().putString("codec", c.name).apply() }
+    fun chooseCodec(c: VideoCodec) {           // a .cst from another phone may name a codec this one lacks
+        codec = c.takeIf { it in codecs } ?: defaultCodec
+        prefs.edit().putString("codec", codec.name).apply()
+    }
     fun chooseShortSide(v: Int?) { shortSide = v; prefs.edit().putInt("short_side", v ?: 0).apply() }
     fun chooseQuality(q: Quality) { quality = q; prefs.edit().putString("quality", q.name).apply() }
 
@@ -785,6 +799,28 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         is SmartJob -> if (joins == null) listOf(tr("The keyframes of this clip are still being analysed")) else job.blockers()
         is ReencodeJob -> job.blockers()
         else -> listOf(tr("No clip"))
+    } + listOfNotNull(encoderProblem)
+
+    /**
+     * Why this phone can't encode the export as set up, or null – shown in the export card before
+     * saving (the encoders differ from phone to phone; the export would only fail at its start).
+     */
+    val encoderProblem: String? get() = when (val job = job()) {
+        is SmartJob -> job.info.takeIf { i ->
+            Smart.supported(i.videoMime) && job.info.hdr == null && joins != null && job.parts.any { it.encode } &&
+                !Encoders.supports(i.videoMime, i.width, i.height, fps.toDouble())
+        }?.let { i ->
+            tr("This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. " +
+                "Use re-encode or a lower output frame rate.", i.codecName, i.width, i.height, fmtFps(fps.toDouble()))
+        }
+        is ReencodeJob -> job.outputSize().let { (w, h) ->
+            if (Encoders.supports(job.codec, w, h, fps.toDouble())) null
+            else if (easy) tr("This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.",
+                w, h, fmtFps(fps.toDouble()))
+            else tr("This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.",
+                tr(job.codec.label), w, h, fmtFps(fps.toDouble()))
+        }
+        else -> null
     }
 
     private fun withTask(action: (ExportTask) -> Unit) {

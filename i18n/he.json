@@ -258,6 +258,9 @@
    "two": "התצוגות המקדימות של %d סרטונים נמחקו",
    "other": "התצוגות המקדימות של %d סרטונים נמחקו"
   },
-  "Close & return to app": "סגירה וחזרה לאפליקציה"
+  "Close & return to app": "סגירה וחזרה לאפליקציה",
+  "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "בטלפון הזה אין מקודד %s עבור %d×%d ב-%s fps, ולכן Smart לא יכול לקודד מחדש את החלקים. השתמשו ב\"קידוד מחדש\" או בקצב פריימים נמוך יותר בפלט.",
+  "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "בטלפון הזה אין מקודד עבור %d×%d ב-%s fps. בחרו קצב פריימים נמוך יותר בפלט.",
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "בטלפון הזה אין מקודד %s עבור %d×%d ב-%s fps. בחרו קודק, רזולוציה או קצב פריימים אחרים."
  }
 }

@@ -15,8 +15,8 @@ android {
         applicationId = "com.alexvulcu.videospeedcontrol"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.93"
+        versionCode = 4
+        versionName = "0.93.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
