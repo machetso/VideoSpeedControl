@@ -424,7 +424,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             )
             if (vm.mode == EditorViewModel.Mode.SMART) {
                 SmartOptions(vm, info, job as SmartJob)
-            } else if (job.hasSegments && !(vm.easy && vm.wholeClip)) {
+            } else if (job.hasSegments && !vm.easy) {
                 Text("Clip sections set the timing: ${edit.segments.size} section(s), the rest in real time. " +
                     "Output ${clock(job.outputDuration.toDouble())} (${speedWords(job.speed.toDouble())} on average).",
                     style = MaterialTheme.typography.bodyMedium)
