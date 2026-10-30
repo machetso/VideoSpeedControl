@@ -1,5 +1,6 @@
 package com.alexvulcu.videospeedcontrol.core
 
+import com.alexvulcu.videospeedcontrol.ui.tr
 import android.content.Context
 import android.net.Uri
 import java.io.FileDescriptor
@@ -24,14 +25,14 @@ data class ExportTask(
             val inTrim = t.segments.filter { it.start < (t.trim.end ?: Int.MAX_VALUE) && it.end > t.trim.start }
             val fps = "${LosslessJob.pyG(s.fps.toDouble(), 5)} fps"
             return when (s.mode) {
-                Treatment.Mode.LOSSLESS -> if (inTrim.isEmpty()) "Lossless @ $fps"
-                    else "Lossless, ${inTrim.size} section${if (inTrim.size != 1) "s" else ""}"
+                Treatment.Mode.LOSSLESS -> if (inTrim.isEmpty()) tr("Lossless @ %s", fps)
+                    else tr("Lossless, %d section(s)", inTrim.size)
                 Treatment.Mode.SMART -> {
                     val enc = inTrim.count { it.reencode }
-                    "Smart @ $fps ($enc of ${inTrim.size} parts re-encoded)"
+                    tr("Smart @ %s (%d of %d parts re-encoded)", fps, enc, inTrim.size)
                 }
-                Treatment.Mode.REENCODE -> "Re-encode ${s.codec.short} @ $fps" +
-                    if (inTrim.isNotEmpty()) ", ${inTrim.size} section${if (inTrim.size != 1) "s" else ""}" else ""
+                Treatment.Mode.REENCODE -> tr("Re-encode %s @ %s", s.codec.short, fps) +
+                    if (inTrim.isNotEmpty()) tr(", %d section(s)", inTrim.size) else ""
             }
         }
     }

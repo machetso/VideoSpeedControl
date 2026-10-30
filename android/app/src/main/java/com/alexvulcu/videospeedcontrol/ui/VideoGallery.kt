@@ -144,38 +144,36 @@ fun VideoGallery(onPick: (Uri) -> Unit, onOtherFiles: () -> Unit, onClose: () ->
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClose) { Text("← Back") }
-                    Text("Choose a clip", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    OutlinedButton(onOtherFiles) { Text("Other files…") }
+                    TextButton(onClose) { Text(tr("← Back")) }
+                    Text(tr("Choose a clip"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    OutlinedButton(onOtherFiles) { Text(tr("Other files…")) }
                 }
                 if (access == Gallery.Access.FULL) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(cameraOnly, { cameraOnly = true }, label = { Text("Camera") })
-                        FilterChip(!cameraOnly, { cameraOnly = false }, label = { Text("All videos") })
+                        FilterChip(cameraOnly, { cameraOnly = true }, label = { Text(tr("Camera")) })
+                        FilterChip(!cameraOnly, { cameraOnly = false }, label = { Text(tr("All videos")) })
                     }
                 }
             }
         }
         when {
             access == Gallery.Access.NONE -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("To list your recordings (newest first, with their real file names), VideoSpeedControl " +
-                    "needs access to your videos. It only reads them – the originals are never changed.")
-                if (asked) Text("Access was not given. You can still open a clip with “Other files…”, or allow " +
-                    "access in the system settings (Apps › VideoSpeedControl › Permissions).",
+                Text(tr("To list your recordings (newest first, with their real file names), VideoSpeedControl " + "needs access to your videos. It only reads them – the originals are never changed."))
+                if (asked) Text(tr("Access was not given. You can still open a clip with “Other files…”, or allow " + "access in the system settings (Apps › VideoSpeedControl › Permissions)."),
                     style = MaterialTheme.typography.bodySmall)
-                Button({ request.launch(Gallery.permissions) }) { Text("Allow access to videos") }
+                Button({ request.launch(Gallery.permissions) }) { Text(tr("Allow access to videos")) }
             }
-            shown == null -> Text("Loading …", Modifier.padding(16.dp))
+            shown == null -> Text(tr("Loading …"), Modifier.padding(16.dp))
             else -> {
                 if (access == Gallery.Access.PARTIAL) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Only the videos you selected are shown.", style = MaterialTheme.typography.bodySmall,
+                        Text(tr("Only the videos you selected are shown."), style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.weight(1f))
-                        TextButton({ request.launch(Gallery.permissions) }) { Text("Select more") }
+                        TextButton({ request.launch(Gallery.permissions) }) { Text(tr("Select more")) }
                     }
                 }
-                if (shown.isEmpty()) Text(if (cameraOnly && access == Gallery.Access.FULL) "No videos in the camera folder."
-                    else "No videos found.", Modifier.padding(16.dp))
+                if (shown.isEmpty()) Text(if (cameraOnly && access == Gallery.Access.FULL) tr("No videos in the camera folder.")
+                    else tr("No videos found."), Modifier.padding(16.dp))
                 LazyVerticalGrid(GridCells.Adaptive(110.dp), Modifier.fillMaxSize().padding(4.dp)) {
                     items(shown, key = { it.uri.toString() }) { v -> VideoTile(v) { onPick(v.uri) } }
                 }

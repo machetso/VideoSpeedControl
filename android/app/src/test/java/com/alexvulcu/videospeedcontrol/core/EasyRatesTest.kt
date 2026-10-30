@@ -9,6 +9,7 @@ import org.junit.Test
 /** Easy speed list: every label once, whole frame rates, the original 25 fps (9.6×) kept. */
 class EasyRatesTest {
     @Test fun noDoublesAndRoundRates() {
+        com.alexvulcu.videospeedcontrol.ui.I18n.use(com.alexvulcu.videospeedcontrol.ui.I18n.Lang.EN)
         val real = Rational.of(240)
         val out = Rational.of(25)
         val rates = easyRates(real, out)

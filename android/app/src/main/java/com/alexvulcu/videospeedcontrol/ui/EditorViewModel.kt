@@ -129,12 +129,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         stopPlayback()
         selectedSection = -1
         pendingStart = null
-        edit = edit?.withWhole(if (on) fps else null, if (on) "Whole clip" else "Back to the clip sections")
+        edit = edit?.withWhole(if (on) fps else null, if (on) tr("Whole clip") else tr("Back to the clip sections"))
     }
 
     fun chooseWholeRate(r: Rational) {
         stopPlayback()
-        edit = edit?.withWhole(r, "Whole clip speed")
+        edit = edit?.withWhole(r, tr("Whole clip speed"))
     }
 
     /** The sections as exported: Easy smooths every speed change (no switches), Pro as set. */
@@ -284,7 +284,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     ExportManager.Status.RUNNING -> ExportState.Running(single.progress)
                     ExportManager.Status.DONE -> ExportState.Done(single.output ?: "", single.outputUri ?: Uri.EMPTY,
                         single.frames, single.seconds)
-                    ExportManager.Status.FAILED -> ExportState.Failed(single.error ?: "Export failed")
+                    ExportManager.Status.FAILED -> ExportState.Failed(single.error ?: tr("Export failed"))
                 }
             }
         }
@@ -678,7 +678,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val base = dragBase ?: return
         val now = edit ?: return
         val q = draggedBorder ?: dragBorder
-        edit = base.editSegments(now.segments, "Move border to frame ${q + 1}")
+        edit = base.editSegments(now.segments, tr("Move border to frame %d", q + 1))
         dragBase = null
         draggedBorder = null
         selectedSection = edit?.sectionAt(playhead) ?: -1
@@ -782,9 +782,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun blockers(): List<String> = when (val job = job()) {
         is LosslessJob -> job.blockers()
-        is SmartJob -> if (joins == null) listOf("The keyframes of this clip are still being analysed") else job.blockers()
+        is SmartJob -> if (joins == null) listOf(tr("The keyframes of this clip are still being analysed")) else job.blockers()
         is ReencodeJob -> job.blockers()
-        else -> listOf("No clip")
+        else -> listOf(tr("No clip"))
     }
 
     private fun withTask(action: (ExportTask) -> Unit) {
@@ -814,14 +814,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addToBatch() = withTask {
         ExportManager.addToBatch(it)
-        message = "Added to the batch list: ${it.treatment.sourceName} – ${it.label}"
+        message = tr("Added to the batch list: %s – %s", it.treatment.sourceName, it.label)
     }
 
     fun updateBatchEntry() {
         val id = editingEntry ?: return
         withTask {
             ExportManager.updateBatchEntry(id, it)
-            message = "Batch entry updated"
+            message = tr("Batch entry updated")
         }
     }
 
@@ -854,9 +854,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             val name = treatmentFileName()
             message = try {
                 withContext(Dispatchers.IO) { CstStore(getApplication()).save(name, text) }
-                "Saved: ${CstStore.RELATIVE_PATH}$name"
+                tr("Saved: %s", CstStore.RELATIVE_PATH + name)
             } catch (e: Exception) {
-                "Could not save $name: ${e.message}"
+                tr("Could not save %s: %s", name, e.message)
             }
         }
     }
@@ -868,13 +868,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val d = Treatment.fromJson(text, fileName)
-                val e = edit ?: throw Treatment.TreatmentError("Open the clip first: ${d.sourceName}")
+                val e = edit ?: throw Treatment.TreatmentError(tr("Open the clip first: %s", d.sourceName))
                 val fp = fingerprint ?: withContext(Dispatchers.IO) {
                     Treatment.fingerprint(e.info.sizeBytes) { getApplication<Application>().contentResolver.openInputStream(e.info.uri)!! }
                 }.also { fingerprint = it }
                 d.check(e.info.name, e.info.sizeBytes, fp, e.info.frames.count)
                 applyTreatment(d)
-                message = "Treatment loaded: ${ExportTask.describe(d)}"
+                message = tr("Treatment loaded: %s", ExportTask.describe(d))
             } catch (ex: Treatment.TreatmentError) {
                 message = ex.message
             }
@@ -897,7 +897,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         // smart treatments list every part; the real-time ones are implicit in the editor
         val real = e.info.realFps
         val segs = if (s.mode == Treatment.Mode.SMART) d.segments.filter { it.fps != real } else d.segments
-        edit = e.copy(trim = d.trim).editSegments(segs, "Load treatment")
+        edit = e.copy(trim = d.trim).editSegments(segs, tr("Load treatment"))
         smartOverride.clear()
         if (s.mode == Treatment.Mode.SMART) {
             for (p in smartPieces()) {

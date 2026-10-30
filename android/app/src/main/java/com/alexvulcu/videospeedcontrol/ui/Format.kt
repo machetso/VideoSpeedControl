@@ -6,11 +6,14 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round
 
-fun fmt(v: Double): String = String.format(Locale.US, "%.3g", v).let {
-    if ('e' in it) String.format(Locale.US, "%.0f", v) else it
+private val L: Locale get() = I18n.locale
+private val DOT: Char get() = if (I18n.german) ',' else '.'
+
+fun fmt(v: Double): String = String.format(L, "%.3g", v).let {
+    if ('e' in it) String.format(L, "%.0f", v) else it
 }
 
-fun fmtFps(v: Double): String = String.format(Locale.US, "%.3f", v).trimEnd('0').trimEnd('.')
+fun fmtFps(v: Double): String = String.format(L, "%.3f", v).trimEnd('0').trimEnd(DOT)
 
 fun clock(seconds: Double): String {
     val s = round(seconds).toLong()
@@ -19,17 +22,17 @@ fun clock(seconds: Double): String {
 }
 
 /** Seconds with two decimals, e.g. "2.60 s". */
-fun secs(v: Double): String = String.format(Locale.US, "%.2f s", v)
+fun secs(v: Double): String = String.format(L, "%.2f s", v)
 
 /** "4× slower" / "2× faster" / "real time" for a speed factor relative to real time. */
 fun speedWords(speed: Double): String = when {
-    abs(speed - 1) < 1e-6 -> "real time"
-    speed < 1 -> "${fmt(1 / speed)}× slower"
-    else -> "${fmt(speed)}× faster"
+    abs(speed - 1) < 1e-6 -> tr("real time")
+    speed < 1 -> tr("%s× slower", fmt(1 / speed))
+    else -> tr("%s× faster", fmt(speed))
 }
 
 /** Seconds with one decimal, e.g. "5.0 s" (Easy mode). */
-fun secs1(v: Double): String = String.format(Locale.US, "%.1f s", v)
+fun secs1(v: Double): String = String.format(L, "%.1f s", v)
 
 /**
  * Easy mode: a section's rate as speed only – "4× slower", "real time", "2× faster" – relative
@@ -39,11 +42,11 @@ fun secs1(v: Double): String = String.format(Locale.US, "%.1f s", v)
 fun easySpeedLabel(real: Rational, outFps: Rational, r: Rational): String {
     val speed = (r / real).toDouble()
     val words = when {
-        abs(speed - 1) < 1e-6 -> "real time"
-        speed < 1 -> "${short(1 / speed)}× slower"
-        else -> "${short(speed)}× faster"
+        abs(speed - 1) < 1e-6 -> tr("real time")
+        speed < 1 -> tr("%s× slower", short(1 / speed))
+        else -> tr("%s× faster", short(speed))
     }
-    return if (r == outFps && r != real) "$words (original)" else words
+    return if (r == outFps && r != real) tr("%s (original)", words) else words
 }
 
 /**
@@ -61,15 +64,15 @@ fun easyRates(real: Rational, outFps: Rational): List<Rational> =
 fun easySpeedShort(real: Rational, r: Rational, long: Boolean): String {
     val speed = (r / real).toDouble()
     return when {
-        abs(speed - 1) < 1e-6 -> if (long) "real time" else "1×"
-        speed < 1 -> "${short(1 / speed)}×" + if (long) " slower" else ""
-        else -> "${short(speed)}×" + if (long) " faster" else ""
+        abs(speed - 1) < 1e-6 -> if (long) tr("real time") else "1×"
+        speed < 1 -> if (long) tr("%s× slower", short(1 / speed)) else "${short(1 / speed)}×"
+        else -> if (long) tr("%s× faster", short(speed)) else "${short(speed)}×"
     }
 }
 
 /** At most one decimal, no trailing ".0" (9.6, 4, 8). */
 private fun short(v: Double): String =
-    String.format(Locale.US, "%.1f", v).removeSuffix(".0")
+    String.format(L, "%.1f", v).removeSuffix("${DOT}0")
 
 /** Desktop frame-rate list (formats.FRAME_RATES), 48 added in 0.93. */
 val FPS_CHOICES: List<Rational> =
@@ -84,11 +87,11 @@ fun sectionRates(real: Rational): List<Rational> {
 
 fun exportFpsLabel(job: LosslessJob, r: Rational): String {
     val j = job.copy(fps = r, segments = emptyList())
-    val orig = if (r == job.info.realFps) " (original)" else ""
+    val orig = if (r == job.info.realFps) tr(" (original)") else ""
     return "${fmtFps(r.toDouble())} fps$orig · ${speedWords(j.speed.toDouble())} · ${clock(j.outputDuration.toDouble())}"
 }
 
 fun sectionFpsLabel(real: Rational, r: Rational): String {
-    val orig = if (r == real) " (original)" else ""
+    val orig = if (r == real) tr(" (original)") else ""
     return "${fmtFps(r.toDouble())} fps$orig · ${speedWords((r / real).toDouble())}"
 }

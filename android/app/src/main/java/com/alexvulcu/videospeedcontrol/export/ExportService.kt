@@ -1,5 +1,7 @@
 package com.alexvulcu.videospeedcontrol.export
 
+import com.alexvulcu.videospeedcontrol.ui.tr
+import com.alexvulcu.videospeedcontrol.ui.I18n
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -32,16 +34,17 @@ class ExportService : Service() {
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Exports", NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_DONE, "Finished exports", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Exports"), NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_DONE, tr("Finished exports"), NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ExportManager.init(this)
+        I18n.load(this)
         val type = if (ExportManager.mediaProcessingType) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
         else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         // directly, not via ServiceCompat: that started the service "with type none" on Android 17
-        startForeground(ID, notification("Preparing …", 0f, true), type)
+        startForeground(ID, notification(tr("Preparing …"), 0f, true), type)
         if (!running) {
             running = true
             scope.launch {
@@ -61,7 +64,7 @@ class ExportService : Service() {
         val current = list.firstOrNull { it.status == ExportManager.Status.RUNNING } ?: return
         val queued = list.count { it.status == ExportManager.Status.WAITING }
         val name = current.task.treatment.sourceName
-        val text = if (queued > 0) "$name – ${queued} more waiting" else name
+        val text = if (queued > 0) tr("%s – %d more waiting", name, queued) else name
         getSystemService(NotificationManager::class.java)
             .notify(ID, notification(text, current.progress, false))
     }
@@ -72,13 +75,13 @@ class ExportService : Service() {
         val failed = list.count { it.status == ExportManager.Status.FAILED }
         val nm = getSystemService(NotificationManager::class.java)
         val text = buildString {
-            append(if (done.size == 1) "Saved ${done[0].output}" else "${done.size} files saved")
-            append(" in Movies/VideoSpeedControl")
-            if (failed > 0) append(" · $failed failed")
+            append(if (done.size == 1) tr("Saved %s in Movies/VideoSpeedControl", done[0].output)
+                else tr("%d files saved in Movies/VideoSpeedControl", done.size))
+            if (failed > 0) append(tr(" · %d failed", failed))
         }
         nm.notify(ID_DONE, NotificationCompat.Builder(this, CHANNEL_DONE)
             .setSmallIcon(R.drawable.ic_stat_export)
-            .setContentTitle("Video saved")
+            .setContentTitle(tr("Video saved"))
             .setContentText(text)
             .setContentIntent(openApp())
             .setAutoCancel(true)
@@ -91,7 +94,7 @@ class ExportService : Service() {
     private fun notification(text: String, progress: Float, indeterminate: Boolean) =
         NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_export)
-            .setContentTitle("Still saving – the video appears when it is finished")
+            .setContentTitle(tr("Still saving – the video appears when it is finished"))
             .setContentText(text)
             .setProgress(1000, (progress * 1000).toInt(), indeterminate)
             .setOngoing(true)

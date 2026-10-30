@@ -25,6 +25,8 @@ import androidx.core.content.FileProvider
 import com.alexvulcu.videospeedcontrol.ui.BatchCard
 import com.alexvulcu.videospeedcontrol.ui.VideoGallery
 import com.alexvulcu.videospeedcontrol.ui.AppMenu
+import com.alexvulcu.videospeedcontrol.ui.tr
+import com.alexvulcu.videospeedcontrol.ui.I18n
 import androidx.compose.foundation.clickable
 import com.alexvulcu.videospeedcontrol.ui.TreatmentCard
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        I18n.load(this)                     // English / German (menu behind the logo)
         enableEdgeToEdge()
         if (savedInstanceState == null) handle(intent)
         setContent { VscTheme { MainScreen(vm) } }
@@ -151,7 +154,7 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
             withContext(Dispatchers.IO) { file.writeText(text) }
             val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
             ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/octet-stream")
-                .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share treatment"))
+                .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), tr("Share treatment")))
         }
     }
     // another clip replaces the one in the editor – offer to keep its edits in the batch list first
@@ -160,18 +163,18 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
         if (vm.hasUnsavedWork) askKeep = true else showGallery = true
     }
     if (askKeep) {
-        val name = (vm.clip as? ClipState.Loaded)?.info?.name ?: "this clip"
+        val name = (vm.clip as? ClipState.Loaded)?.info?.name ?: tr("this clip")
         AlertDialog(
             onDismissRequest = { askKeep = false },
-            title = { Text("Keep the edits of $name?") },
-            text = { Text("Its sections and trim are not in the batch list yet. The next clip replaces it in the editor.") },
+            title = { Text(tr("Keep the edits of %s?", name)) },
+            text = { Text(tr("Its sections and trim are not in the batch list yet. The next clip replaces it in the editor.")) },
             confirmButton = {
-                TextButton({ askKeep = false; vm.addToBatch(); showGallery = true }) { Text("Add to batch") }
+                TextButton({ askKeep = false; vm.addToBatch(); showGallery = true }) { Text(tr("Add to batch")) }
             },
             dismissButton = {
                 Row {
-                    TextButton({ askKeep = false }) { Text("Cancel") }
-                    TextButton({ askKeep = false; showGallery = true }) { Text("Discard") }
+                    TextButton({ askKeep = false }) { Text(tr("Cancel")) }
+                    TextButton({ askKeep = false; showGallery = true }) { Text(tr("Discard")) }
                 }
             },
         )
@@ -194,9 +197,9 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     // the logo opens the menu (Easy / Pro, folders, previews)
-                    Image(painterResource(R.drawable.vsc_logo), "Menu",
+                    Image(painterResource(R.drawable.vsc_logo), tr("Menu"),
                         Modifier.size(36.dp).clickable { showMenu = true })
-                    Text("VideoSpeedControl", style = MaterialTheme.typography.titleMedium,
+                    Text(tr("VideoSpeedControl"), style = MaterialTheme.typography.titleMedium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     // Easy / Pro badge: tap to switch
                     Surface(
@@ -209,8 +212,8 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                     }
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(0.01f))
-                    if (vm.clip is ClipState.Loaded) OutlinedButton(onClick = choose) { Text("＋ Clip") }
-                    else Button(onClick = choose) { Text("Choose clip") }
+                    if (vm.clip is ClipState.Loaded) OutlinedButton(onClick = choose) { Text(tr("＋ Clip")) }
+                    else Button(onClick = choose) { Text(tr("Choose clip")) }
                 }
             }
         },
@@ -221,7 +224,7 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
         ) {
             when (val s = vm.clip) {
                 ClipState.None -> {
-                    Text("Choose a clip – ideally a slow-motion recording.")
+                    Text(tr("Choose a clip – ideally a slow-motion recording."))
                     BatchCard(vm, choose)
                 }
                 ClipState.Loading -> CircularProgressIndicator()

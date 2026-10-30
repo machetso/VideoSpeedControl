@@ -70,52 +70,62 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Image(painterResource(R.drawable.vsc_logo), null, Modifier.size(44.dp))
                 Column {
-                    Text("VideoSpeedControl", style = MaterialTheme.typography.titleLarge)
-                    Text("Version $version", style = MaterialTheme.typography.bodySmall)
+                    Text(tr("VideoSpeedControl"), style = MaterialTheme.typography.titleLarge)
+                    Text(tr("Version %s", version), style = MaterialTheme.typography.bodySmall)
                 }
             }
 
-            Text("Mode", style = MaterialTheme.typography.titleMedium)
-            ModeChoice("Easy", EASY_INFO, selected = vm.easy) { vm.chooseEasy(true) }
-            ModeChoice("Pro", PRO_INFO, selected = !vm.easy) { vm.chooseEasy(false) }
+            Text(tr("Mode"), style = MaterialTheme.typography.titleMedium)
+            ModeChoice(tr("Easy"), tr(EASY_INFO), selected = vm.easy) { vm.chooseEasy(true) }
+            ModeChoice(tr("Pro"), tr(PRO_INFO), selected = !vm.easy) { vm.chooseEasy(false) }
 
             HorizontalDivider()
-            Text("Folders", style = MaterialTheme.typography.titleMedium)
-            FolderRow("Saved videos", OutputStore.RELATIVE_PATH.trimEnd('/')) { openFolder(ctx, OutputStore.RELATIVE_PATH) }
-            FolderRow("Clip Speed Treatments (.cst)", CstStore.RELATIVE_PATH.trimEnd('/')) { openFolder(ctx, CstStore.RELATIVE_PATH) }
+            // the phone's language by default; the choice is kept across restarts
+            Text("Language / Sprache", style = MaterialTheme.typography.titleMedium)
+            for (lang in I18n.Lang.entries) {
+                Row(Modifier.fillMaxWidth().clickable { I18n.choose(ctx, lang) }, verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(I18n.choice == lang, { I18n.choose(ctx, lang) },
+                        colors = RadioButtonDefaults.colors(selectedColor = ChosenGreen))
+                    Text(if (lang == I18n.Lang.SYSTEM) tr("Phone language (%s)",
+                        java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.getDefault())) else lang.label,
+                        style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
+            HorizontalDivider()
+            Text(tr("Folders"), style = MaterialTheme.typography.titleMedium)
+            FolderRow(tr("Saved videos"), OutputStore.RELATIVE_PATH.trimEnd('/')) { openFolder(ctx, OutputStore.RELATIVE_PATH) }
+            FolderRow(tr("Clip Speed Treatments (.cst)"), CstStore.RELATIVE_PATH.trimEnd('/')) { openFolder(ctx, CstStore.RELATIVE_PATH) }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Previews", style = MaterialTheme.typography.bodyLarge)
-                Text("Pictures for scrubbing, thumbnails and keyframe analysis of opened videos – kept in the " +
-                    "app's own storage (not visible in the Files app), so a video opens again at once. " +
+                Text(tr("Previews"), style = MaterialTheme.typography.bodyLarge)
+                Text(tr("Pictures for scrubbing, thumbnails and keyframe analysis of opened videos – kept in the " + "app's own storage (not visible in the Files app), so a video opens again at once. ") +
                     when {
                         bytes < 0 -> ""
-                        bytes < 1_000_000 -> "Now: under 1 MB."
-                        else -> "Now: ${bytes / 1_000_000} MB."
+                        bytes < 1_000_000 -> tr("Now: under 1 MB.")
+                        else -> tr("Now: %d MB.", bytes / 1_000_000)
                     }, style = MaterialTheme.typography.bodySmall)
-                OutlinedButton({ confirmDelete = true }, enabled = bytes > 0) { Text("Delete previews") }
+                OutlinedButton({ confirmDelete = true }, enabled = bytes > 0) { Text(tr("Delete previews")) }
             }
-            Text("Previews nobody needs (video not open, not in the batch list, no .cst) are deleted " +
-                "automatically 2 minutes after the start, when the app is idle; together at most 2 GB.",
+            Text(tr("Previews nobody needs (video not open, not in the batch list, no .cst) are deleted " + "automatically 2 minutes after the start, when the app is idle; together at most 2 GB."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClose, Modifier.align(Alignment.End)) { Text("Close") }
+            TextButton(onClose, Modifier.align(Alignment.End)) { Text(tr("Close")) }
         }
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete all previews?") },
-            text = { Text("Videos opened later build their previews again (a few seconds each). " +
-                "Saved videos and Clip Speed Treatments are not touched.") },
+            title = { Text(tr("Delete all previews?")) },
+            text = { Text(tr("Videos opened later build their previews again (a few seconds each). " + "Saved videos and Clip Speed Treatments are not touched.")) },
             confirmButton = {
                 TextButton({
                     confirmDelete = false
                     vm.clearPreviews { n ->
-                        vm.message = "Deleted the previews of $n video${if (n != 1) "s" else ""}"
+                        vm.message = if (n == 1) tr("Deleted the previews of 1 video") else tr("Deleted the previews of %d videos", n)
                         refresh++
                     }
-                }) { Text("Delete") }
+                }) { Text(tr("Delete")) }
             },
-            dismissButton = { TextButton({ confirmDelete = false }) { Text("Keep") } },
+            dismissButton = { TextButton({ confirmDelete = false }) { Text(tr("Keep")) } },
         )
     }
 }
@@ -145,6 +155,6 @@ private fun FolderRow(title: String, path: String, onOpen: () -> Unit) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TextButton(onOpen) { Text("Open") }
+        TextButton(onOpen) { Text(tr("Open")) }
     }
 }
