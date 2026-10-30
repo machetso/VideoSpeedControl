@@ -20,6 +20,7 @@ FRAME_RATES: list[tuple[str, Fraction]] = [
     ("25 (PAL)", Fraction(25)),
     ("29.97", Fraction(30000, 1001)),
     ("30", Fraction(30)),
+    ("48", Fraction(48)),
     ("50 (PAL)", Fraction(50)),
     ("59.94", Fraction(60000, 1001)),
     ("60", Fraction(60)),

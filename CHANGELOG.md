@@ -46,8 +46,12 @@ Not released yet – mobile UX and further tests still to come.
   notification); the file stays hidden (`.pending-…`) until it is complete.
 - *(Android)* Sound for smooth transitions: the steps of a ramp share one stretched sound
   span – lossless exports with smooth transitions render about twice as fast.
-- *(Android)* Batch list: green play symbol (grey when the file is gone); "Open folder" buttons
-  next to the batch list and the finished export.
+- *(Android)* Batch list: tidy rows – a picture of the video and its mode (Lossless / Smart /
+  Re-encode) only; file name, settings and result behind an ⓘ button; green play symbol (grey
+  when the file is gone); "Open folder" buttons next to the batch list and the finished export.
+- **48 fps** as an output frame rate (everywhere a frame rate can be chosen).
+- *(Android)* Re-encode: "Output frame rate" (no "constant"), resolution "No change (W×H)".
+  Easy: shorter lossless description, sound is just the switch.
 
 ### Other
 - *(desktop)* Laptop launcher uses a themed icon (`videospeedcontrol`) so the new logo shows.

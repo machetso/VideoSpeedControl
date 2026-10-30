@@ -42,6 +42,12 @@ IDEAS.md – add new ones there instead of building them unasked.
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
+- UI TESTS ON THE USER'S PHONE: the batch list holds the user's own entries (with pictures of
+  their videos). Never tap by a text that also appears there ("Lossless", "Smart", "Re-encode"
+  are batch row labels since 0.93 – tapping one opens the user's clip!); scroll to the export
+  card's segmented buttons first or tap by bounds. Never screenshot the batch list. Helpers:
+  `android/tools/ui_helpers.sh` (/tmp/opencode is wiped regularly; test clips: re-run
+  android/tools/make_test_clips.sh).
 - ANDROID – RESUME HERE: milestone 7 (batch list, .cst, export service) done on 2026-10-28.
   Then own clip gallery + "＋ Clip" button (1cf4820); 2026-10-29 new logo for desktop + Android;
   2026-10-29 v0.92 changes on both platforms (see below). Next: the user tests v0.92; then

@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -409,7 +410,9 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             }
             Text(
                 when (vm.mode) {
-                    EditorViewModel.Mode.LOSSLESS -> "Every frame is kept unchanged – only its timing changes. No quality loss, but " +
+                    EditorViewModel.Mode.LOSSLESS -> if (vm.easy) "Every frame is kept unchanged – only its timing changes. " +
+                        "No quality loss, but the video may not work on every device."
+                        else "Every frame is kept unchanged – only its timing changes. No quality loss, but " +
                         "fast parts of slow-motion clips keep their high frame rate, which many players can't show smoothly."
                     EditorViewModel.Mode.SMART -> if (vm.easy) "Only the parts that need it are re-encoded – the rest stays untouched."
                         else "Parts that play at the output frame rate are copied unchanged; the others " +
@@ -433,7 +436,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                     RateDropdown("Frame rate", vm.fps, fpsChoices, { exportFpsLabel(job as LosslessJob, it) }, vm::chooseFps)
                 }
             } else {
-                RateDropdown("Output frame rate (constant)", vm.fps, fpsChoices, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
+                RateDropdown("Output frame rate", vm.fps, fpsChoices, { "${fmtFps(it.toDouble())} fps" }, vm::chooseFps)
                 if (!job.hasSegments) {
                     val everyOnce = vm.fps / info.realFps
                     val speeds = listOf<Rational?>(null) + listOf(1L, 2L, 4L, 8L, 16L).map { Rational.of(1, it) }
@@ -448,7 +451,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 val sides = listOf<Int?>(null) + listOf(2160, 1440, 1080, 720, 480)
                     .filter { it < minOf(info.displayWidth, info.displayHeight) }
                 EnumDropdown("Resolution", vm.shortSide, sides,
-                    { v -> v?.let { "${it}p" } ?: "Like the source (${info.displayWidth}×${info.displayHeight})" },
+                    { v -> v?.let { "${it}p" } ?: "No change (${info.displayWidth}×${info.displayHeight})" },
                     vm::chooseShortSide)
                 val r = job as ReencodeJob
                 val (w, h) = r.outputSize()
@@ -458,7 +461,7 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Sound", style = MaterialTheme.typography.bodyLarge)
-                    Text(
+                    if (!vm.easy) Text(
                         when {
                             info.audio == null -> "This clip has no sound."
                             info.slowmoFactor != null -> "Restored to its real pitch, stretched to the new length"
@@ -536,64 +539,80 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
                 Text("Batch list", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 TextButton({ openOutputFolder(ctx) }) { Text("📁 Open folder") }
             }
+            var infoFor by remember { mutableStateOf<ExportManager.Entry?>(null) }
             for (e in entries) {
                 val editing = vm.editingEntry == e.task.id
+                // tidy row (user): a picture of the video and its mode; the details behind ⓘ
                 Row(
                     Modifier.fillMaxWidth()
                         .background(if (editing) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                         .clickable(enabled = !running) { vm.openEntry(e) }
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    BatchThumb(e)
                     Column(Modifier.weight(1f)) {
-                        Text(e.task.treatment.sourceName, style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(e.task.label, style = MaterialTheme.typography.bodySmall)
-                        val status = when (e.status) {
-                            ExportManager.Status.IDLE -> null
-                            ExportManager.Status.WAITING -> "waiting"
-                            ExportManager.Status.RUNNING -> "still saving … ${(e.progress * 100).toInt()} %"
-                            ExportManager.Status.DONE -> "✔ ${e.output}"
-                            ExportManager.Status.FAILED -> "failed: ${e.error}"
-                            ExportManager.Status.CANCELLED -> "cancelled"
-                        }
-                        status?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall,
-                                color = when (e.status) {
-                                    ExportManager.Status.DONE -> MaterialTheme.colorScheme.primary
-                                    ExportManager.Status.FAILED -> MaterialTheme.colorScheme.error
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                })
-                        }
-                        if (e.status == ExportManager.Status.RUNNING) {
-                            LinearProgressIndicator(progress = { e.progress }, modifier = Modifier.fillMaxWidth())
+                        Text(when (e.task.treatment.settings.mode) {
+                            com.alexvulcu.videospeedcontrol.core.Treatment.Mode.LOSSLESS -> "Lossless"
+                            com.alexvulcu.videospeedcontrol.core.Treatment.Mode.SMART -> "Smart"
+                            com.alexvulcu.videospeedcontrol.core.Treatment.Mode.REENCODE -> "Re-encode"
+                        }, style = MaterialTheme.typography.bodyMedium)
+                        when (e.status) {
+                            ExportManager.Status.RUNNING -> {
+                                Text("still saving … ${(e.progress * 100).toInt()} %", style = MaterialTheme.typography.bodySmall)
+                                LinearProgressIndicator(progress = { e.progress }, modifier = Modifier.fillMaxWidth())
+                            }
+                            ExportManager.Status.WAITING -> Text("waiting", style = MaterialTheme.typography.bodySmall)
+                            ExportManager.Status.FAILED -> Text("failed – see ⓘ", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                            else -> {}
                         }
                     }
-                    when (e.status) {
-                        ExportManager.Status.RUNNING, ExportManager.Status.WAITING ->
-                            TextButton({ vm.cancelBatchEntry(e.task.id) }) { Text("Cancel") }
-                        ExportManager.Status.DONE -> {
-                            // green when the exported file is still there (it may have been deleted since)
-                            val uri = e.outputUri
-                            val playable by androidx.compose.runtime.produceState(false, uri) {
-                                value = uri != null && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                    runCatching { ctx.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false }
-                                        .getOrDefault(false)
-                                }
-                            }
-                            androidx.compose.material3.IconButton({
-                                ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
-                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                            }, enabled = playable) {
-                                Icon(PlayIcon, if (playable) "Play ${e.output}" else "File no longer there",
-                                    Modifier.size(30.dp),
-                                    tint = if (playable) PlayGreen else MaterialTheme.colorScheme.outline)
+                    if (e.status == ExportManager.Status.DONE) {
+                        // green when the exported file is still there (it may have been deleted since)
+                        val uri = e.outputUri
+                        val playable by androidx.compose.runtime.produceState(false, uri) {
+                            value = uri != null && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                runCatching { ctx.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false }
+                                    .getOrDefault(false)
                             }
                         }
-                        else -> {}
+                        androidx.compose.material3.IconButton({
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                        }, enabled = playable) {
+                            Icon(PlayIcon, if (playable) "Play ${e.output}" else "File no longer there",
+                                Modifier.size(30.dp), tint = if (playable) PlayGreen else MaterialTheme.colorScheme.outline)
+                        }
                     }
-                    TextButton({ vm.removeBatchEntry(e.task.id) }, enabled = e.status != ExportManager.Status.RUNNING) { Text("✕") }
+                    androidx.compose.material3.IconButton({ infoFor = e }) { Text("ⓘ", style = MaterialTheme.typography.titleLarge) }
+                    if (e.status == ExportManager.Status.RUNNING || e.status == ExportManager.Status.WAITING)
+                        TextButton({ vm.cancelBatchEntry(e.task.id) }) { Text("Cancel") }
+                    else TextButton({ vm.removeBatchEntry(e.task.id) }) { Text("✕") }
                 }
+            }
+            infoFor?.let { e ->
+                AlertDialog(
+                    onDismissRequest = { infoFor = null },
+                    title = { Text(e.task.treatment.sourceName) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(e.task.label)
+                            Text(when (e.status) {
+                                ExportManager.Status.DONE -> "Saved as ${e.output} in Movies/VideoSpeedControl"
+                                ExportManager.Status.FAILED -> "Failed: ${e.error}"
+                                ExportManager.Status.RUNNING -> "Still saving … ${(e.progress * 100).toInt()} %"
+                                ExportManager.Status.WAITING -> "Waiting to be saved"
+                                ExportManager.Status.CANCELLED -> "Cancelled"
+                                ExportManager.Status.IDLE -> "Not saved yet"
+                            })
+                            Text("Tap the entry to open it in the editor, e.g. to make another version.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    confirmButton = { TextButton({ infoFor = null }) { Text("OK") } },
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (running) OutlinedButton(vm::cancelAll) { Text("Cancel all") }
@@ -601,7 +620,7 @@ fun BatchCard(vm: EditorViewModel, onAddClip: () -> Unit) {
                 if (entries.any { it.status == ExportManager.Status.DONE }) TextButton(vm::clearDoneEntries) { Text("Remove done") }
             }
             OutlinedButton(onAddClip) { Text("＋ Add another clip") }
-            Text("Tap an entry to load it into the editor (e.g. to make another version). Exported entries " +
+            if (!vm.easy) Text("Tap an entry to load it into the editor (e.g. to make another version). Exported entries " +
                 "are skipped by the next batch export.", style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -794,3 +813,28 @@ fun greenSegments() = SegmentedButtonDefaults.colors(
 @Composable
 fun greenSwitch() = androidx.compose.material3.SwitchDefaults.colors(
     checkedTrackColor = ChosenGreen, checkedThumbColor = Color.White, checkedBorderColor = ChosenGreen)
+
+/** Picture of a batch entry's video (system thumbnail, else the frame at its trim start). */
+@Composable
+private fun BatchThumb(e: ExportManager.Entry) {
+    val ctx = LocalContext.current
+    val uri = e.task.uri
+    val bmp by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(null, uri) {
+        value = Gallery.thumbnail(ctx, uri) ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val mmr = android.media.MediaMetadataRetriever()
+                try {
+                    mmr.setDataSource(ctx, uri)
+                    mmr.getScaledFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 256, 256)
+                } finally { mmr.release() }
+            }.getOrNull()
+        }
+    }
+    Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.surfaceVariant,
+        androidx.compose.foundation.shape.RoundedCornerShape(6.dp))) {
+        bmp?.let {
+            Image(it.asImageBitmap(), null, Modifier.fillMaxSize().clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
+                contentScale = ContentScale.Crop)
+        }
+    }
+}

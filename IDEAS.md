@@ -53,6 +53,26 @@ why it was postponed and what is already known.
   Sonic stream, paced by the proxy clock, could play it in sync.
 
 ## Android app
+- **PLANNED (accepted by the user 2026-10-30, not built yet): preview cache.**
+  - The scrubbing proxy (and the frame list, the smart keyframe analysis, the timeline
+    thumbnails) is stored per video, keyed by the .cst fingerprint (renamed / moved files still
+    match, a changed file does not) – never inside the video (originals are read-only).
+  - Stored in chunks from keyframe to keyframe, each with a CRC; a broken / missing chunk is
+    rebuilt alone from its keyframe; chunks are written while the proxy is built, so an
+    interrupted build continues.
+  - Where: proxies in the app's private storage (invisible, removed on uninstall); .cst files in
+    `Documents/VideoSpeedControl/Clip Speed Treatments/` – "Save" writes there directly (no file
+    dialog), "Share" for other places.
+  - Clean-up: a preview stays while its video is open, in the batch list, or has a .cst in that
+    folder; the others are deleted – not before the app has run 2 minutes, and postponed while
+    an export, proxy build or keyframe analysis runs (check every 30 s). Cap 2 GB: oldest
+    previews without a .cst go first, those with a .cst last.
+  - Format: JPEG quality 60 instead of 75 (measured on the Pixel, 480×270: JPEG q75 22.1 KB /
+    2.3 ms encode / 0.8 ms decode, JPEG q60 17.0 KB / 1.1 ms / 0.7 ms, WebP q60 12.9 KB /
+    13.7 ms / 1.4 ms – WebP would slow the ~90 fps build down; ProxyFormatDeviceTest).
+- **Proxy as a small video** (hardware-encoded, keyframe every chunk): probably 5–10× smaller
+  than JPEGs, but every jump decodes part of a chunk – slower scrubbing, much more work. Only if
+  the cache size becomes a problem.
 
 - **Faster proxy build**: ~90 fps on the Pixel (decoder → GPU → JPEG); asynchronous codec mode
   and several frames in flight might double it.

@@ -71,9 +71,9 @@ fun easySpeedShort(real: Rational, r: Rational, long: Boolean): String {
 private fun short(v: Double): String =
     String.format(Locale.US, "%.1f", v).removeSuffix(".0")
 
-/** Desktop frame-rate list (formats.FPS). */
+/** Desktop frame-rate list (formats.FRAME_RATES), 48 added in 0.93. */
 val FPS_CHOICES: List<Rational> =
-    listOf("24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60", "120").map(Rational::parse)
+    listOf("24000/1001", "24", "25", "30000/1001", "30", "48", "50", "60000/1001", "60", "120").map(Rational::parse)
 
 /** Rates offered for a section: 23.976 up to 8× the real rate (desktop limits), plus "original". */
 fun sectionRates(real: Rational): List<Rational> {
