@@ -484,10 +484,10 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
                 else -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onExport) { Text(if (vm.easy) "Save video" else "Export") }
-                        OutlinedButton(vm::addToBatch) { Text("Add to batch") }
+                        OutlinedButton(vm::addToBatch) { Text(if (vm.easy) "Add as new version" else "Add to batch") }
                     }
-                    if (vm.editingEntry != null) {
-                        OutlinedButton(vm::updateBatchEntry) { Text("✔ Update batch entry") }
+                    if (vm.editingEntry != null && !vm.easy) {      // Easy: only "Add as new version"
+                        OutlinedButton(vm::updateBatchEntry) { Text("✔ Save changes to this entry") }
                     }
                     when (e) {
                         is ExportState.Done -> {

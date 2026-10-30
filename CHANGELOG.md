@@ -28,7 +28,9 @@ Not released yet – mobile UX and further tests still to come.
     switching on / off and its speed are undoable.
   - Smart: one-sentence description, automatic rule only (no switch, no part list, no codec /
     size notes). Re-encode: no codec line.
-  - **Save** instead of Export: "Save video", "Save all (n)".
+  - **Save** instead of Export: "Save video", "Save all (n)", "Add as new version" (no
+    "update entry" button in Easy). Pro: "✔ Save changes to this entry" (was "Update batch
+    entry").
   - "Video speed of new sections" is hidden while a section is open.
 - *(Android)* Chosen options are green (Easy / Pro, Lossless / Smart / Re-encode, switches that
   are on).
