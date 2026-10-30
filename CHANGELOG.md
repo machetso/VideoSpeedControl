@@ -3,9 +3,7 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
-## 0.93 – not released yet
-
-Mobile UX and further tests still to come before the release.
+## 0.93 – 2026-10-30
 
 ### Stored previews (both)
 - The scrubbing proxy, the timeline thumbnails, the keyframe analysis of smart re-encode and

@@ -28,7 +28,7 @@ IDEAS.md – add new ones there instead of building them unasked.
   About), code in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
   `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
   MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
-  Version in `vsc/__init__.py` (0.92; Android versionName 0.92 / versionCode 2).
+  Version in `vsc/__init__.py` (0.93; Android versionName 0.93 / versionCode 3).
 - Milestone 7 – packaging (in progress, 2026-10-26). User decisions: GitHub Actions, private
   repo, Inno Setup installer (per-user install, admin optional), build on tag `v*` + manual,
   AV2 NOT on Windows yet (later: build AVM with MSVC in the workflow).
