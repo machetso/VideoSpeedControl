@@ -414,14 +414,15 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             }
             Text(
                 when (vm.mode) {
-                    EditorViewModel.Mode.LOSSLESS -> if (vm.easy) tr("Every frame is kept unchanged – only its timing changes. " +
-                        "No quality loss, but the video may not work on every device.")
+                    EditorViewModel.Mode.LOSSLESS -> if (vm.easy) tr("The video as a whole stays unchanged – only the speed of the sections changes. " +
+                        "No quality loss, but it probably won't play on every device.")
                         else tr("Every frame is kept unchanged – only its timing changes. No quality loss, but " +
                         "fast parts of slow-motion clips keep their high frame rate, which many players can't show smoothly.")
-                    EditorViewModel.Mode.SMART -> if (vm.easy) tr("Only the parts that need it are re-encoded – the rest stays untouched.")
+                    EditorViewModel.Mode.SMART -> if (vm.easy) tr("Only the parts of the video that need it are recalculated.")
                         else tr("Parts that play at the output frame rate are copied unchanged; the others " +
                         "(e.g. real time of a 240 fps recording) are re-encoded to it with the source codec.")
-                    EditorViewModel.Mode.REENCODE -> tr("New file at a constant frame rate: slow parts repeat frames, fast parts drop them – plays " +
+                    EditorViewModel.Mode.REENCODE -> if (vm.easy) tr("The whole video, with the changed sections, is saved as a new file.")
+                        else tr("New file at a constant frame rate: slow parts repeat frames, fast parts drop them – plays " +
                         "smoothly everywhere. Hardware encoder; cuts at any frame.")
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -520,7 +521,9 @@ fun TreatmentCard(vm: EditorViewModel, onSave: () -> Unit, onLoad: () -> Unit, o
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(tr("Clip Speed Treatment (.cst)"), style = MaterialTheme.typography.titleMedium)
-            Text(tr("Sections, trim and export settings of this clip – the same file format as the desktop " +
+            Text(if (vm.easy) tr("A Clip Speed Treatment saves all planned edits of a video clip (sections, trims, " +
+                "different speeds), so you can change them again later.")
+                else tr("Sections, trim and export settings of this clip – the same file format as the desktop " +
                 "app. “Save” puts it in Documents/VideoSpeedControl/Clip Speed Treatments. It only loads onto " +
                 "the video it was made for (any file name)."),
                 style = MaterialTheme.typography.bodySmall)

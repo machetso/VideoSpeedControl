@@ -31,7 +31,8 @@ Mobile UX and further tests still to come before the release.
   per language in `i18n/<code>.json` (for the desktop later too) – a new language is a new file.
 - *(Android)* **Menu behind the logo**: Easy / Pro with what each mode can do, the folders
   (saved videos, Clip Speed Treatments – each with "Open"), the space the previews take and
-  "Delete previews".
+  "Delete previews". A **"← Back" button** at the top right and **"Close & return to app"** at the
+  bottom lead back to the app (Hebrew: the back arrow points right).
 - *(Android)* Preview pictures as JPEG quality 60 (smaller, twice as fast to make; WebP was
   measured and is 6–12× slower to encode on the phone).
 
@@ -60,6 +61,11 @@ Mobile UX and further tests still to come before the release.
     "update entry" button in Easy). Pro: "✔ Save changes to this entry" (was "Update batch
     entry").
   - "Video speed of new sections" is hidden while a section is open.
+  - **Plain descriptions** of the three save modes and of the Clip Speed Treatment card: lossless
+    "the video as a whole stays unchanged – only the speed of the sections changes", smart "only
+    the parts that need it are recalculated", re-encode "the whole video is saved as a new file",
+    Clip Speed Treatment "saves all planned edits (sections, trims, speeds) to change them later".
+    Pro keeps the technical descriptions.
 - *(Android)* Chosen options are green (Easy / Pro, Lossless / Smart / Re-encode, switches that
   are on).
 
