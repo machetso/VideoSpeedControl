@@ -255,6 +255,7 @@
       "one": "Previzualizarea a %d videoclip a fost ștearsă",
       "few": "Previzualizările a %d videoclipuri au fost șterse",
       "other": "Previzualizările a %d de videoclipuri au fost șterse"
-    }
+    },
+    "Close & return to app": "Închide și revino în aplicație"
   }
 }

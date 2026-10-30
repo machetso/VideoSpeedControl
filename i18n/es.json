@@ -251,6 +251,7 @@
   "Deleted the previews of %d videos": {
    "one": "Vista previa de %d vídeo borrada",
    "other": "Vistas previas de %d vídeos borradas"
-  }
+  },
+  "Close & return to app": "Cerrar y volver a la app"
  }
 }

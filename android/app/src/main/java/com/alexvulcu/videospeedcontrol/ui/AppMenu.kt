@@ -67,12 +67,14 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Image(painterResource(R.drawable.vsc_logo), null, Modifier.size(44.dp))
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(tr("VideoSpeedControl"), style = MaterialTheme.typography.titleLarge)
                     Text(tr("Version %s", version), style = MaterialTheme.typography.bodySmall)
                 }
+                OutlinedButton(onClose) { Text(tr("← Back")) }          // top right: back to the app
             }
 
             Text(tr("Mode"), style = MaterialTheme.typography.titleMedium)
@@ -111,7 +113,7 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
             }
             Text(tr("Previews nobody needs (video not open, not in the batch list, no .cst) are deleted " + "automatically 2 minutes after the start, when the app is idle; together at most 2 GB."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClose, Modifier.align(Alignment.End)) { Text(tr("Close")) }
+            TextButton(onClose, Modifier.align(Alignment.End)) { Text(tr("Close & return to app")) }
         }
     }
     if (confirmDelete) {
