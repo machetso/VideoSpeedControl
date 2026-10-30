@@ -427,6 +427,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Space taken by the stored previews (menu). */
+    suspend fun previewBytes(): Long = withContext(Dispatchers.IO) { previews.totalBytes() }
+
+    /** Menu "Delete previews": removes all of them (the open clip keeps its pictures in memory). */
+    fun clearPreviews(onDone: (Int) -> Unit) {
+        viewModelScope.launch {
+            val n = withContext(Dispatchers.IO) { previews.clearAll() }
+            onDone(n)
+        }
+    }
+
     /**
      * Deletes previews nobody needs (user rule, see [PreviewCache.cleanup]) – not before the app
      * has run 2 minutes, and only while nothing heavy runs (export, proxy build, keyframe

@@ -24,6 +24,9 @@ Mobile UX and further tests still to come before the release.
 - **Clip Speed Treatments** live in *Documents/VideoSpeedControl/Clip Speed Treatments*:
   Android "Save" writes there directly (no file dialog), "Load" starts there; the desktop offers
   it as the default folder and also keeps the previews of .cst files saved elsewhere.
+- *(Android)* **Menu behind the logo**: Easy / Pro with what each mode can do, the folders
+  (saved videos, Clip Speed Treatments – each with "Open"), the space the previews take and
+  "Delete previews".
 - *(Android)* Preview pictures as JPEG quality 60 (smaller, twice as fast to make; WebP was
   measured and is 6–12× slower to encode on the phone).
 

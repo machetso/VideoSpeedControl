@@ -109,6 +109,9 @@ class PreviewCache(context: Context) {
         return deleted
     }
 
+    /** Deletes every stored preview (menu "Delete previews"); returns how many. */
+    fun clearAll(): Int = root.listFiles { f -> f.isDirectory }?.count { it.deleteRecursively() } ?: 0
+
     fun totalBytes(): Long = root.listFiles()?.sumOf { size(it) } ?: 0L
 
     private fun size(f: File): Long = if (f.isDirectory) f.listFiles()?.sumOf { size(it) } ?: 0L else f.length()

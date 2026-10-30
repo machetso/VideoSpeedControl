@@ -24,6 +24,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.alexvulcu.videospeedcontrol.ui.BatchCard
 import com.alexvulcu.videospeedcontrol.ui.VideoGallery
+import com.alexvulcu.videospeedcontrol.ui.AppMenu
+import androidx.compose.foundation.clickable
 import com.alexvulcu.videospeedcontrol.ui.TreatmentCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -113,6 +115,8 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
     // system file picker is the way to Downloads / cloud ("Other files…"). Not the photo picker:
     // it hands out numbers instead of the file names (PXL_….mp4 – needed for output names).
     var showGallery by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    if (showMenu) AppMenu(vm) { showMenu = false }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             showGallery = false
@@ -189,7 +193,9 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Image(painterResource(R.drawable.vsc_logo), null, Modifier.size(36.dp))
+                    // the logo opens the menu (Easy / Pro, folders, previews)
+                    Image(painterResource(R.drawable.vsc_logo), "Menu",
+                        Modifier.size(36.dp).clickable { showMenu = true })
                     Text("VideoSpeedControl", style = MaterialTheme.typography.titleMedium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     // Easy / Pro badge: tap to switch

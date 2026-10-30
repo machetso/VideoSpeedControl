@@ -781,17 +781,21 @@ val LastIcon by lazy { symbol("Last", 24f, "M16.6,6h2.4v12h-2.4z M5,6v12l10.5,-6
  * general "open folder" – the Files app (DocumentsUI) accepts its document URI with the
  * directory type; without it, a message.
  */
-fun openOutputFolder(ctx: android.content.Context) {
+fun openOutputFolder(ctx: android.content.Context) =
+    openFolder(ctx, com.alexvulcu.videospeedcontrol.core.OutputStore.RELATIVE_PATH)
+
+/** Shows Documents / Movies sub-folder [relativePath] ("Movies/VideoSpeedControl/") in the Files app. */
+fun openFolder(ctx: android.content.Context, relativePath: String) {
     val folder = android.provider.DocumentsContract.buildDocumentUri(
-        "com.android.externalstorage.documents", "primary:" + com.alexvulcu.videospeedcontrol.core.OutputStore.RELATIVE_PATH.trimEnd('/'))
+        "com.android.externalstorage.documents", "primary:" + relativePath.trimEnd('/'))
     val intent = Intent(Intent.ACTION_VIEW)
         .setDataAndType(folder, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
         ctx.startActivity(intent)
     } catch (e: android.content.ActivityNotFoundException) {
-        android.widget.Toast.makeText(ctx, "No file manager found – the exports are in " +
-            com.alexvulcu.videospeedcontrol.core.OutputStore.RELATIVE_PATH, android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(ctx, "No file manager found – the folder is $relativePath",
+            android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
