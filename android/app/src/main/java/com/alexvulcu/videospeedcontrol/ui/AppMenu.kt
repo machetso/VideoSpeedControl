@@ -86,7 +86,7 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
             val choices = listOf(I18n.SYSTEM to tr("Phone language (%s)",
                 java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.getDefault()) +
                     if (I18n.phoneLanguage == null) " → English" else "")) +
-                I18n.languages.map { it.code to it.name }
+                I18n.languages.map { it.code to languageLabel(it) }
             for ((code, label) in choices) {
                 Row(Modifier.fillMaxWidth().clickable { I18n.choose(ctx, code) }, verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(I18n.choice == code || (code == I18n.SYSTEM && I18n.languages.none { it.code == I18n.choice }),
@@ -161,3 +161,10 @@ private fun FolderRow(title: String, path: String, onOpen: () -> Unit) {
         TextButton(onOpen) { Text(tr("Open")) }
     }
 }
+
+/**
+ * A language in its own name; Klingon also says what it is (user): "tlhIngan Hol (Klingonisch)"
+ * in a German interface, "(Klingon)" in every other.
+ */
+private fun languageLabel(l: I18n.Language): String =
+    if (l.code == "tlh") "${l.name} (${if (I18n.german) "Klingonisch" else "Klingon"})" else l.name
