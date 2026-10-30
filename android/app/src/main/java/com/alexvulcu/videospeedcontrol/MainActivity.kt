@@ -134,14 +134,7 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
             notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         else vm.startExport()
     }
-    val saveCst = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        if (uri != null) scope.launch {
-            val text = vm.treatmentText() ?: return@launch
-            withContext(Dispatchers.IO) { ctx.contentResolver.openOutputStream(uri)!!.use { it.write(text.toByteArray()) } }
-            vm.message = "Treatment saved"
-        }
-    }
-    val loadCst = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val loadCst = rememberLauncherForActivityResult(OpenInTreatments()) { uri ->
         if (uri != null) scope.launch {
             val text = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() } }
             vm.loadTreatment(text, uri.lastPathSegment?.substringAfterLast('/') ?: "treatment")
@@ -240,11 +233,18 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     if (!vm.easy) TrimPanel(vm, edit)       // Easy: the yellow brackets on the timeline
                     ExportCard(vm, edit, onExport)
                     BatchCard(vm, choose)
-                    TreatmentCard(vm, onSave = { saveCst.launch(vm.treatmentFileName()) },
+                    TreatmentCard(vm, onSave = vm::saveTreatment,
                         onLoad = { loadCst.launch(arrayOf("*/*")) }, onShare = shareCst)
                     ClipInfoCard(s.info)
                 }
             }
         }
     }
+}
+
+/** File picker for .cst files that starts in Documents/VideoSpeedControl/Clip Speed Treatments. */
+class OpenInTreatments : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: android.content.Context, input: Array<String>): Intent =
+        super.createIntent(context, input).putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+            com.alexvulcu.videospeedcontrol.core.CstStore.folderUri)
 }

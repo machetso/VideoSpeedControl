@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -45,5 +46,42 @@ class ProxyDeviceTest {
         val p = build("synth_avc120_rot.mp4")
         assertEquals(270, p.width)          // 1280×720 rotated 90° → portrait
         save(p, "rot", listOf(0))
+    }
+
+    /** Stored preview: the second build loads it; a damaged chunk is rebuilt alone, same pictures. */
+    @Test fun storedPreview() {
+        for (name in listOf("synth_hevc240.mp4", "synth_hevc_closed.mp4", "PXL_20261025_152730266.mp4")) {
+            val f = runCatching { TestClips.get(name) }.getOrNull() ?: continue
+            val info = Probe.probe(ctx, Uri.fromFile(f))
+            val cache = PreviewCache(ctx)
+            val fp = "test-" + name.hashCode()
+            cache.dir(fp).deleteRecursively()
+            var t0 = System.nanoTime()
+            val first = runBlocking { Proxy.build(ctx, info, cache, fp) {} }
+            val tBuild = (System.nanoTime() - t0) / 1e6
+            Thread.sleep(300)                                     // last chunk written by its JPEG thread
+            t0 = System.nanoTime()
+            val second = runBlocking { Proxy.build(ctx, info, cache, fp) {} }
+            val tLoad = (System.nanoTime() - t0) / 1e6
+            assertTrue(second.complete)
+            for (fr in 0 until info.frames.count step first.step) assertTrue("frame $fr", first.jpeg(fr)!!.contentEquals(second.jpeg(fr)!!))
+            // damage one chunk in the middle: only it is decoded again (from its keyframe)
+            val mid = first.chunks[first.chunks.size / 2]
+            val file = java.io.File(cache.dir(fp), "chunk_${mid.first}.bin")
+            file.writeBytes(file.readBytes().also { it[it.size / 2] = (it[it.size / 2] + 1).toByte() })
+            t0 = System.nanoTime()
+            val third = runBlocking { Proxy.build(ctx, info, cache, fp) {} }
+            val tRepair = (System.nanoTime() - t0) / 1e6
+            assertTrue(third.complete)
+            var same = 0
+            for (fr in mid step first.step) {
+                val a = first.jpeg(fr)!!; val b = third.jpeg(fr)!!
+                if (a.contentEquals(b)) same++
+            }
+            Log.i("VscProxy", "$name: ${info.frames.count} frames, ${first.chunks.size} chunks, build ${"%.0f".format(tBuild)} ms, " +
+                "from storage ${"%.0f".format(tLoad)} ms, one chunk repaired ${"%.0f".format(tRepair)} ms " +
+                "(${mid.count()} frames, $same identical JPEGs), stored ${cache.dir(fp).walk().sumOf { it.length() } / 1024} KB")
+            cache.dir(fp).deleteRecursively()
+        }
     }
 }

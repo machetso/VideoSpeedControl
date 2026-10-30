@@ -3,6 +3,7 @@ package com.alexvulcu.videospeedcontrol.ui
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -28,6 +29,8 @@ import com.alexvulcu.videospeedcontrol.core.Muxing
 import com.alexvulcu.videospeedcontrol.core.OutputStore
 import com.alexvulcu.videospeedcontrol.core.Probe
 import com.alexvulcu.videospeedcontrol.core.Proxy
+import com.alexvulcu.videospeedcontrol.core.PreviewCache
+import com.alexvulcu.videospeedcontrol.core.CstStore
 import com.alexvulcu.videospeedcontrol.core.Segments
 import com.alexvulcu.videospeedcontrol.core.Segment
 import com.alexvulcu.videospeedcontrol.core.Trim
@@ -265,8 +268,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         get() = edit?.let { e -> (e.trim to e.segments) != committed && (e.segments.isNotEmpty() || e.trim != Trim()) } ?: false
     private var fingerprint: String? = null
 
+    /** Stored previews (proxy chunks, thumbnails, keyframe analysis) – 0.93. */
+    private val previews = PreviewCache(app)
+
     init {
         ExportManager.init(app)
+        schedulePreviewCleanup()
         viewModelScope.launch {
             ExportManager.entries.collect { list ->
                 batch = list.filter { it.inBatch }
@@ -333,10 +340,16 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 pendingStart = null
                 selectedSection = -1
                 source = withContext(Dispatchers.IO) { FrameSource(getApplication(), info) }
+                // the fingerprint finds the stored preview of this video (and goes into .cst files)
+                fingerprint = withContext(Dispatchers.IO) {
+                    runCatching {
+                        Treatment.fingerprint(info.sizeBytes) { getApplication<Application>().contentResolver.openInputStream(info.uri)!! }
+                    }.getOrNull()
+                }
+                fingerprint?.let { previews.touch(it) }
                 loadThumbs()
                 loadProxy(info)
                 loadJoins(info)
-                fingerprint = null
                 pendingTreatment?.let { applyTreatment(it) }
                 pendingTreatment = null
                 edit?.let { committed = it.trim to it.segments }
@@ -349,8 +362,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadThumbs() {
         val src = source ?: return
+        val fp = fingerprint
         thumbJob = viewModelScope.launch {
-            src.thumbnails(max = 60, width = 192) { frame, bmp ->
+            fun show(frame: Int, bmp: Bitmap) {
                 val t = Thumb(frame, bmp.asImageBitmap(), bmp)
                 viewModelScope.launch {
                     val i = thumbs.indexOfFirst { it.frame > frame }.let { if (it < 0) thumbs.size else it }
@@ -358,6 +372,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     if (!previewExact && preview == null) preview = bmp
                 }
             }
+            val stored = fp?.let { withContext(Dispatchers.IO) { previews.loadThumbs(it) } }
+            if (stored != null) {
+                for ((frame, jpeg) in stored) BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)?.let { show(frame, it) }
+                return@launch
+            }
+            val made = java.util.Collections.synchronizedList(mutableListOf<Pair<Int, ByteArray>>())
+            src.thumbnails(max = 60, width = 192) { frame, bmp ->
+                made += frame to java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 80, it) }.toByteArray()
+                show(frame, bmp)
+            }
+            if (fp != null) withContext(Dispatchers.IO) { runCatching { previews.writeThumbs(fp, made.toList()) } }
         }
     }
 
@@ -367,7 +392,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         smartOverride.clear()
         viewModelScope.launch {
             try {
-                joins = withContext(Dispatchers.IO) { Smart.joinPoints(getApplication(), info) }
+                val fp = fingerprint
+                joins = withContext(Dispatchers.IO) {
+                    fp?.let { previews.loadJoins(it, info.frames.count) }
+                        ?: Smart.joinPoints(getApplication(), info).also { j ->
+                            if (fp != null) runCatching { previews.writeJoins(fp, info.frames.count, info.name, j) }
+                        }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -381,15 +412,40 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         proxyProgress = 0f
         proxyJob = viewModelScope.launch {
             try {
-                Proxy.build(getApplication(), info) { p ->
+                val t0 = System.nanoTime()
+                val built = Proxy.build(getApplication(), info, previews, fingerprint) { p ->
                     proxy = p
                     viewModelScope.launch { proxyProgress = p.fraction }
                 }
+                android.util.Log.i("Vsc", "proxy of ${info.name} ready in ${(System.nanoTime() - t0) / 1_000_000} ms " +
+                    "(${built.chunks.size} chunks)")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("Vsc", "proxy failed", e)    // scrubbing falls back to thumbnails
             }
+        }
+    }
+
+    /**
+     * Deletes previews nobody needs (user rule, see [PreviewCache.cleanup]) – not before the app
+     * has run 2 minutes, and only while nothing heavy runs (export, proxy build, keyframe
+     * analysis); otherwise it tries again every 30 s.
+     */
+    private fun schedulePreviewCleanup() {
+        viewModelScope.launch {
+            delay(120_000)
+            while (true) {
+                val busy = ExportManager.hasWork || (clip is ClipState.Loaded && (proxyProgress < 1f || joins == null))
+                if (!busy) break
+                delay(30_000)
+            }
+            val app = getApplication<Application>()
+            val n = withContext(Dispatchers.IO) {
+                val inUse = ExportManager.batch.map { it.task.treatment.fingerprint }.toSet()
+                previews.cleanup(fingerprint, inUse, CstStore(app).fingerprints())
+            }
+            android.util.Log.i("Vsc", "preview clean-up: $n removed, ${previews.totalBytes() / 1_000_000} MB kept")
         }
     }
 
@@ -778,6 +834,20 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun treatmentText(): String? {
         val t = snapshot() ?: return null
         return Treatment.toJson(t, edit!!.info.videoMime)
+    }
+
+    /** "Save": straight into Documents/VideoSpeedControl/Clip Speed Treatments/ (no file dialog). */
+    fun saveTreatment() {
+        viewModelScope.launch {
+            val text = treatmentText() ?: return@launch
+            val name = treatmentFileName()
+            message = try {
+                withContext(Dispatchers.IO) { CstStore(getApplication()).save(name, text) }
+                "Saved: ${CstStore.RELATIVE_PATH}$name"
+            } catch (e: Exception) {
+                "Could not save $name: ${e.message}"
+            }
+        }
     }
 
     fun treatmentFileName(): String = (edit?.info?.name?.substringBeforeLast('.') ?: "clip") + Treatment.SUFFIX

@@ -14,14 +14,24 @@ import kotlin.coroutines.coroutineContext
 
 /**
  * Small JPEG of every frame for frame-accurate scrubbing and the play preview (desktop:
- * `workers.ProxyLoader`, 384×216). Built once per clip in display order; above [MAX_FRAMES] only
- * every n-th frame is kept and the nearest one is shown.
+ * `workers.ProxyLoader`, 384×216). Built in display order; above [MAX_FRAMES] only every n-th
+ * frame is kept and the nearest one is shown. Kept in [chunks] from keyframe to keyframe, which
+ * [PreviewCache] stores (0.93): a video opened again loads them and decodes only what is missing.
  */
-class Proxy(val count: Int, val width: Int, val height: Int) {
+class Proxy(val count: Int, val width: Int, val height: Int, keyframes: IntArray = intArrayOf(0)) {
     val step: Int = maxOf(1, (count + MAX_FRAMES - 1) / MAX_FRAMES)
     private val jpegs = arrayOfNulls<ByteArray>((count + step - 1) / step)
 
-    @Volatile var ready = 0          // frames decoded so far (progress; JPEGs may lag a little)
+    /** Frame ranges from one keyframe to the next (the unit that is stored and rebuilt). */
+    val chunks: List<IntRange> = run {
+        val starts = (listOf(0) + keyframes.filter { it in 1 until count }).distinct().sorted()
+        starts.mapIndexed { i, a -> a until (starts.getOrNull(i + 1) ?: count) }
+    }
+    private val chunkMissing = IntArray(chunks.size) { i -> chunks[i].count { it % step == 0 } }
+    /** Called (from a JPEG thread) when a chunk has all its pictures – the cache writes it. */
+    @Volatile var onChunkComplete: ((Int) -> Unit)? = null
+
+    @Volatile var ready = 0          // frames done so far (loaded or decoded; progress)
         private set
 
     val complete get() = ready >= count
@@ -30,14 +40,29 @@ class Proxy(val count: Int, val width: Int, val height: Int) {
 
     fun has(frame: Int) = jpegs.getOrNull(frame / step) != null
 
+    /** The stored JPEG of [frame] (a frame this proxy keeps), or null. */
+    fun jpeg(frame: Int): ByteArray? = if (frame % step == 0) jpegs.getOrNull(frame / step) else null
+
     /** The proxy picture for [frame] (nearest stored one), or null if not built yet. */
     fun bitmap(frame: Int): Bitmap? {
         val data = jpegs.getOrNull(frame / step) ?: return null
         return BitmapFactory.decodeByteArray(data, 0, data.size)
     }
 
+    fun chunkOf(frame: Int): Int {
+        var lo = 0; var hi = chunks.size - 1
+        while (lo < hi) { val mid = (lo + hi + 1) / 2; if (chunks[mid].first <= frame) lo = mid else hi = mid - 1 }
+        return lo
+    }
+
     internal fun put(frame: Int, jpeg: ByteArray) {
-        if (frame % step == 0) jpegs[frame / step] = jpeg
+        if (frame % step != 0) return
+        val first = synchronized(this) {
+            val was = jpegs[frame / step] == null
+            jpegs[frame / step] = jpeg
+            if (was) { val c = chunkOf(frame); chunkMissing[c]--; if (chunkMissing[c] == 0) c else -1 } else -1
+        }
+        if (first >= 0) onChunkComplete?.invoke(first)
     }
 
     internal fun advance(to: Int) {
@@ -47,20 +72,43 @@ class Proxy(val count: Int, val width: Int, val height: Int) {
     companion object {
         const val MAX_FRAMES = 12000
         const val LONG_SIDE = 480
-        private const val QUALITY = 75
+        /** JPEG 60: 17 KB and 1.1 ms per 480×270 picture on the Pixel (75: 22 KB, 2.3 ms; WebP: 13 KB, 13.7 ms). */
+        const val QUALITY = 60
+
+        fun sizeFor(info: ClipInfo): Pair<Int, Int> = if (info.displayWidth >= info.displayHeight)
+            LONG_SIDE to LONG_SIDE * info.displayHeight / maxOf(1, info.displayWidth)
+        else LONG_SIDE * info.displayWidth / maxOf(1, info.displayHeight) to LONG_SIDE
 
         /**
-         * Decode every frame of [info] into a new [Proxy]; [onProgress] now and then.
-         * Hardware decoder → GPU (scale, rotate, YUV → RGB, see [GlFrameGrabber]) → JPEG.
-         * (MediaMetadataRetriever.getFramesAtIndex: ~35 fps; YUV → RGB in Kotlin: ~45 fps.)
+         * The proxy of [info]: chunks stored in [cache] under [fingerprint] are loaded, the others
+         * decoded (from their keyframe) and stored as soon as each is complete. [onProgress] now and
+         * then. Hardware decoder → GPU (scale, rotate, YUV → RGB, see [GlFrameGrabber]) → JPEG.
          * Runs on one thread without suspending – the EGL context is bound to it.
          */
-        suspend fun build(context: Context, info: ClipInfo, onProgress: (Proxy) -> Unit): Proxy =
+        suspend fun build(context: Context, info: ClipInfo, cache: PreviewCache? = null, fingerprint: String? = null,
+                          onProgress: (Proxy) -> Unit): Proxy =
             withContext(Dispatchers.Default) {
-                val (w, h) = if (info.displayWidth >= info.displayHeight)
-                    LONG_SIDE to LONG_SIDE * info.displayHeight / maxOf(1, info.displayWidth)
-                else LONG_SIDE * info.displayWidth / maxOf(1, info.displayHeight) to LONG_SIDE
-                val proxy = Proxy(info.frames.count, w, h)
+                val (w, h) = sizeFor(info)
+                val proxy = Proxy(info.frames.count, w, h, info.frames.keyframes)
+                val loaded = if (cache != null && fingerprint != null) cache.loadChunks(fingerprint, proxy) else emptySet()
+                var done = loaded.sumOf { proxy.chunks[it].count() }
+                proxy.advance(done)
+                onProgress(proxy)
+                if (cache != null && fingerprint != null) {
+                    proxy.onChunkComplete = { i -> runCatching { cache.writeChunk(fingerprint, proxy, i) } }
+                }
+                // runs of chunks still to decode
+                val runs = mutableListOf<IntRange>()
+                for ((i, c) in proxy.chunks.withIndex()) {
+                    if (i in loaded) continue
+                    val last = runs.lastOrNull()
+                    runs += if (last != null && last.last + 1 == c.first) { runs.removeAt(runs.lastIndex); last.first..c.last } else c
+                }
+                if (runs.isEmpty()) {
+                    proxy.advance(proxy.count)
+                    onProgress(proxy)
+                    return@withContext proxy
+                }
                 val ex = MediaExtractor()
                 var codec: MediaCodec? = null
                 val grabber = GlFrameGrabber(w, h)
@@ -77,15 +125,19 @@ class Proxy(val count: Int, val width: Int, val height: Int) {
                     dec.configure(format, grabber.surface, null, 0)
                     dec.start()
                     val bi = MediaCodec.BufferInfo()
-                    var inputDone = false
-                    var done = 0
                     var lastReport = 0L
-                    while (done < proxy.count) {
-                        coroutineContext.ensureActive()
-                        while (!inputDone) {
-                            val i = dec.dequeueInputBuffer(0)
-                            if (i < 0) break
-                            run {
+                    for ((r, run) in runs.withIndex()) {
+                        if (r > 0) dec.flush()
+                        // every chunk starts at a keyframe – decoding starts exactly there
+                        ex.seekTo(info.frames.ptsUs[run.first], MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                        var inputDone = false
+                        var got = 0
+                        val need = run.count()
+                        while (got < need) {
+                            coroutineContext.ensureActive()
+                            while (!inputDone) {
+                                val i = dec.dequeueInputBuffer(0)
+                                if (i < 0) break
                                 val n = ex.readSampleData(dec.getInputBuffer(i)!!, 0)
                                 if (n < 0) {
                                     dec.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
@@ -95,30 +147,31 @@ class Proxy(val count: Int, val width: Int, val height: Int) {
                                     ex.advance()
                                 }
                             }
-                        }
-                        val o = dec.dequeueOutputBuffer(bi, 2_000)
-                        if (o >= 0) {
-                            val eos = bi.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                            val frame = if (bi.size > 0) info.frames.indexOf(bi.presentationTimeUs) else -1
-                            val wanted = frame >= 0 && frame % proxy.step == 0
-                            dec.releaseOutputBuffer(o, wanted)
-                            if (wanted && grabber.awaitFrame()) {
-                                val copy = grabber.grab().copy(Bitmap.Config.ARGB_8888, false)
-                                jpegs.submit {
-                                    val o2 = ByteArrayOutputStream(32 * 1024)
-                                    copy.compress(Bitmap.CompressFormat.JPEG, QUALITY, o2)
-                                    copy.recycle()
-                                    proxy.put(frame, o2.toByteArray())
+                            val o = dec.dequeueOutputBuffer(bi, 2_000)
+                            if (o >= 0) {
+                                val eos = bi.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                                val frame = if (bi.size > 0) info.frames.indexOf(bi.presentationTimeUs) else -1
+                                val inRun = frame in run              // leading pictures of a seek belong elsewhere
+                                val wanted = inRun && frame % proxy.step == 0
+                                dec.releaseOutputBuffer(o, wanted)
+                                if (wanted && grabber.awaitFrame()) {
+                                    val copy = grabber.grab().copy(Bitmap.Config.ARGB_8888, false)
+                                    jpegs.submit {
+                                        val o2 = ByteArrayOutputStream(32 * 1024)
+                                        copy.compress(Bitmap.CompressFormat.JPEG, QUALITY, o2)
+                                        copy.recycle()
+                                        proxy.put(frame, o2.toByteArray())
+                                    }
                                 }
+                                if (inRun) { got++; done++ }
+                                val now = System.nanoTime()
+                                if (now - lastReport > 100_000_000L) {
+                                    proxy.advance(minOf(done, proxy.count - 1))
+                                    onProgress(proxy)
+                                    lastReport = now
+                                }
+                                if (eos) break
                             }
-                            if (bi.size > 0) done++
-                            val now = System.nanoTime()
-                            if (now - lastReport > 100_000_000L || done >= proxy.count || eos) {
-                                proxy.advance(done)
-                                onProgress(proxy)
-                                lastReport = now
-                            }
-                            if (eos) break
                         }
                     }
                     jpegs.shutdown()

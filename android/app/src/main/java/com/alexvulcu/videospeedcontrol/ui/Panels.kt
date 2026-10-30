@@ -516,7 +516,8 @@ fun TreatmentCard(vm: EditorViewModel, onSave: () -> Unit, onLoad: () -> Unit, o
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Clip Speed Treatment (.cst)", style = MaterialTheme.typography.titleMedium)
             Text("Sections, trim and export settings of this clip – the same file format as the desktop " +
-                "app. A clip speed treatment only loads onto the video it was made for (any file name).",
+                "app. “Save” puts it in Documents/VideoSpeedControl/Clip Speed Treatments. It only loads onto " +
+                "the video it was made for (any file name).",
                 style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onSave) { Text("Save") }
