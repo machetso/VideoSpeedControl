@@ -25,6 +25,9 @@ import androidx.core.content.FileProvider
 import com.alexvulcu.videospeedcontrol.ui.BatchCard
 import com.alexvulcu.videospeedcontrol.ui.VideoGallery
 import com.alexvulcu.videospeedcontrol.ui.AppMenu
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.alexvulcu.videospeedcontrol.ui.tr
 import com.alexvulcu.videospeedcontrol.ui.I18n
 import androidx.compose.foundation.clickable
@@ -80,7 +83,13 @@ class MainActivity : ComponentActivity() {
         I18n.load(this)                     // English / German (menu behind the logo)
         enableEdgeToEdge()
         if (savedInstanceState == null) handle(intent)
-        setContent { VscTheme { MainScreen(vm) } }
+        setContent {
+            // right-to-left languages (Hebrew) mirror the layout; the timeline stays left-to-right
+            CompositionLocalProvider(LocalLayoutDirection provides
+                if (I18n.current.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                VscTheme { MainScreen(vm) }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -232,11 +241,13 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 is ClipState.Loaded -> {
                     val edit = vm.edit ?: return@Column
                     PreviewPane(vm, s.info)
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Timeline(vm.shownEdit(edit), vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress,
-                        vm::seekFromTimeline, onTap = vm::tapTimeline, ramps = vm.rampZones(),
-                        draggedBorder = vm.draggedBorder, onBorderDragStart = vm::beginBorderDrag,
-                        onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag,
-                        onTrimDrag = vm::dragTrim, easy = vm.easy)
+                            vm::seekFromTimeline, onTap = vm::tapTimeline, ramps = vm.rampZones(),
+                            draggedBorder = vm.draggedBorder, onBorderDragStart = vm::beginBorderDrag,
+                            onBorderDrag = vm::dragBorderTo, onBorderDragEnd = vm::endBorderDrag,
+                            onTrimDrag = vm::dragTrim, easy = vm.easy)
+                    }
                     TransportPanel(vm, edit)
                     SectionsPanel(vm, edit)
                     if (!vm.easy) TrimPanel(vm, edit)       // Easy: the yellow brackets on the timeline

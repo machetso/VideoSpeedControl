@@ -24,9 +24,11 @@ Mobile UX and further tests still to come before the release.
 - **Clip Speed Treatments** live in *Documents/VideoSpeedControl/Clip Speed Treatments*:
   Android "Save" writes there directly (no file dialog), "Load" starts there; the desktop offers
   it as the default folder and also keeps the previews of .cst files saved elsewhere.
-- *(Android)* **German user interface**: English or German, chosen in the menu behind the logo
-  ("Language / Sprache"); default is the phone's language, the choice is kept. Numbers follow the
-  language (9,6× langsamer).
+- *(Android)* **Interface languages**: English, German, Spanish, French, Romanian, Hebrew
+  (right-to-left; timeline and transport stay left-to-right) and – for fun – Klingon, chosen in
+  the menu behind the logo ("Language / Sprache"); default is the phone's language if there is a
+  translation, the choice is kept. Numbers and plural forms follow the language. One dictionary
+  per language in `i18n/<code>.json` (for the desktop later too) – a new language is a new file.
 - *(Android)* **Menu behind the logo**: Easy / Pro with what each mode can do, the folders
   (saved videos, Clip Speed Treatments – each with "Open"), the space the previews take and
   "Delete previews".

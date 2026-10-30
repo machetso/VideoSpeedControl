@@ -82,13 +82,16 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
             HorizontalDivider()
             // the phone's language by default; the choice is kept across restarts
             Text("Language / Sprache", style = MaterialTheme.typography.titleMedium)
-            for (lang in I18n.Lang.entries) {
-                Row(Modifier.fillMaxWidth().clickable { I18n.choose(ctx, lang) }, verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(I18n.choice == lang, { I18n.choose(ctx, lang) },
-                        colors = RadioButtonDefaults.colors(selectedColor = ChosenGreen))
-                    Text(if (lang == I18n.Lang.SYSTEM) tr("Phone language (%s)",
-                        java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.getDefault())) else lang.label,
-                        style = MaterialTheme.typography.bodyLarge)
+            // every dictionary in i18n/ is offered (in its own language)
+            val choices = listOf(I18n.SYSTEM to tr("Phone language (%s)",
+                java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.getDefault()) +
+                    if (I18n.phoneLanguage == null) " → English" else "")) +
+                I18n.languages.map { it.code to it.name }
+            for ((code, label) in choices) {
+                Row(Modifier.fillMaxWidth().clickable { I18n.choose(ctx, code) }, verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(I18n.choice == code || (code == I18n.SYSTEM && I18n.languages.none { it.code == I18n.choice }),
+                        { I18n.choose(ctx, code) }, colors = RadioButtonDefaults.colors(selectedColor = ChosenGreen))
+                    Text(label, style = MaterialTheme.typography.bodyLarge)
                 }
             }
 
@@ -120,7 +123,7 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
                 TextButton({
                     confirmDelete = false
                     vm.clearPreviews { n ->
-                        vm.message = if (n == 1) tr("Deleted the previews of 1 video") else tr("Deleted the previews of %d videos", n)
+                        vm.message = trp("Deleted the previews of %d video", "Deleted the previews of %d videos", n, n)
                         refresh++
                     }
                 }) { Text(tr("Delete")) }

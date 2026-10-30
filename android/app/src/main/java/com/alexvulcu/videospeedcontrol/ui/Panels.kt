@@ -135,6 +135,9 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
             style = MaterialTheme.typography.bodySmall,
         )
         // start of clip · previous keyframe · one frame back / ahead · next keyframe · end of clip
+        // (left-to-right in every language, like the timeline)
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             val pad = PaddingValues(horizontal = 6.dp)
             FilledTonalButton(vm::toStart, contentPadding = pad) { Icon(FirstIcon, tr("first frame"), Modifier.size(22.dp)) }
@@ -147,6 +150,7 @@ fun TransportPanel(vm: EditorViewModel, edit: ClipEdit) {
                 Icon(KeyPlusIcon, tr("next keyframe"), Modifier.size(width = 30.dp, height = 26.dp))
             }
             FilledTonalButton(vm::toEnd, contentPadding = pad) { Icon(LastIcon, tr("last frame"), Modifier.size(22.dp)) }
+        }
         }
     }
 }
@@ -425,8 +429,9 @@ fun ExportCard(vm: EditorViewModel, edit: ClipEdit, onExport: () -> Unit = vm::s
             if (vm.mode == EditorViewModel.Mode.SMART) {
                 SmartOptions(vm, info, job as SmartJob)
             } else if (job.hasSegments && !vm.easy) {
-                Text(tr("Clip sections set the timing: %d section(s), the rest in real time. Output %s (%s on average).",
-                    edit.segments.size, clock(job.outputDuration.toDouble()), speedWords(job.speed.toDouble())),
+                Text(trp("Clip sections set the timing: %d section, the rest in real time. Output %s (%s on average).",
+                    "Clip sections set the timing: %d sections, the rest in real time. Output %s (%s on average).",
+                    edit.segments.size, edit.segments.size, clock(job.outputDuration.toDouble()), speedWords(job.speed.toDouble())),
                     style = MaterialTheme.typography.bodyMedium)
             }
             if (vm.mode == EditorViewModel.Mode.SMART) {

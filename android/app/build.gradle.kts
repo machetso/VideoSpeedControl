@@ -4,6 +4,8 @@ plugins {
 }
 
 android {
+    // interface languages: i18n/<code>.json at the top of the repository (shared with the desktop)
+    sourceSets["main"].assets.srcDir("../../i18n")
     namespace = "com.alexvulcu.videospeedcontrol"
     compileSdk {
         version = release(37) { minorApiLevel = 2 }

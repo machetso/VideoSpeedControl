@@ -7,7 +7,7 @@ import kotlin.math.abs
 import kotlin.math.round
 
 private val L: Locale get() = I18n.locale
-private val DOT: Char get() = if (I18n.german) ',' else '.'
+private val DOT: Char get() = I18n.decimal
 
 fun fmt(v: Double): String = String.format(L, "%.3g", v).let {
     if ('e' in it) String.format(L, "%.0f", v) else it
