@@ -59,6 +59,12 @@ The **Clip info** tab lists everything about the file: container, codec and prof
 
 Phones such as the Google Pixel record slow motion at e.g. 240 fps but store it as a 30 fps file that already plays slowly. VideoSpeedControl reads the recording rate from the file and treats **240 fps as the original**: speeds and "× slower" always refer to real time. The clip list shows e.g. *"240 (slow-mo, file 29.97)"*.
 
+### Stored previews
+
+The frame list, the timeline thumbnails, the small preview copy used for scrubbing and the keyframe analysis of smart re-encode are stored in the cache folder (Linux *~/.cache/VideoSpeedControl/previews*, Windows *%LOCALAPPDATA%\VideoSpeedControl\previews*). A clip opened again is ready almost at once instead of being scanned and decoded again – also after renaming or moving it, because it is recognised by its content. The preview is stored in small parts; if one is damaged, only that part is made again.
+
+Two minutes after the start – and only while nothing heavy runs – previews nobody needs any more are deleted: a preview stays while its clip is in the list, in the batch list, or has a Clip Speed Treatment (.cst) file. The cache is kept below 2 GB.
+
 ## 4. Preview and trim
 
 ![Preview, speed sections and the summary](images/sections.png)
@@ -176,7 +182,7 @@ Sections appear as blue bands in the timeline and in the table below it, where y
 
 ### Saving and loading a Clip Speed Treatment (.cst)
 
-**Save Clip Speed Treatment…** in the toolbar (**Ctrl+S**) saves the current clip's sections, trim and output settings as a *Clip Speed Treatment* file (`.cst`, next to the clip by default). **Load Clip Speed Treatment…** (**Ctrl+L**) – or dropping a `.cst` onto the window – loads it again. The Android app reads and writes the same files.
+**Save Clip Speed Treatment…** in the toolbar (**Ctrl+S**) saves the current clip's sections, trim and output settings as a *Clip Speed Treatment* file (`.cst`). It is offered in *Documents/VideoSpeedControl/Clip Speed Treatments* by default – the Android app saves there too. **Load Clip Speed Treatment…** (**Ctrl+L**) – or dropping a `.cst` onto the window – loads it again. The Android app reads and writes the same files.
 
 A treatment belongs to exactly one video: it stores a fingerprint of the file's content and only loads onto that video. The file name does not matter – a renamed or moved copy still matches. If the video is not in the list yet but is still where it was when you saved, it is added automatically. A treatment never loads onto a different video, because its frame numbers would not fit.
 

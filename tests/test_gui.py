@@ -803,3 +803,28 @@ def test_easy_and_pro(qapp, window):
     assert panel.codec_combo.isVisibleTo(panel)
     assert not preview.sections_table.isColumnHidden(4)
     assert not any(s.smooth_start for s in clip.job.segments)               # Pro: as set
+
+
+def test_stored_preview_is_used_again(qapp, h264_clip):
+    """0.93: frame list, thumbnails and proxy of a clip opened again come from the cache."""
+    from vsc.core import preview_cache
+    w = MainWindow()
+    w.add_files([h264_clip])
+    _wait(qapp, lambda: all(c.status == Status.READY and c.proxy_done and c.joins is not None
+                            for c in w.model.clips), timeout=60)
+    clip = w.model.clips[0]
+    fp = clip.fingerprint
+    cache = preview_cache.PreviewCache()
+    assert fp and cache.load_frames(fp) is not None
+    assert len(list(cache.dir(fp).glob("chunk_*.bin"))) == len(preview_cache.chunks(clip.frames))
+    first = list(clip.proxy)
+    w.close()
+
+    w2 = MainWindow()
+    t0 = time.monotonic()
+    w2.add_files([h264_clip])
+    _wait(qapp, lambda: all(c.status == Status.READY and c.proxy_done for c in w2.model.clips), timeout=30)
+    again = w2.model.clips[0]
+    assert again.proxy == first                     # same pictures, loaded instead of decoded
+    assert time.monotonic() - t0 < 5
+    w2.close()

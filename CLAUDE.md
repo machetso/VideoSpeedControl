@@ -42,6 +42,17 @@ IDEAS.md – add new ones there instead of building them unasked.
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
+- STORED PREVIEWS (0.93, both): Android `core/PreviewCache.kt` (files/previews/<fp>/ –
+  chunk_<start>.bin "VSCP" blocks with CRC32, thumbs.bin, meta.json joins), `Proxy` has
+  `chunks` (keyframe to keyframe) + `onChunkComplete`, `Proxy.build(…, cache, fp)` loads valid
+  chunks and decodes missing runs (seek to the chunk keyframe, frames outside the run ignored);
+  `CstStore` = Documents/VideoSpeedControl/Clip Speed Treatments (MediaStore Files). VM computes
+  the fingerprint at open; clean-up 2 min after VM start, retried every 30 s while busy.
+  Desktop `vsc/core/preview_cache.py` (same block format; frames.json incl. packets, joins.json,
+  thumbs.bin BMPs, chunks), `preview.proxy_args(info, frames, start, end)` (-copyts -ss to the
+  keyframe time − ¼ frame, -frames:v; test: a chunk alone == the full run byte for byte),
+  workers: ClipLoader / ThumbnailLoader / ProxyLoader use it, main_window `_clean_previews`.
+  Tests: conftest sends XDG_CACHE_HOME / LOCALAPPDATA to a temp dir.
 - UI TESTS ON THE USER'S PHONE: the batch list holds the user's own entries (with pictures of
   their videos). Never tap by a text that also appears there ("Lossless", "Smart", "Re-encode"
   are batch row labels since 0.93 – tapping one opens the user's clip!); scroll to the export

@@ -62,17 +62,28 @@ def proxy_step(frames: FrameMap) -> int:
     return max(1, -(-frames.count // PROXY_MAX_FRAMES))
 
 
-def proxy_args(info: MediaInfo, frames: FrameMap) -> list[str]:
-    """Every (step-th) frame, small, as a stream of JPEG images – for instant scrubbing."""
+PROXY_QUALITY = 6             # mjpeg -q:v (part of the stored previews' header)
+
+
+def proxy_args(info: MediaInfo, frames: FrameMap, start: int = 0, end: int | None = None) -> list[str]:
+    """Every (step-th) frame of [start, end), small, as a stream of JPEG images – for instant
+    scrubbing. `start` must be a keyframe (a stored-preview chunk): decoding starts exactly there
+    (-copyts: the seek uses the stream's own timestamps; earlier pictures are dropped)."""
+    end = frames.count if end is None else end
     w, h = fit_size(info, *PROXY_SIZE)
     step = proxy_step(frames)
-    chain = [f"select='not(mod(n\\,{step}))'"] if step > 1 else []
+    chain = [f"select='not(mod(n+{start % step}\\,{step}))'"] if step > 1 else []
     chain += [f"scale={w}:{h}:flags=fast_bilinear", "setsar=1"]
+    seek = []
+    if start > 0:
+        gap = min((b - a for a, b in zip(frames.times, frames.times[1:])), default=0.01)
+        seek = ["-copyts", "-ss", f"{frames.times[start] - gap / 4:.6f}"]
+    count = len(range(start + (-start) % step, end, step))
     return [ffmpeg_bin.ffmpeg(), "-hide_banner", "-v", "error", "-nostdin",
-            "-flags2", "fast", "-skip_loop_filter", "all",
+            "-flags2", "fast", "-skip_loop_filter", "all", *seek,
             "-i", str(info.path), "-map", f"0:{info.stream_index}", "-an", "-sn", "-dn",
-            "-vf", ",".join(chain), "-fps_mode", "passthrough",
-            "-c:v", "mjpeg", "-q:v", "6", "-f", "image2pipe", "-"]
+            "-vf", ",".join(chain), "-fps_mode", "passthrough", "-frames:v", str(count),
+            "-c:v", "mjpeg", "-q:v", str(PROXY_QUALITY), "-f", "image2pipe", "-"]
 
 
 def split_jpegs(buffer: bytearray) -> list[bytes]:

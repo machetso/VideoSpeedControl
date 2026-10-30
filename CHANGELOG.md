@@ -3,9 +3,29 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
-## Unreleased (towards 0.93)
+## 0.93 – not released yet
 
-Not released yet – mobile UX and further tests still to come.
+Mobile UX and further tests still to come before the release.
+
+### Stored previews (both)
+- The scrubbing proxy, the timeline thumbnails, the keyframe analysis of smart re-encode and
+  (desktop) the frame list are **stored per video** – a clip opened again is ready almost at
+  once (Android: proxy 26 ms instead of 4–10 s). Recognised by the content fingerprint of the
+  .cst files, so renamed or moved files still match.
+- Stored in **chunks from keyframe to keyframe**, each with a checksum: a damaged or missing
+  chunk is rebuilt alone (the pictures are identical to a full build), and an interrupted build
+  continues where it stopped.
+- **Clean-up**: a preview stays while its video is open / in the clip list, in the batch list,
+  or has a Clip Speed Treatment; the others are deleted – not before the app has run 2 minutes
+  and only while no export, preview build or analysis runs (retried every 30 s). Cap 2 GB, the
+  least recently used without a .cst first.
+- Where: Android – the app's private storage; desktop – ~/.cache/VideoSpeedControl/previews
+  (Windows %LOCALAPPDATA%\VideoSpeedControl\previews).
+- **Clip Speed Treatments** live in *Documents/VideoSpeedControl/Clip Speed Treatments*:
+  Android "Save" writes there directly (no file dialog), "Load" starts there; the desktop offers
+  it as the default folder and also keeps the previews of .cst files saved elsewhere.
+- *(Android)* Preview pictures as JPEG quality 60 (smaller, twice as fast to make; WebP was
+  measured and is 6–12× slower to encode on the phone).
 
 ### Easy / Pro
 - **Easy / Pro switch** (Easy is the default). Easy hides the codec details: smart re-encode

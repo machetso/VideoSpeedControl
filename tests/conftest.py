@@ -8,8 +8,14 @@
 """Shared fixtures. Test clips are generated on first run (tests/media)."""
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 from pathlib import Path
+
+# stored previews of the test clips go to a temporary cache, never into the user's
+os.environ["XDG_CACHE_HOME"] = tempfile.mkdtemp(prefix="vsc-test-cache-")
+os.environ["LOCALAPPDATA"] = os.environ["XDG_CACHE_HOME"]
 
 import pytest
 

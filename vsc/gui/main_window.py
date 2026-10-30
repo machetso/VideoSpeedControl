@@ -10,16 +10,17 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
+import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtCore import QItemSelectionModel, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLabel, QMainWindow,
                                QMenu, QMessageBox, QSizePolicy, QSplitter, QTableView, QTabWidget,
                                QToolBar, QToolButton, QWidget)
 
-from ..core import batch, testencode, treatment
+from ..core import batch, preview_cache, testencode, treatment
 from ..core.command import CommandError
 from ..core.formats import CODECS_BY_KEY, COPY
 from ..core.job import Job
@@ -36,6 +37,14 @@ VIDEO_FILTER = ("Video files (*.mp4 *.mov *.mkv *.avi *.mts *.m2ts *.mxf *.webm 
                 "*.flv *.360 *.lrv *.MP4 *.MOV *.MKV *.AVI *.MTS);;"
                 "Clip Speed Treatments (*.cst);;All files (*)")
 CST_FILTER = "Clip Speed Treatments (*.cst);;All files (*)"
+PREVIEW_CLEANUP_DELAY_MS = 120_000      # the app runs 2 minutes before stored previews are cleaned up
+PREVIEW_CLEANUP_RETRY_MS = 30_000
+
+
+def treatments_folder() -> Path:
+    """Documents/VideoSpeedControl/Clip Speed Treatments – the default place for .cst files."""
+    docs = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or str(Path.home())
+    return preview_cache.treatments_folder(Path(docs))
 
 
 @dataclass
@@ -180,6 +189,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Detecting encoders…")
         self.clip_signals = workers.ClipSignals(self)
         self.clip_signals.probed.connect(self._probed)
+        self.clip_signals.identified.connect(self._identified)
         self.clip_signals.scanned.connect(self._scanned)
         self.clip_signals.analysed.connect(self._analysed)
         self.clip_signals.failed.connect(self._failed)
@@ -200,6 +210,8 @@ class MainWindow(QMainWindow):
         self.encoder_signals.failed.connect(
             lambda msg: self.statusBar().showMessage(f"Encoder detection failed: {msg}"))
         workers.start(workers.EncoderDetector(self.encoder_signals))
+        # stored previews nobody needs are removed after 2 minutes, when nothing heavy runs
+        QTimer.singleShot(PREVIEW_CLEANUP_DELAY_MS, self._clean_previews)
 
     def closeEvent(self, event) -> None:
         if self._batch:
@@ -281,6 +293,34 @@ class MainWindow(QMainWindow):
 
     def _clip(self, path: Path) -> Clip | None:
         return next((c for c in self.model.clips if c.path == path), None)
+
+    def _identified(self, path, fingerprint: str) -> None:
+        clip = self._clip(path)
+        if clip:
+            clip.fingerprint = fingerprint
+
+    def _busy(self) -> bool:
+        """An export, a test encode, a preview build or a keyframe analysis is running."""
+        return bool(self._batch or self._tests or any(
+            c.status in (Status.PROBING, Status.SCANNING)
+            or (c.status == Status.READY and (not c.proxy_done or c.joins is None))
+            for c in self.model.clips if not c.removed))
+
+    def _clean_previews(self) -> None:
+        """Rule (user, 0.93): keep the previews of clips in the list, in the batch list or with a
+        .cst file; delete the others – postponed by 30 s while something heavy runs."""
+        if self._busy():
+            QTimer.singleShot(PREVIEW_CLEANUP_RETRY_MS, self._clean_previews)
+            return
+        in_use = {c.fingerprint for c in self.model.clips if c.fingerprint}
+        in_use |= {e.clip.fingerprint for e in self.batch_entries if e.clip.fingerprint}
+        folder = treatments_folder()
+
+        def work():
+            cache = preview_cache.PreviewCache()
+            n = cache.cleanup(in_use, cache.cst_fingerprints(folder))
+            print(f"preview clean-up: {n} removed, {cache.total_bytes() // 1_000_000} MB kept")
+        threading.Thread(target=work, daemon=True).start()
 
     def _probed(self, path, info) -> None:
         clip = self._clip(path)
@@ -601,8 +641,10 @@ class MainWindow(QMainWindow):
         if not clip or clip.status != Status.READY:
             self.statusBar().showMessage("Select a loaded clip to save its treatment", 5000)
             return
+        folder = treatments_folder()            # Documents/VideoSpeedControl/Clip Speed Treatments
+        folder.mkdir(parents=True, exist_ok=True)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Clip Speed Treatment", str(clip.path.with_suffix(treatment.SUFFIX)),
+            self, "Save Clip Speed Treatment", str(folder / (clip.path.stem + treatment.SUFFIX)),
             CST_FILTER)
         if not path:
             return
@@ -616,6 +658,11 @@ class MainWindow(QMainWindow):
         except OSError as e:
             QMessageBox.warning(self, "Save Clip Speed Treatment", f"Could not save {target.name}:\n{e}")
             return
+        if target.parent.resolve() != folder.resolve():      # elsewhere: keep its preview too
+            try:
+                preview_cache.PreviewCache().remember_cst(target)
+            except OSError:
+                pass
         n = len(clip.segments)
         self.statusBar().showMessage(f"Saved {target.name} ({n} section{'s' * (n != 1)}, trim "
                                      "and output settings)", 6000)

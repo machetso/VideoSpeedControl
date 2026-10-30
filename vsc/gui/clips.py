@@ -64,6 +64,7 @@ class Clip:
     proxy_step: int = 1
     proxy_done: bool = False
     joins: list | None = None                         # smart re-encode: safe keyframes
+    fingerprint: str | None = None                    # content identity (stored preview, .cst)
     _smart_frames: FrameMap | None = None
     # section edits: [(description, sections before the edit)], newest last
     undo_steps: list = field(default_factory=list)

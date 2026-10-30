@@ -21,7 +21,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QImage
 
-from ..core import encoders, ffmpeg_bin, playback, preview, rife, smart
+from ..core import encoders, ffmpeg_bin, playback, preview, preview_cache, rife, smart, treatment
 from ..core.probe import probe, scan_frames
 
 
@@ -36,6 +36,7 @@ def _emit(signal, *args) -> bool:
 
 class ClipSignals(QObject):
     probed = Signal(object, object)    # path, MediaInfo
+    identified = Signal(object, str)   # path, content fingerprint (finds its stored preview)
     scanned = Signal(object, object)   # path, FrameMap
     analysed = Signal(object, object)  # path, safe join keyframes for smart re-encode (list)
     failed = Signal(object, str)       # path, message
@@ -50,17 +51,38 @@ class ClipLoader(QRunnable):
         self.signals = signals
 
     def run(self) -> None:
+        cache = preview_cache.PreviewCache()
         try:
             info = probe(self.path)
             _emit(self.signals.probed, self.path, info)
-            frames = scan_frames(self.path, info.stream_index)
+            try:
+                fp = treatment.fingerprint(self.path)
+                _emit(self.signals.identified, self.path, fp)
+            except OSError:
+                fp = None
+            frames = cache.load_frames(fp) if fp else None          # stored preview (0.93)
+            if frames is None:
+                frames = scan_frames(self.path, info.stream_index)
+                if fp:
+                    try:
+                        cache.save_frames(fp, frames)
+                    except OSError:
+                        pass
             _emit(self.signals.scanned, self.path, frames)
         except Exception as e:  # noqa: BLE001 – any failure is shown on the clip row
             _emit(self.signals.failed, self.path, str(e))
             return
         if smart.unavailable_reason(info) is None:
             try:     # reads the whole bitstream – after the clip is usable
-                _emit(self.signals.analysed, self.path, smart.join_points(self.path, info, frames))
+                joins = cache.load_joins(fp, frames.count) if fp else None
+                if joins is None:
+                    joins = smart.join_points(self.path, info, frames)
+                    if fp:
+                        try:
+                            cache.save_joins(fp, frames.count, joins)
+                        except OSError:
+                            pass
+                _emit(self.signals.analysed, self.path, joins)
             except Exception:  # noqa: BLE001 – smart re-encode just stays unavailable
                 _emit(self.signals.analysed, self.path, [])
 
@@ -233,17 +255,35 @@ class ThumbnailLoader(QRunnable):
 
     def run(self) -> None:
         info, frames = self.clip.info, self.clip.frames
+        fp = getattr(self.clip, "fingerprint", None)
+        cache = preview_cache.PreviewCache()
+        stored = cache.load_thumbs(fp, frames.count) if fp else None     # stored preview (0.93)
+        if stored is not None and len(stored) == THUMB_COUNT:
+            for slot, (index, data) in enumerate(stored):
+                if not data:
+                    continue
+                if not _emit(self.signals.thumbnail, self.clip, slot, index, QImage.fromData(data, "BMP")):
+                    return
+            return
         size = preview.fit_size(info, THUMB_HEIGHT * 4, THUMB_HEIGHT)
+        made = []
         for slot, index in enumerate(preview.thumbnail_frames(frames, THUMB_COUNT)):
             if self.clip.removed:
                 return
             try:
                 data = preview.grab_frame(info, frames, index, size, accurate=False)
             except Exception:  # noqa: BLE001 – a missing thumbnail is not worth an error
+                made.append((index, b""))
                 continue
+            made.append((index, data))
             if not _emit(self.signals.thumbnail, self.clip, slot, index,
                          QImage.fromData(data, "BMP")):
                 return
+        if fp:
+            try:
+                cache.save_thumbs(fp, frames.count, made)
+            except OSError:
+                pass
 
 
 class ProxySignals(QObject):
@@ -254,7 +294,11 @@ _proxy_lock = threading.Lock()       # one preview copy at a time – they are C
 
 
 class ProxyLoader(QRunnable):
-    """Small JPEG copy of every frame (clip.proxy), so scrubbing shows pictures at once."""
+    """Small JPEG copy of every frame (clip.proxy), so scrubbing shows pictures at once.
+
+    Stored previews (0.93): chunks kept in the cache are loaded, only the missing ones are
+    decoded (from their keyframe) and each is stored as soon as it is complete.
+    """
 
     def __init__(self, clip, signals: ProxySignals):
         super().__init__()
@@ -265,30 +309,72 @@ class ProxyLoader(QRunnable):
             clip = self.clip
             if clip.removed:
                 return
-            step = preview.proxy_step(clip.frames)
+            frames = clip.frames
+            step = preview.proxy_step(frames)
             clip.proxy_step = step
-            clip.proxy = [None] * -(-clip.frames.count // step)
-            proc = subprocess.Popen(preview.proxy_args(clip.info, clip.frames),
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                    stdin=subprocess.DEVNULL, **ffmpeg_bin.POPEN_FLAGS)
-            buffer, n, last = bytearray(), 0, time.monotonic()
-            try:
-                while not clip.removed:
-                    block = proc.stdout.read(1 << 16)
-                    if not block:
-                        break
-                    buffer += block
-                    for jpeg in preview.split_jpegs(buffer):
-                        if n < len(clip.proxy):
-                            clip.proxy[n] = jpeg
-                        n += 1
-                    if time.monotonic() - last > 0.5:
-                        last = time.monotonic()
-                        if not _emit(self.signals.progress, clip):
+            clip.proxy = [None] * -(-frames.count // step)
+            w, h = preview.fit_size(clip.info, *preview.PROXY_SIZE)
+            fp = getattr(clip, "fingerprint", None)
+            cache = preview_cache.PreviewCache() if fp else None
+            parts = preview_cache.chunks(frames)
+            header = lambda a, b: (preview_cache.VERSION, frames.count, w, h, step, a, b,  # noqa: E731
+                                   preview.PROXY_QUALITY)
+            wanted = {a: [f for f in range(a, b) if f % step == 0] for a, b in parts}
+            missing = []
+            for a, b in parts:
+                entries = cache.load_chunk(fp, header(a, b), a) if cache else None
+                if entries is not None and [f for f, _ in entries] == wanted[a]:
+                    for f, jpeg in entries:
+                        clip.proxy[f // step] = jpeg
+                else:
+                    missing.append((a, b))
+            if cache and len(missing) < len(parts):
+                cache.touch(fp)
+            _emit(self.signals.progress, clip)
+            runs = []                                    # consecutive missing chunks together
+            for a, b in missing:
+                if runs and runs[-1][1] == a:
+                    runs[-1] = (runs[-1][0], b)
+                else:
+                    runs.append((a, b))
+            chunk_of = {f: a for a, b in parts for f in wanted[a]}
+            left = {a: len(wanted[a]) for a, _ in missing}
+            last = time.monotonic()
+            for ra, rb in runs:
+                if clip.removed:
+                    break
+                selected = [f for f in range(ra, rb) if f % step == 0]
+                proc = subprocess.Popen(preview.proxy_args(clip.info, frames, ra, rb),
+                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                        stdin=subprocess.DEVNULL, **ffmpeg_bin.POPEN_FLAGS)
+                buffer, n = bytearray(), 0
+                try:
+                    while not clip.removed:
+                        block = proc.stdout.read(1 << 16)
+                        if not block:
                             break
-            finally:
-                proc.kill()
-                proc.wait()
+                        buffer += block
+                        for jpeg in preview.split_jpegs(buffer):
+                            if n < len(selected):
+                                f = selected[n]
+                                clip.proxy[f // step] = jpeg
+                                a = chunk_of[f]
+                                left[a] -= 1
+                                if left[a] == 0 and cache:      # chunk complete: store it
+                                    b = next(e for s, e in parts if s == a)
+                                    try:
+                                        cache.save_chunk(fp, header(a, b), a,
+                                                         [(g, clip.proxy[g // step]) for g in wanted[a]])
+                                    except OSError:
+                                        pass
+                            n += 1
+                        if time.monotonic() - last > 0.5:
+                            last = time.monotonic()
+                            if not _emit(self.signals.progress, clip):
+                                break
+                finally:
+                    proc.kill()
+                    proc.wait()
             clip.proxy_done = True
             _emit(self.signals.progress, clip)
 
