@@ -30,6 +30,8 @@ Windows and Linux.
   guide, F1) and as [PDF](vsc/docs/VideoSpeedControl_Manual.pdf)
 - Feature set and milestones: [SCOPE.md](SCOPE.md)
 
+What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
 ## Setup
 
 ```bash
