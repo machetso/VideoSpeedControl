@@ -245,6 +245,15 @@
   "Close & return to app": "yISoQmoH 'ej ghunDaq yIchegh",
   "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "ghogh HablI' vam %s chenqa'moHwI' ghajbe' – %d×%d, %s fps. 'ay'mey chenqa'moHlaHbe' Smart. chenqa'moH yIlo' pagh lel mIllogh Do yIghIjmoH.",
   "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "ghogh HablI' vam chenqa'moHwI' ghajbe' – %d×%d, %s fps. lel mIllogh Do QIt yIwIv.",
-  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "ghogh HablI' vam %s chenqa'moHwI' ghajbe' – %d×%d, %s fps. latlh Codec, mIllogh tIn, Do ghap yIwIv."
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "ghogh HablI' vam %s chenqa'moHwI' ghajbe' – %d×%d, %s fps. latlh Codec, mIllogh tIn, Do ghap yIwIv.",
+  "Your slow motion, your way": "QIt vIH HaSta – Dalmo'bogh",
+  "Many smartphones record slow motion but decide for you which part plays slowly. With VideoSpeedControl, you decide.": "QIt vIH HaSta chenmoH ghogh HablI'mey law', 'ach 'ay' QIt wIv chaH. VideoSpeedControl Dalo'DI', SoH wIv.",
+  "Pick a video and mark one or more sections to play in slow motion, at normal speed or faster – for example, the jump in slow motion and the run-up in real time. The transitions between speeds are smoothed automatically. Use the yellow brackets to trim the start and end.": "HaSta yIwIv 'ej 'ay'mey yIghItlh: QIt, motlh Do, Do'law' ghap – Supghew QIt, qet poH qu'. Do choHmey Qatlhbe'moHlu'. tIr SuD lo'DI', bI'reS Qav je yIpe'.",
+  "Just tap “%s” and your video is saved to your gallery as a new file. The original stays untouched. The sound is slowed down too, but keeps its natural pitch.": "“%s” yIHot neH; ghItlh chu' Daq choqlu' HaSta. choHbe' wa'DIch HaSta. QIt wab je, 'ach motlh wab pol.",
+  "You can save your edit as a Clip Speed Treatment and keep changing it later – even on a computer (currently Linux and Windows, macOS coming soon).": "Clip Speed Treatment Daq choHmey Dachoq 'ej tugh DachoHqa'laH – De'wI'Daq je (DaH Linux Windows je, tugh macOS).",
+  "This phone has no %s decoder, so it can't show or re-encode this clip.": "ghogh HablI' vam %s chenqa'moHwI' Sachbe'wI' ghajbe' – Clip vam cha'laHbe', chenqa'moHlaHbe'.",
+  "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "Clip vam %s Segh (10-bit ghap HDR) SachlaHbe' ghogh HablI' vam. luj 'ach cha'wI' chenqa'moHghach je.",
+  "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "%s Sachlaw' ghogh HablI' vam %d×%d neH, Clip vam %d×%d. luj 'ach cha'wI' chenqa'moHghach je.",
+  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "%d×%d, %s fps Sachlaw' ghogh HablI' vam, 'ach nom Sachbe'. cha'wI' ngaj, mIl Qagh, mIl je."
  }
 }

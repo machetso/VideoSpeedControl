@@ -261,6 +261,15 @@
   "Close & return to app": "סגירה וחזרה לאפליקציה",
   "This phone has no %s encoder for %d×%d at %s fps, so smart export can't re-encode the parts. Use re-encode or a lower output frame rate.": "בטלפון הזה אין מקודד %s עבור %d×%d ב-%s fps, ולכן Smart לא יכול לקודד מחדש את החלקים. השתמשו ב\"קידוד מחדש\" או בקצב פריימים נמוך יותר בפלט.",
   "This phone has no encoder for %d×%d at %s fps. Choose a lower output frame rate.": "בטלפון הזה אין מקודד עבור %d×%d ב-%s fps. בחרו קצב פריימים נמוך יותר בפלט.",
-  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "בטלפון הזה אין מקודד %s עבור %d×%d ב-%s fps. בחרו קודק, רזולוציה או קצב פריימים אחרים."
+  "This phone has no %s encoder for %d×%d at %s fps. Choose another codec, resolution or frame rate.": "בטלפון הזה אין מקודד %s עבור %d×%d ב-%s fps. בחרו קודק, רזולוציה או קצב פריימים אחרים.",
+  "Your slow motion, your way": "הילוך איטי בדיוק כמו שרציתם",
+  "Many smartphones record slow motion but decide for you which part plays slowly. With VideoSpeedControl, you decide.": "סמארטפונים רבים מצלמים בהילוך איטי, אבל מחליטים בעצמם איזה חלק יוצג לאט. עם VideoSpeedControl אתם מחליטים.",
+  "Pick a video and mark one or more sections to play in slow motion, at normal speed or faster – for example, the jump in slow motion and the run-up in real time. The transitions between speeds are smoothed automatically. Use the yellow brackets to trim the start and end.": "בחרו סרטון וסמנו קטע אחד או יותר שינוגנו בהילוך איטי, במהירות רגילה או מהר יותר – למשל את הקפיצה בהילוך איטי ואת התנופה בזמן אמת. המעברים בין המהירויות מוחלקים אוטומטית. בעזרת הסוגריים הצהובים חותכים את ההתחלה והסוף.",
+  "Just tap “%s” and your video is saved to your gallery as a new file. The original stays untouched. The sound is slowed down too, but keeps its natural pitch.": "מספיק להקיש על \"%s\" והסרטון נשמר בגלריה כקובץ חדש. המקור נשאר ללא שינוי. גם הצליל מואט, אבל שומר על הגובה הטבעי שלו.",
+  "You can save your edit as a Clip Speed Treatment and keep changing it later – even on a computer (currently Linux and Windows, macOS coming soon).": "אפשר לשמור את העריכה כ-Clip Speed Treatment ולהמשיך לשנות אותה מאוחר יותר, אפילו במחשב (כרגע Linux ו-Windows, macOS בקרוב).",
+  "This phone has no %s decoder, so it can't show or re-encode this clip.": "בטלפון הזה אין מפענח %s, ולכן אי אפשר להציג או לקודד מחדש את הקליפ הזה.",
+  "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "הקליפ הזה הוא גרסת %s (למשל 10 ביט או HDR) שהטלפון הזה לא יכול לפענח. התצוגה המקדימה והקידוד מחדש עלולים להיכשל.",
+  "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "הטלפון הזה מפענח %s רק עד %d×%d, והקליפ הזה הוא %d×%d. התצוגה המקדימה והקידוד מחדש עלולים להיכשל.",
+  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "הטלפון הזה לא יכול לפענח %d×%d ב-%s fps בזמן אמת. בניית התצוגה המקדימה תיקח יותר זמן, הניגון עלול לקפוץ והייצוא ייקח יותר זמן."
  }
 }

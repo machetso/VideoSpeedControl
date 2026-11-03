@@ -3,6 +3,20 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
+## 0.9.3.2 – 2026-11-03
+
+New version numbering: 0.93.1 is followed by 0.9.3.2.
+
+- *(Android)* **Decoder check when a clip is opened**: if this phone has no decoder for the
+  clip's codec, or its decoder can't handle the clip's profile, size or frame rate, a warning is
+  shown above the preview (the clip still opens). In all languages.
+- *(Android)* The menu behind the logo starts with a short text on what the app is for ("Your slow
+  motion, your way"), in all languages.
+- *(Android)* **User guide as PDF**, English and German (`android/docs/VideoSpeedControl_Android_Guide.pdf`,
+  `…_Anleitung.pdf`; text in `android/docs/manual.md` / `manual_de.md`, built by
+  `android/tools/build_manual.py`): Easy and Pro, with the Pro features in detail, logo on the
+  title page, licence and third-party notices at the end.
+
 ## 0.93.1 – 2026-10-30
 
 ### Other phones

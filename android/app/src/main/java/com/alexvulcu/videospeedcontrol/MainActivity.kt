@@ -240,6 +240,10 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 is ClipState.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
                 is ClipState.Loaded -> {
                     val edit = vm.edit ?: return@Column
+                    vm.decodeNote?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = if (vm.decodeSevere) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     PreviewPane(vm, s.info)
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Timeline(vm.shownEdit(edit), vm.playhead, vm.pendingStart, vm.selectedSection, vm.thumbs, vm.proxyProgress,

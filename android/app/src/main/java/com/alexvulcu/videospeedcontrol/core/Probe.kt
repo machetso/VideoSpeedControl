@@ -94,6 +94,7 @@ data class ClipInfo(
     val audioRate: Int?,
     val recorded: java.time.Instant?,  // container creation time
     val frames: FrameMap,
+    val videoProfile: Int? = null,  // MediaFormat KEY_PROFILE (decoder check), if the file says
 ) {
     /** > 1 if the file is already slowed down (recorded faster than it plays). */
     val slowmoFactor: Double?
@@ -171,6 +172,7 @@ object Probe {
                     audioRate = audioFmt?.intOrNull(MediaFormat.KEY_SAMPLE_RATE),
                     recorded = parseDate(meta.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)),
                     frames = frames,
+                    videoProfile = fmt.intOrNull(MediaFormat.KEY_PROFILE),
                 )
             } finally {
                 meta.release()

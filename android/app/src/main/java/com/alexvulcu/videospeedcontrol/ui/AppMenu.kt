@@ -77,6 +77,20 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
                 OutlinedButton(onClose) { Text(tr("← Back")) }          // top right: back to the app
             }
 
+            // what the app is for (user text, 0.93.1)
+            Text(tr("Your slow motion, your way"), style = MaterialTheme.typography.titleMedium)
+            Text(tr("Many smartphones record slow motion but decide for you which part plays slowly. " +
+                "With VideoSpeedControl, you decide."), style = MaterialTheme.typography.bodyMedium)
+            Text(tr("Pick a video and mark one or more sections to play in slow motion, at normal speed or faster – " +
+                "for example, the jump in slow motion and the run-up in real time. The transitions between speeds " +
+                "are smoothed automatically. Use the yellow brackets to trim the start and end."),
+                style = MaterialTheme.typography.bodyMedium)
+            Text(tr("Just tap “%s” and your video is saved to your gallery as a new file. The original stays " +
+                "untouched. The sound is slowed down too, but keeps its natural pitch.", tr("Save video")),
+                style = MaterialTheme.typography.bodyMedium)
+            Text(tr("You can save your edit as a Clip Speed Treatment and keep changing it later – even on a " +
+                "computer (currently Linux and Windows, macOS coming soon)."), style = MaterialTheme.typography.bodyMedium)
+
             Text(tr("Mode"), style = MaterialTheme.typography.titleMedium)
             ModeChoice(tr("Easy"), tr(EASY_INFO), selected = vm.easy) { vm.chooseEasy(true) }
             ModeChoice(tr("Pro"), tr(PRO_INFO), selected = !vm.easy) { vm.chooseEasy(false) }

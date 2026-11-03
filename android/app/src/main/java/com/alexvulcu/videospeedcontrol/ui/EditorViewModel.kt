@@ -15,6 +15,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.alexvulcu.videospeedcontrol.core.ClipEdit
 import com.alexvulcu.videospeedcontrol.core.ClipInfo
+import com.alexvulcu.videospeedcontrol.core.DecodeProblem
+import com.alexvulcu.videospeedcontrol.core.Decoders
 import com.alexvulcu.videospeedcontrol.core.ExportCancelled
 import com.alexvulcu.videospeedcontrol.core.FrameSource
 import com.alexvulcu.videospeedcontrol.core.LosslessExport
@@ -71,6 +73,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var clip by mutableStateOf<ClipState>(ClipState.None)
         private set
     var edit by mutableStateOf<ClipEdit?>(null)
+        private set
+    /** Why this phone may not decode the open clip (shown above the preview), or null. */
+    var decodeNote by mutableStateOf<String?>(null)
+        private set
+    /** [decodeNote] means the clip probably can't be shown / re-encoded (not only slower). */
+    var decodeSevere by mutableStateOf(false)
         private set
     var playhead by mutableStateOf(0)
         private set
@@ -345,9 +353,15 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         export = ExportState.Idle
         closeSource()
         edit = null
+        decodeNote = null
+        decodeSevere = false
         viewModelScope.launch {
             try {
                 val info = withContext(Dispatchers.IO) { Probe.probe(getApplication(), uri) }
+                withContext(Dispatchers.IO) { runCatching { Decoders.check(info) }.getOrNull() }?.let { p ->
+                    decodeNote = describe(p, info)
+                    decodeSevere = p.severe
+                }
                 clip = ClipState.Loaded(info)
                 edit = ClipEdit(info)
                 playhead = 0
@@ -369,9 +383,19 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 edit?.let { committed = it.trim to it.segments }
                 seek(0)
             } catch (e: Exception) {
-                clip = ClipState.Failed(e.message ?: e.toString())
+                clip = ClipState.Failed(listOfNotNull(decodeNote, e.message ?: e.toString()).joinToString("\n\n"))
             }
         }
+    }
+
+    private fun describe(p: DecodeProblem, info: ClipInfo): String = when (p) {
+        DecodeProblem.NoDecoder -> tr("This phone has no %s decoder, so it can't show or re-encode this clip.", info.codecName)
+        DecodeProblem.Profile -> tr("This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. " +
+            "The preview and re-encoding may fail.", info.codecName)
+        is DecodeProblem.Size -> tr("This phone decodes %s only up to %d×%d, this clip is %d×%d. " +
+            "The preview and re-encoding may fail.", info.codecName, p.maxWidth, p.maxHeight, info.width, info.height)
+        DecodeProblem.Rate -> tr("This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, " +
+            "playback may stutter and exports take longer.", info.width, info.height, fmtFps(info.fps.toDouble()))
     }
 
     private fun loadThumbs() {
