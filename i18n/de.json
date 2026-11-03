@@ -266,6 +266,41 @@
   "This phone has no %s decoder, so it can't show or re-encode this clip.": "Dieses Handy hat keinen %s-Decoder und kann diesen Clip daher weder anzeigen noch neu kodieren.",
   "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "Dieser Clip ist eine %s-Variante (zum Beispiel 10 Bit oder HDR), die dieses Handy nicht dekodieren kann. Vorschau und Neu-Kodieren können fehlschlagen.",
   "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "Dieses Handy dekodiert %s nur bis %d×%d, dieser Clip hat %d×%d. Vorschau und Neu-Kodieren können fehlschlagen.",
-  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "Dieses Handy kann %d×%d bei %s fps nicht in Echtzeit dekodieren. Die Vorschau braucht länger, die Wiedergabe kann ruckeln und Exporte dauern länger."
+  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "Dieses Handy kann %d×%d bei %s fps nicht in Echtzeit dekodieren. Die Vorschau braucht länger, die Wiedergabe kann ruckeln und Exporte dauern länger.",
+  "Convert videos (many at once) …": "Videos umwandeln (mehrere auf einmal) …",
+  "Convert to %s": "In %s umwandeln",
+  "Convert videos": "Videos umwandeln",
+  "Re-encode many videos or a whole folder at once – for example old AVI files to AV1 MP4. Length, frame rate, size and sound stay as they are.": "Viele Videos oder einen ganzen Ordner auf einmal neu kodieren – zum Beispiel alte AVI-Dateien in AV1-MP4. Länge, Bildrate, Größe und Ton bleiben, wie sie sind.",
+  "Convert videos …": "Videos umwandeln …",
+  "No videos found in this folder.": "In diesem Ordner wurden keine Videos gefunden.",
+  "Re-encodes many videos with the same settings – for example old AVI files. Length, frame rate, picture size and sound stay as they are. The new files are saved as MP4 in %s; the originals stay untouched.": "Kodiert viele Videos mit denselben Einstellungen neu – zum Beispiel alte AVI-Dateien. Länge, Bildrate, Bildgröße und Ton bleiben, wie sie sind. Die neuen Dateien werden als MP4 in %s gespeichert; die Originale bleiben unverändert.",
+  "＋ Videos": "＋ Videos",
+  "＋ Folder": "＋ Ordner",
+  "Clear list": "Liste leeren",
+  "Keep the sound": "Ton behalten",
+  "Convert": "Umwandeln",
+  "Can't be read: %s": "Nicht lesbar: %s",
+  "Reading …": "Wird gelesen …",
+  "Converting … %d %%": "Wird umgewandelt … %d %%",
+  "%d videos added": {
+   "one": "%d Video hinzugefügt",
+   "other": "%d Videos hinzugefügt"
+  },
+  "%d videos to convert": {
+   "one": "%d Video zum Umwandeln",
+   "other": "%d Videos zum Umwandeln"
+  },
+  "%d still being read": {
+   "one": "%d wird noch gelesen",
+   "other": "%d werden noch gelesen"
+  },
+  "%d can't be read": {
+   "one": "%d nicht lesbar",
+   "other": "%d nicht lesbar"
+  },
+  "Convert %d videos": {
+   "one": "%d Video umwandeln",
+   "other": "%d Videos umwandeln"
+  }
  }
 }

@@ -29,6 +29,7 @@ object ExportManager {
     data class Entry(
         val task: ExportTask,
         val inBatch: Boolean,
+        val convert: Boolean = false,        // "Convert videos" (own screen, not stored)
         val status: Status = Status.IDLE,
         val progress: Float = 0f,
         val output: String? = null,          // display name of the file written
@@ -82,9 +83,20 @@ object ExportManager {
 
     /** Export one task now (not part of the batch list). */
     fun exportNow(task: ExportTask) {
-        _entries.update { list -> list.filterNot { !it.inBatch && it.status != Status.RUNNING && it.status != Status.WAITING } +
+        _entries.update { list -> list.filterNot { !it.inBatch && !it.convert && it.status != Status.RUNNING && it.status != Status.WAITING } +
             Entry(task, inBatch = false, status = Status.WAITING) }
         startService()
+    }
+
+    /** Queue conversions ("Convert videos"); they run after what is already waiting. */
+    fun convert(tasks: List<ExportTask>) {
+        _entries.update { it + tasks.map { t -> Entry(t, inBatch = false, convert = true, status = Status.WAITING) } }
+        startService()
+    }
+
+    /** Forget finished conversions (the converted files stay). */
+    fun clearConversions(ids: Set<Long>) {
+        _entries.update { list -> list.filterNot { it.convert && it.task.id in ids && it.status != Status.RUNNING && it.status != Status.WAITING } }
     }
 
     /** Queue every batch entry that is not done yet. */
@@ -141,7 +153,7 @@ object ExportManager {
             val running = Exporter.prepare(ctx, e.task)
             cancelCurrent = running.cancel
             if (_entries.value.firstOrNull { it.task.id == id }?.status != Status.RUNNING) throw ExportCancelled()
-            val o = store.create(running.stem, running.extension, running.mime)
+            val o = store.create(running.stem, running.extension, running.mime, running.folder)
             out = o
             var last = 0L
             val frames = store.open(o).use { pfd ->

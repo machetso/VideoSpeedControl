@@ -107,7 +107,7 @@ object Audio {
     @OptIn(UnstableApi::class)
     fun render(context: Context, job: Timing, isCancelled: () -> Boolean, progress: (Float) -> Unit): Encoded? {
         val info = job.info
-        val ex = MediaExtractor()
+        val ex = Extractor()
         ex.setDataSource(context, info.uri, null)
         try {
             val track = (0 until ex.trackCount).firstOrNull {

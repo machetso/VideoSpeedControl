@@ -52,7 +52,7 @@ private const val PRO_INFO = "Everything in Easy, plus: frame rates and frame nu
 /** Menu behind the logo (user, 0.93): Easy / Pro with what each can do, the folders, the preview cache. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
+fun AppMenu(vm: EditorViewModel, onConvert: () -> Unit = {}, onClose: () -> Unit) {
     val ctx = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
     var refresh by remember { mutableStateOf(0) }
@@ -90,6 +90,12 @@ fun AppMenu(vm: EditorViewModel, onClose: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium)
             Text(tr("You can save your edit as a Clip Speed Treatment and keep changing it later – even on a " +
                 "computer (currently Linux and Windows, macOS coming soon)."), style = MaterialTheme.typography.bodyMedium)
+
+            // many files at once, nothing else changed (user request 2026-11-03)
+            Text(tr("Convert videos"), style = MaterialTheme.typography.titleMedium)
+            Text(tr("Re-encode many videos or a whole folder at once – for example old AVI files to AV1 MP4. " +
+                "Length, frame rate, size and sound stay as they are."), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onConvert) { Text(tr("Convert videos …")) }
 
             Text(tr("Mode"), style = MaterialTheme.typography.titleMedium)
             ModeChoice(tr("Easy"), tr(EASY_INFO), selected = vm.easy) { vm.chooseEasy(true) }

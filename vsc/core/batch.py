@@ -149,18 +149,21 @@ class Item:
 
 
 def plan(jobs: list[tuple[Job, list[str] | None]], folder: Path | None, pattern: str,
-         policy: str, additions: list | None = None) -> list[Item]:
+         policy: str, additions: list | None = None, *, folders: list[Path] | None = None,
+         names: list[str] | None = None) -> list[Item]:
     """Output path for every job. `folder` None = next to each source file.
 
     `additions`: per job the name addition keys (see ADDITIONS) appended to the pattern.
-    Names are unique within the batch too, and a source file is never overwritten.
+    `folders` / `names` (convert): per job the output folder / name instead of `folder` /
+    the pattern. Names are unique within the batch too, and a source file is never overwritten.
     """
     items: list[Item] = []
     taken: set[Path] = set()
     sources = {job.info.path for job, _ in jobs}
     for index, (job, pix_fmts) in enumerate(jobs, 1):
-        out_dir = folder or job.info.path.parent
-        name = render_name(pattern, job, index)
+        out_dir = (folders[index - 1] if folders else folder) or job.info.path.parent
+        name = (_UNSAFE.sub("_", names[index - 1]).strip(" .") or job.info.path.stem) if names \
+            else render_name(pattern, job, index)
         if additions and additions[index - 1]:
             name += addition(job, additions[index - 1])
         path, note, n = output_path(job, out_dir, name), "", 1

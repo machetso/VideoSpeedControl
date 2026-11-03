@@ -128,7 +128,8 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
     // it hands out numbers instead of the file names (PXL_….mp4 – needed for output names).
     var showGallery by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    if (showMenu) AppMenu(vm) { showMenu = false }
+    var showConvert by remember { mutableStateOf(false) }
+    if (showMenu) AppMenu(vm, onConvert = { showMenu = false; showConvert = true }) { showMenu = false }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             showGallery = false
@@ -143,13 +144,18 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
     LaunchedEffect(vm.message) {
         vm.message?.let { snackbar.showSnackbar(it, withDismissAction = true); vm.message = null }
     }
-    // notifications (export progress) – asked once, on the first export
-    val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.startExport() }
-    val onExport = {
-        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-            notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        else vm.startExport()
+    // notifications (export progress) – asked once, on the first export (or conversion)
+    var afterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        afterPermission?.invoke(); afterPermission = null
     }
+    val withNotifications: (() -> Unit) -> Unit = { action ->
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            afterPermission = action
+            notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else action()
+    }
+    val onExport = { withNotifications { vm.startExport() } }
     val loadCst = rememberLauncherForActivityResult(OpenInTreatments()) { uri ->
         if (uri != null) scope.launch {
             val text = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() } }
@@ -187,6 +193,12 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                 }
             },
         )
+    }
+    if (showConvert) {
+        androidx.activity.compose.BackHandler { showConvert = false }
+        com.alexvulcu.videospeedcontrol.ui.ConvertScreen(onClose = { showConvert = false },
+            onStart = { start -> withNotifications { start() } })
+        return
     }
     if (showGallery) {
         Surface(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -234,6 +246,7 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
             when (val s = vm.clip) {
                 ClipState.None -> {
                     Text(tr("Choose a clip – ideally a slow-motion recording."))
+                    OutlinedButton({ showConvert = true }) { Text(tr("Convert videos (many at once) …")) }
                     BatchCard(vm, choose)
                 }
                 ClipState.Loading -> CircularProgressIndicator()

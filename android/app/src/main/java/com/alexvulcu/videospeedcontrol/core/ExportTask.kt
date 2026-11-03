@@ -23,6 +23,7 @@ data class ExportTask(
         /** Short description like the desktop's batch.describe ("Smart, 3 sections (1 re-encoded)"). */
         fun describe(t: Treatment.Data): String {
             val s = t.settings
+            if (s.convert) return tr("Convert to %s", Convert.codecLabel(s.codec))
             val inTrim = t.segments.filter { it.start < (t.trim.end ?: Int.MAX_VALUE) && it.end > t.trim.start }
             val fps = "${LosslessJob.pyG(s.fps.toDouble(), 5)} fps"
             return when (s.mode) {
@@ -42,7 +43,8 @@ data class ExportTask(
 /** Builds the job for a task and runs it into an output file. */
 object Exporter {
     class Running(val cancel: () -> Unit, val run: (FileDescriptor, (Float) -> Unit) -> Int,
-                  val stem: String, val extension: String, val mime: String)
+                  val stem: String, val extension: String, val mime: String,
+                  val folder: String = OutputStore.RELATIVE_PATH)
 
     /** Probe the clip, check it is still the treatment's video, set up the matching export. */
     fun prepare(context: Context, task: ExportTask): Running {
@@ -76,7 +78,12 @@ object Exporter {
                 val x = SmartExport(context, job, sound)
                 Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, job.fileStem(), "mp4", "video/mp4")
             }
-            Treatment.Mode.REENCODE -> {
+            Treatment.Mode.REENCODE -> if (s.convert) {
+                val job = Convert.job(info, s.codec, s.quality)
+                val x = ReencodeExport(context, job, sound)
+                Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, Convert.cleanStem(info.name), "mp4", "video/mp4",
+                    Convert.FOLDER)
+            } else {
                 val job = ReencodeJob(info, s.fps, s.speed, t.trim, rampedSegments(t.segments, t.trim, info), s.codec, s.shortSide, s.quality)
                 val blockers = job.blockers()
                 if (blockers.isNotEmpty()) throw IllegalStateException(blockers.joinToString("; "))

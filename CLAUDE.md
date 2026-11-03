@@ -28,7 +28,7 @@ IDEAS.md – add new ones there instead of building them unasked.
   About), code in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
   `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
   MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
-  Version in `vsc/__init__.py` (0.9.3.2; Android versionName 0.9.3.2 / versionCode 5; numbering changed from 0.93.1 to 0.9.3.x on 2026-11-03, user request).
+  Version in `vsc/__init__.py` (0.9.4; Android versionName 0.9.4 / versionCode 6; numbering changed from 0.93.1 to 0.9.3.x on 2026-11-03, user request).
 - Milestone 7 – packaging (in progress, 2026-10-26). User decisions: GitHub Actions, private
   repo, Inno Setup installer (per-user install, admin optional), build on tag `v*` + manual,
   AV2 NOT on Windows yet (later: build AVM with MSVC in the workflow).
@@ -41,6 +41,20 @@ IDEAS.md – add new ones there instead of building them unasked.
 - 2026-10-27: Windows build confirmed working by the user. New (user request, committed
   5144974): .cst treatments, multi-step undo / redo of sections, batch entry
   double-click (edit / another encoding) with name-addition checkboxes – see Layout.
+- CONVERT VIDEOS (2026-11-03, user request, both; user chose "simple convert" + default AV1 MP4):
+  user's case = 43 old DivX AVIs (~/Videos/Der Maulwurf: MPEG-4 part 2 Simple, 368×208, 10 fps,
+  MP3 22.05 kHz, names like "x.avi.MP4.AVI"). Desktop `core/convert.py` (find_videos, clean_stem,
+  make_job = fps of the file + speed None + mp4, plan → `batch.plan(folders=, names=)`),
+  `gui/convert_dialog.py` (own window, QSettings convert/*, rows already converted are skipped),
+  main window: toolbar "Convert videos…", folder drop adds its videos. Android: `core/Extractor.kt`
+  = MediaExtractor drop-in that falls back to Media3 `MediaExtractorCompat` (media3-inspector) –
+  Android has NO AVI extractor; MediaMetadataRetriever can't read AVI either (Probe / FrameSource
+  now tolerate that). `core/Convert.kt` (pickCodec: AV1 chip → software AV1 lowest complexity →
+  HEVC → H.264; Pixel AV1 chip needs ≥ 256 px; min bitrate 200 kbit/s at High instead of 1 Mbit/s),
+  `Treatment.Settings.convert`, ExportManager entries `convert = true` (not stored, not the
+  editor's single export), output Movies/VideoSpeedControl/Converted/. UI `ui/ConvertScreen.kt`
+  (ConvertList singleton; SAF multi-select + folder tree). Device test `ConvertDeviceTest` needs
+  synth_divx.avi (command in its KDoc).
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 - ANDROID LANGUAGES (0.93): `ui/I18n.kt` – `tr("English text", args…)` / `trp(one, other, n, args…)`
   look the text up in `i18n/<code>.json` (repo top level, packed as assets via

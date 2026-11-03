@@ -20,11 +20,12 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHeaderView, QLab
                                QMenu, QMessageBox, QSizePolicy, QSplitter, QTableView, QTabWidget,
                                QToolBar, QToolButton, QWidget)
 
-from ..core import batch, preview_cache, testencode, treatment
+from ..core import batch, convert, preview_cache, testencode, treatment
 from ..core.command import CommandError
 from ..core.formats import CODECS_BY_KEY, COPY
 from ..core.job import Job
 from .clips import Clip, ClipModel, Status, fmt_bytes, fmt_seconds
+from .convert_dialog import ConvertDialog
 from .export_panel import ExportPanel
 from .info_panel import InfoPanel
 from .settings_panel import SettingsPanel
@@ -33,8 +34,8 @@ from .batch_dialogs import EDIT, NEW, AdditionDialog, ask_entry_action
 from .timeline import PreviewPanel
 from . import help, workers
 
-VIDEO_FILTER = ("Video files (*.mp4 *.mov *.mkv *.avi *.mts *.m2ts *.mxf *.webm *.m4v *.wmv "
-                "*.flv *.360 *.lrv *.MP4 *.MOV *.MKV *.AVI *.MTS);;"
+_VIDEO_GLOBS = " ".join(f"*{e} *{e.upper()}" for e in sorted(convert.VIDEO_EXTENSIONS))
+VIDEO_FILTER = (f"Video files ({_VIDEO_GLOBS});;"
                 "Clip Speed Treatments (*.cst);;All files (*)")
 CST_FILTER = "Clip Speed Treatments (*.cst);;All files (*)"
 PREVIEW_CLEANUP_DELAY_MS = 120_000      # the app runs 2 minutes before stored previews are cleaned up
@@ -156,6 +157,14 @@ class MainWindow(QMainWindow):
                             "as a clip speed treatment (.cst) (Ctrl+S)")
         for action in (load_cst, save_cst):
             toolbar.addAction(action)
+        toolbar.addSeparator()
+        convert_action = QAction("Convert videos…", self, shortcut=QKeySequence("Ctrl+Shift+C"),
+                                 triggered=lambda: self.show_convert())
+        convert_action.setToolTip("Re-encode many videos or whole folders at once – same length, "
+                                  "frame rate and size, e.g. old AVI files to AV1 MP4 "
+                                  "(Ctrl+Shift+C)")
+        toolbar.addAction(convert_action)
+        self._convert: ConvertDialog | None = None
 
         # Help: a button with a menu at the right end of the same row
         guide = QAction("User guide", self, shortcut=QKeySequence.HelpContents,
@@ -246,12 +255,26 @@ class MainWindow(QMainWindow):
     def show_about(self) -> None:
         help.AboutDialog(self).exec()
 
+    def show_convert(self, paths=None) -> ConvertDialog:
+        if self._convert is None:
+            self._convert = ConvertDialog(self, lambda: self.settings.encoders)
+        if paths:
+            self._convert.add_paths(paths)
+        self._convert.show()
+        self._convert.raise_()
+        self._convert.activateWindow()
+        return self._convert
+
     def add_dialog(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "Add video files", "", VIDEO_FILTER)
         self.add_files([Path(f) for f in files])
 
     def add_files(self, paths: list[Path]) -> None:
         first_new = None
+        # a dropped folder adds the videos inside it (with sub-folders)
+        folders = [p for p in paths if p.is_dir()]
+        if folders:
+            paths = [p for p in paths if not p.is_dir()] + convert.find_videos(folders)
         for path in paths:
             if path.is_dir():
                 continue
@@ -375,6 +398,8 @@ class MainWindow(QMainWindow):
             text += f" · RIFE unavailable: {rife_status.reason}"
         self.statusBar().showMessage(text)
         self.settings.set_encoders(status, rife_status)
+        if self._convert is not None:
+            self._convert.refresh_codecs()
         self._plan_export()
 
     # ------------------------------------------------------------------ selection / settings

@@ -299,7 +299,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             ExportManager.entries.collect { list ->
                 batch = list.filter { it.inBatch }
-                val single = list.lastOrNull { !it.inBatch }
+                val single = list.lastOrNull { !it.inBatch && !it.convert }
                 export = when (single?.status) {
                     null, ExportManager.Status.IDLE, ExportManager.Status.CANCELLED -> ExportState.Idle
                     ExportManager.Status.WAITING -> ExportState.Running(0f)
@@ -869,7 +869,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelExport() {
-        ExportManager.entries.value.lastOrNull { !it.inBatch }?.let { ExportManager.cancel(it.task.id) }
+        ExportManager.entries.value.lastOrNull { !it.inBatch && !it.convert }?.let { ExportManager.cancel(it.task.id) }
     }
 
     fun addToBatch() = withTask {

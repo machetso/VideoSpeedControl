@@ -266,6 +266,41 @@
   "This phone has no %s decoder, so it can't show or re-encode this clip.": "Este teléfono no tiene decodificador %s, así que no puede mostrar ni recodificar este clip.",
   "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "Este clip es una variante de %s (por ejemplo, 10 bits o HDR) que este teléfono no puede decodificar. La vista previa y la recodificación pueden fallar.",
   "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "Este teléfono decodifica %s solo hasta %d×%d, este clip es de %d×%d. La vista previa y la recodificación pueden fallar.",
-  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "Este teléfono no puede decodificar %d×%d a %s fps en tiempo real. La vista previa tarda más en crearse, la reproducción puede ir a saltos y las exportaciones tardan más."
+  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "Este teléfono no puede decodificar %d×%d a %s fps en tiempo real. La vista previa tarda más en crearse, la reproducción puede ir a saltos y las exportaciones tardan más.",
+  "Convert videos (many at once) …": "Convertir vídeos (varios a la vez) …",
+  "Convert to %s": "Convertir a %s",
+  "Convert videos": "Convertir vídeos",
+  "Re-encode many videos or a whole folder at once – for example old AVI files to AV1 MP4. Length, frame rate, size and sound stay as they are.": "Recodifica muchos vídeos o una carpeta entera a la vez, por ejemplo archivos AVI antiguos a MP4 con AV1. La duración, la velocidad de fotogramas, el tamaño y el sonido no cambian.",
+  "Convert videos …": "Convertir vídeos …",
+  "No videos found in this folder.": "No se encontraron vídeos en esta carpeta.",
+  "Re-encodes many videos with the same settings – for example old AVI files. Length, frame rate, picture size and sound stay as they are. The new files are saved as MP4 in %s; the originals stay untouched.": "Recodifica muchos vídeos con los mismos ajustes, por ejemplo archivos AVI antiguos. La duración, la velocidad de fotogramas, el tamaño de imagen y el sonido no cambian. Los nuevos archivos se guardan como MP4 en %s; los originales no se modifican.",
+  "＋ Videos": "＋ Vídeos",
+  "＋ Folder": "＋ Carpeta",
+  "Clear list": "Vaciar lista",
+  "Keep the sound": "Conservar el sonido",
+  "Convert": "Convertir",
+  "Can't be read: %s": "No se puede leer: %s",
+  "Reading …": "Leyendo …",
+  "Converting … %d %%": "Convirtiendo … %d %%",
+  "%d videos added": {
+   "one": "%d vídeo añadido",
+   "other": "%d vídeos añadidos"
+  },
+  "%d videos to convert": {
+   "one": "%d vídeo por convertir",
+   "other": "%d vídeos por convertir"
+  },
+  "%d still being read": {
+   "one": "%d se está leyendo todavía",
+   "other": "%d se están leyendo todavía"
+  },
+  "%d can't be read": {
+   "one": "%d no se puede leer",
+   "other": "%d no se pueden leer"
+  },
+  "Convert %d videos": {
+   "one": "Convertir %d vídeo",
+   "other": "Convertir %d vídeos"
+  }
  }
 }

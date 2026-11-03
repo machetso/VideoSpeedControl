@@ -270,6 +270,46 @@
     "This phone has no %s decoder, so it can't show or re-encode this clip.": "Acest telefon nu are un decodor %s, așa că nu poate afișa sau recodifica acest clip.",
     "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "Acest clip este o variantă %s (de exemplu 10 biți sau HDR) pe care acest telefon nu o poate decoda. Previzualizarea și recodificarea pot eșua.",
     "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "Acest telefon decodează %s doar până la %d×%d, acest clip are %d×%d. Previzualizarea și recodificarea pot eșua.",
-    "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "Acest telefon nu poate decoda %d×%d la %s fps în timp real. Previzualizarea se creează mai greu, redarea poate sacada, iar exporturile durează mai mult."
+    "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "Acest telefon nu poate decoda %d×%d la %s fps în timp real. Previzualizarea se creează mai greu, redarea poate sacada, iar exporturile durează mai mult.",
+    "Convert videos (many at once) …": "Convertește videoclipuri (mai multe deodată) …",
+    "Convert to %s": "Convertește în %s",
+    "Convert videos": "Convertește videoclipuri",
+    "Re-encode many videos or a whole folder at once – for example old AVI files to AV1 MP4. Length, frame rate, size and sound stay as they are.": "Recodează multe videoclipuri sau un folder întreg deodată – de exemplu fișiere AVI vechi în MP4 AV1. Durata, rata de cadre, dimensiunea și sunetul rămân la fel.",
+    "Convert videos …": "Convertește videoclipuri …",
+    "No videos found in this folder.": "Nu s-au găsit videoclipuri în acest folder.",
+    "Re-encodes many videos with the same settings – for example old AVI files. Length, frame rate, picture size and sound stay as they are. The new files are saved as MP4 in %s; the originals stay untouched.": "Recodează multe videoclipuri cu aceleași setări – de exemplu fișiere AVI vechi. Durata, rata de cadre, dimensiunea imaginii și sunetul rămân la fel. Fișierele noi sunt salvate ca MP4 în %s; originalele rămân neatinse.",
+    "＋ Videos": "＋ Videoclipuri",
+    "＋ Folder": "＋ Folder",
+    "Clear list": "Golește lista",
+    "Keep the sound": "Păstrează sunetul",
+    "Convert": "Convertește",
+    "Can't be read: %s": "Nu poate fi citit: %s",
+    "Reading …": "Se citește …",
+    "Converting … %d %%": "Se convertește … %d %%",
+    "%d videos added": {
+      "one": "%d videoclip adăugat",
+      "few": "%d videoclipuri adăugate",
+      "other": "%d de videoclipuri adăugate"
+    },
+    "%d videos to convert": {
+      "one": "%d videoclip de convertit",
+      "few": "%d videoclipuri de convertit",
+      "other": "%d de videoclipuri de convertit"
+    },
+    "%d still being read": {
+      "one": "%d încă se citește",
+      "few": "%d încă se citesc",
+      "other": "%d încă se citesc"
+    },
+    "%d can't be read": {
+      "one": "%d nu poate fi citit",
+      "few": "%d nu pot fi citite",
+      "other": "%d nu pot fi citite"
+    },
+    "Convert %d videos": {
+      "one": "Convertește %d videoclip",
+      "few": "Convertește %d videoclipuri",
+      "other": "Convertește %d de videoclipuri"
+    }
   }
 }

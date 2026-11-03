@@ -128,7 +128,7 @@ object Smart {
     fun joinPoints(context: Context, info: ClipInfo): List<Int> {
         if (!supported(info.videoMime)) return emptyList()
         val hevc = info.videoMime == MediaFormat.MIMETYPE_VIDEO_HEVC
-        val ex = MediaExtractor()
+        val ex = Extractor()
         try {
             ex.setDataSource(context, info.uri, null)
             val track = (0 until ex.trackCount).first {

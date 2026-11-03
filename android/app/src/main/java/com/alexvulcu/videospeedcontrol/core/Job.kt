@@ -144,6 +144,10 @@ data class ReencodeJob(
     /** Short side of the output (e.g. 1080), null = source size. */
     val shortSide: Int? = null,
     val quality: Quality = Quality.HIGH,
+    /** Lowest bitrate; Convert sets a lower one for small old videos (else they grow). */
+    val minBitrate: Int = 1_000_000,
+    /** Software AV1 at its lowest complexity (Convert: videos the AV1 chip can't take). */
+    val fastest: Boolean = false,
 ) : Timing {
     override val baseRate: Rational get() = speedSetting?.let { info.realFps * it } ?: fps
 
@@ -163,7 +167,7 @@ data class ReencodeJob(
         get() {
             val (w, h) = outputSize()
             val bps = w.toDouble() * h * fps.toDouble() * quality.bitsPerPixel * codec.bitsFactor
-            return bps.coerceIn(1e6, 200e6).toInt()
+            return bps.coerceIn(minBitrate.toDouble(), 200e6).toInt()
         }
 
     fun blockers(): List<String> = buildList {

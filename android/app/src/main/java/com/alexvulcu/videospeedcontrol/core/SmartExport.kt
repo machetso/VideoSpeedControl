@@ -61,7 +61,7 @@ class SmartExport(
         val audioShare = if (withAudio && info.audio != null) 0.15f else 0f
         val audio = if (audioShare > 0) Audio.render(context, job, { cancelled }) { progress(it * audioShare) } else null
 
-        val ex = MediaExtractor()
+        val ex = Extractor()
         ex.setDataSource(context, info.uri, null)
         val track = (0 until ex.trackCount).first {
             ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
@@ -135,7 +135,7 @@ class SmartExport(
         val offsetUs = (offset * Rational.of(1_000_000)).roundHalfEven()
         val startUs = fm.ptsUs[part.start]
         val endUs = if (part.end < fm.count) fm.ptsUs[part.end] else Long.MAX_VALUE
-        val ex = MediaExtractor()
+        val ex = Extractor()
         try {
             ex.setDataSource(context, info.uri, null)
             val track = (0 until ex.trackCount).first {
@@ -211,7 +211,7 @@ class SmartExport(
         val surface = encoder.createInputSurface()
         encoder.start()
         val gl = GlFrameGrabber(width, height, surface)
-        val ex = MediaExtractor()
+        val ex = Extractor()
         var decoder: MediaCodec? = null
         var config: ByteArray? = null                  // CODEC_CONFIG buffer (if not prepended)
         var written = 0

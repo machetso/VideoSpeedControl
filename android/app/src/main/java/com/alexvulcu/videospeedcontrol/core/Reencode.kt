@@ -66,14 +66,14 @@ class ReencodeExport(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
         sourceVideoFormat(context, info)?.let { copyColorAspects(it, encFormat) }   // tagged like the source
-        val encName = Encoders.pick(job.codec, encFormat)
+        val encName = Encoders.pick(job.codec, encFormat, job.fastest)
             ?: error("No ${job.codec.label} encoder for ${w}×$h at ${fps.toDouble()} fps on this phone")
 
         val encThread = HandlerThread("vsc-encoder").apply { start() }
         val decThread = HandlerThread("vsc-decoder").apply { start() }
         val muxer = MediaMuxer(fd, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         val encoder = MediaCodec.createByCodecName(encName)
-        val ex = MediaExtractor()
+        val ex = Extractor()
         var decoder: MediaCodec? = null
         var gl: GlFrameGrabber? = null
         val decoded = LinkedBlockingQueue<Decoded>()
@@ -285,7 +285,8 @@ object Encoders {
     private fun probeFormat(mime: String, width: Int, height: Int, fps: Double) =
         MediaFormat.createVideoFormat(mime, width, height).apply { setFloat(MediaFormat.KEY_FRAME_RATE, fps.toFloat()) }
 
-    fun pick(codec: VideoCodec, format: MediaFormat): String? {
+    /** [fastest]: AV1 best (software) at its lowest complexity instead of the highest. */
+    fun pick(codec: VideoCodec, format: MediaFormat, fastest: Boolean = false): String? {
         val all = candidates(codec, format)
         val info = when (codec) {
             VideoCodec.AV1_BEST -> all.firstOrNull { it.isSoftwareOnly } ?: all.firstOrNull()
@@ -294,7 +295,8 @@ object Encoders {
         if (codec == VideoCodec.AV1_FAST || codec == VideoCodec.AV1_BEST) {
             info.getCapabilitiesForType(codec.mime).encoderCapabilities?.complexityRange?.let { range ->
                 if (range.upper > range.lower) {
-                    format.setInteger(MediaFormat.KEY_COMPLEXITY, if (codec == VideoCodec.AV1_BEST) range.upper else range.lower)
+                    format.setInteger(MediaFormat.KEY_COMPLEXITY,
+                        if (codec == VideoCodec.AV1_BEST && !fastest) range.upper else range.lower)
                 }
             }
         }

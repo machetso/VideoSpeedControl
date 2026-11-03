@@ -15,8 +15,8 @@ android {
         applicationId = "com.alexvulcu.videospeedcontrol"
         minSdk = 30
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.9.3.2"
+        versionCode = 6
+        versionName = "0.9.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -52,6 +52,7 @@ dependencies {
     implementation("androidx.media3:media3-effect:$media3")
     implementation("androidx.media3:media3-common:$media3")
     implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-inspector:$media3")   // MediaExtractorCompat: AVI etc. (core/Extractor.kt)
     implementation("androidx.media3:media3-ui-compose:$media3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 

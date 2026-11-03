@@ -24,7 +24,7 @@ fun copyColorAspects(from: MediaFormat, to: MediaFormat) {
 
 /** The source's video track format (null if unreadable). */
 fun sourceVideoFormat(context: Context, info: ClipInfo): MediaFormat? {
-    val ex = MediaExtractor()
+    val ex = Extractor()
     return try {
         ex.setDataSource(context, info.uri, null)
         (0 until ex.trackCount).map { ex.getTrackFormat(it) }
@@ -81,7 +81,7 @@ class LosslessExport(
         val (times, end) = info.frames.exactTimes(info.fps)
         val retime = Segments.retimer(job.pieces(), times, end)
 
-        val ex = MediaExtractor()
+        val ex = Extractor()
         val muxer = MediaMuxer(fd, container.muxerFormat)
         var started = false
         try {

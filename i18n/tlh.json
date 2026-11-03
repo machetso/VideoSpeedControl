@@ -254,6 +254,26 @@
   "This phone has no %s decoder, so it can't show or re-encode this clip.": "ghogh HablI' vam %s chenqa'moHwI' Sachbe'wI' ghajbe' – Clip vam cha'laHbe', chenqa'moHlaHbe'.",
   "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "Clip vam %s Segh (10-bit ghap HDR) SachlaHbe' ghogh HablI' vam. luj 'ach cha'wI' chenqa'moHghach je.",
   "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "%s Sachlaw' ghogh HablI' vam %d×%d neH, Clip vam %d×%d. luj 'ach cha'wI' chenqa'moHghach je.",
-  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "%d×%d, %s fps Sachlaw' ghogh HablI' vam, 'ach nom Sachbe'. cha'wI' ngaj, mIl Qagh, mIl je."
+  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "%d×%d, %s fps Sachlaw' ghogh HablI' vam, 'ach nom Sachbe'. cha'wI' ngaj, mIl Qagh, mIl je.",
+  "Convert videos (many at once) …": "HaStamey tIchoHmoH (law' wa'logh) …",
+  "Convert to %s": "%svaD yIchoHmoH",
+  "Convert videos": "HaStamey tIchoHmoH",
+  "Re-encode many videos or a whole folder at once – for example old AVI files to AV1 MP4. Length, frame rate, size and sound stay as they are.": "HaStamey law' pagh 'aplo' naQ wa'logh chenqa'moH – ghIq AVI ghItlhmey ngo' AV1 MP4 moj. tIq, mIllogh Do, tlhoy' 'ej wab choHbe'.",
+  "Convert videos …": "HaStamey tIchoHmoH …",
+  "No videos found in this folder.": "'aplo'vamDaq HaSta tu'lu'be'.",
+  "Re-encodes many videos with the same settings – for example old AVI files. Length, frame rate, picture size and sound stay as they are. The new files are saved as MP4 in %s; the originals stay untouched.": "HaStamey law' chenqa'moH, SeHlaw rap lo' – ghIq AVI ghItlhmey ngo'. tIq, mIllogh Do, mIllogh tlhoy' 'ej wab choHbe'. ghItlhmey chu' MP4 moj, %sDaq choqlu'; ghItlhmey wa'DIch choHbe'lu'.",
+  "＋ Videos": "＋ HaStamey",
+  "＋ Folder": "＋ 'aplo'",
+  "Clear list": "tetlh yIteq",
+  "Keep the sound": "wab yIpol",
+  "Convert": "yIchoHmoH",
+  "Can't be read: %s": "laDlaHbe'lu': %s",
+  "Reading …": "laDlI' …",
+  "Converting … %d %%": "choHmoHlI' … %d %%",
+  "%d videos added": "%d HaSta chellu'",
+  "%d videos to convert": "%d HaSta choHmoHnIS",
+  "%d still being read": "%d laDlI'",
+  "%d can't be read": "%d laDlaHbe'lu'",
+  "Convert %d videos": "%d HaSta yIchoHmoH"
  }
 }

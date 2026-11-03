@@ -270,6 +270,46 @@
   "This phone has no %s decoder, so it can't show or re-encode this clip.": "בטלפון הזה אין מפענח %s, ולכן אי אפשר להציג או לקודד מחדש את הקליפ הזה.",
   "This clip is a %s variant (for example 10-bit or HDR) that this phone can't decode. The preview and re-encoding may fail.": "הקליפ הזה הוא גרסת %s (למשל 10 ביט או HDR) שהטלפון הזה לא יכול לפענח. התצוגה המקדימה והקידוד מחדש עלולים להיכשל.",
   "This phone decodes %s only up to %d×%d, this clip is %d×%d. The preview and re-encoding may fail.": "הטלפון הזה מפענח %s רק עד %d×%d, והקליפ הזה הוא %d×%d. התצוגה המקדימה והקידוד מחדש עלולים להיכשל.",
-  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "הטלפון הזה לא יכול לפענח %d×%d ב-%s fps בזמן אמת. בניית התצוגה המקדימה תיקח יותר זמן, הניגון עלול לקפוץ והייצוא ייקח יותר זמן."
+  "This phone can't decode %d×%d at %s fps in real time. The preview takes longer to build, playback may stutter and exports take longer.": "הטלפון הזה לא יכול לפענח %d×%d ב-%s fps בזמן אמת. בניית התצוגה המקדימה תיקח יותר זמן, הניגון עלול לקפוץ והייצוא ייקח יותר זמן.",
+  "Convert videos (many at once) …": "המרת סרטונים (כמה בבת אחת) …",
+  "Convert to %s": "המרה ל-%s",
+  "Convert videos": "המרת סרטונים",
+  "Re-encode many videos or a whole folder at once – for example old AVI files to AV1 MP4. Length, frame rate, size and sound stay as they are.": "קידוד מחדש של סרטונים רבים או של תיקייה שלמה בבת אחת – למשל קובצי AVI ישנים ל-MP4 ב-AV1. האורך, קצב הפריימים, הגודל והקול נשארים כפי שהם.",
+  "Convert videos …": "המרת סרטונים …",
+  "No videos found in this folder.": "לא נמצאו סרטונים בתיקייה הזו.",
+  "Re-encodes many videos with the same settings – for example old AVI files. Length, frame rate, picture size and sound stay as they are. The new files are saved as MP4 in %s; the originals stay untouched.": "קידוד מחדש של סרטונים רבים באותן הגדרות – למשל קובצי AVI ישנים. האורך, קצב הפריימים, גודל התמונה והקול נשארים כפי שהם. הקבצים החדשים נשמרים כ-MP4 ב-%s; המקוריים לא משתנים.",
+  "＋ Videos": "＋ סרטונים",
+  "＋ Folder": "＋ תיקייה",
+  "Clear list": "ניקוי הרשימה",
+  "Keep the sound": "שמירת הקול",
+  "Convert": "המרה",
+  "Can't be read: %s": "לא ניתן לקריאה: %s",
+  "Reading …": "בקריאה …",
+  "Converting … %d %%": "בהמרה … %d %%",
+  "%d videos added": {
+   "one": "נוסף סרטון %d",
+   "two": "נוספו %d סרטונים",
+   "other": "נוספו %d סרטונים"
+  },
+  "%d videos to convert": {
+   "one": "סרטון %d להמרה",
+   "two": "%d סרטונים להמרה",
+   "other": "%d סרטונים להמרה"
+  },
+  "%d still being read": {
+   "one": "%d עדיין בקריאה",
+   "two": "%d עדיין בקריאה",
+   "other": "%d עדיין בקריאה"
+  },
+  "%d can't be read": {
+   "one": "%d לא ניתן לקריאה",
+   "two": "%d לא ניתנים לקריאה",
+   "other": "%d לא ניתנים לקריאה"
+  },
+  "Convert %d videos": {
+   "one": "המרת סרטון %d",
+   "two": "המרת %d סרטונים",
+   "other": "המרת %d סרטונים"
+  }
  }
 }

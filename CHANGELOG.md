@@ -3,6 +3,22 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
+## 0.9.4 – 2026-11-03
+
+- **Convert videos** (both): re-encode many videos or whole folders at once with one codec and
+  quality – length, frame rate, picture size and sound stay as they are, output MP4 (default
+  AV1). Made for old collections such as AVI / DivX / Xvid files. Desktop: toolbar
+  "Convert videos…" (Ctrl+Shift+C), files and folders (with sub-folders) by button or drag and
+  drop, saved in a "Converted" folder next to the originals or in a chosen folder, file names
+  without the old extensions ("Clip.avi.MP4.AVI" → "Clip.mp4"). Android: menu behind the logo
+  or the start screen, "＋ Videos" / "＋ Folder", saved in Movies/VideoSpeedControl/Converted,
+  runs in the background like other exports.
+- *(Android)* **AVI files can be opened**: Android itself can't read AVI; the app now falls back
+  to Media3's file readers (also in the editor, where such clips show the scrubbing preview).
+  AV1 for videos too small for the phone's AV1 chip (Pixel: under 256 px) uses the software
+  AV1 encoder at its fastest setting; small videos get a lower minimum bitrate when converted.
+- *(desktop)* Dropping a folder on the clip list adds the videos inside it.
+
 ## 0.9.3.2 – 2026-11-03
 
 New version numbering: 0.93.1 is followed by 0.9.3.2.

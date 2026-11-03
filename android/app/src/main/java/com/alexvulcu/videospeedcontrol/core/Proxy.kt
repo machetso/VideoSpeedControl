@@ -109,7 +109,7 @@ class Proxy(val count: Int, val width: Int, val height: Int, keyframes: IntArray
                     onProgress(proxy)
                     return@withContext proxy
                 }
-                val ex = MediaExtractor()
+                val ex = Extractor()
                 var codec: MediaCodec? = null
                 val grabber = GlFrameGrabber(w, h)
                 val jpegs = java.util.concurrent.Executors.newFixedThreadPool(3)

@@ -112,6 +112,10 @@ data class ClipInfo(
             MediaFormat.MIMETYPE_VIDEO_HEVC -> "HEVC"
             MediaFormat.MIMETYPE_VIDEO_AV1 -> "AV1"
             MediaFormat.MIMETYPE_VIDEO_VP9 -> "VP9"
+            MediaFormat.MIMETYPE_VIDEO_VP8 -> "VP8"
+            MediaFormat.MIMETYPE_VIDEO_MPEG4 -> "MPEG-4 Part 2"     // DivX / Xvid
+            MediaFormat.MIMETYPE_VIDEO_MPEG2 -> "MPEG-2"
+            MediaFormat.MIMETYPE_VIDEO_H263 -> "H.263"
             else -> videoMime.removePrefix("video/")
         }
 
@@ -121,13 +125,14 @@ data class ClipInfo(
 
 object Probe {
     private val STANDARD_RATES = listOf(
+        "10", "12", "25/2", "15", "20",          // old videos (AVI / DivX, early phones, 2026-11-03)
         "24000/1001", "24", "25", "30000/1001", "30", "48", "50", "60000/1001", "60",
         "90", "100", "120", "240", "480", "960",
     ).map(Rational::parse)
 
     fun probe(context: Context, uri: Uri): ClipInfo {
         val (name, size) = nameAndSize(context, uri)
-        val ex = MediaExtractor()
+        val ex = Extractor()
         try {
             ex.setDataSource(context, uri, null)
             var video = -1
@@ -142,13 +147,13 @@ object Probe {
             val frames = scanFrames(ex, video)
             require(frames.count > 0) { "$name contains no video frames." }
 
-            val meta = MediaMetadataRetriever()
+            // Android's metadata reader can't open every file Media3 reads (AVI) – then without it
+            val meta = runCatching { MediaMetadataRetriever().apply { setDataSource(context, uri) } }.getOrNull()
             try {
-                meta.setDataSource(context, uri)
                 val fileFps = fileFps(frames, fmt)
                 // own mdta reader first (text or float, like the desktop), then Android's
                 val capture = (runCatching { Mp4Meta.tags(context, uri)["com.android.capture.fps"] }.getOrNull()
-                    ?: meta.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE))
+                    ?: meta?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE))
                     ?.trim()?.toDoubleOrNull()?.takeIf { it > 0 }?.let { Rational.fromDouble(it) }
                 val durationUs = if (fmt.containsKey(MediaFormat.KEY_DURATION))
                     fmt.getLong(MediaFormat.KEY_DURATION) else frames.ptsUs.last() - frames.ptsUs.first()
@@ -157,12 +162,13 @@ object Probe {
                     videoMime = fmt.getString(MediaFormat.KEY_MIME)!!,
                     width = fmt.getInteger(MediaFormat.KEY_WIDTH),
                     height = fmt.getInteger(MediaFormat.KEY_HEIGHT),
-                    rotation = meta.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                        ?.toIntOrNull() ?: 0,
+                    rotation = meta?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                        ?.toIntOrNull() ?: fmt.intOrNull(MediaFormat.KEY_ROTATION) ?: 0,
                     durationUs = durationUs,
                     fps = fileFps,
                     captureFps = capture,
-                    bitrate = meta.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull(),
+                    bitrate = meta?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
+                        ?: size.takeIf { it > 0 && durationUs > 0 }?.let { (it * 8e6 / durationUs).toInt() },
                     hdr = when (fmt.intOrNull(MediaFormat.KEY_COLOR_TRANSFER)) {
                         MediaFormat.COLOR_TRANSFER_HLG -> "HLG"
                         MediaFormat.COLOR_TRANSFER_ST2084 -> "PQ (HDR10)"
@@ -170,12 +176,12 @@ object Probe {
                     },
                     audio = audioFmt?.let(::describeAudio),
                     audioRate = audioFmt?.intOrNull(MediaFormat.KEY_SAMPLE_RATE),
-                    recorded = parseDate(meta.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)),
+                    recorded = parseDate(meta?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)),
                     frames = frames,
                     videoProfile = fmt.intOrNull(MediaFormat.KEY_PROFILE),
                 )
             } finally {
-                meta.release()
+                meta?.release()
             }
         } finally {
             ex.release()
@@ -183,7 +189,7 @@ object Probe {
     }
 
     /** Walk all samples of the track without reading their data. */
-    fun scanFrames(ex: MediaExtractor, track: Int): FrameMap {
+    fun scanFrames(ex: Extractor, track: Int): FrameMap {
         ex.selectTrack(track)
         ex.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
         val samples = ArrayList<Pair<Long, Boolean>>()
@@ -214,9 +220,11 @@ object Probe {
             if (median != null) {
                 val avg = (p.size - 1) * 1_000_000.0 / (p.last() - p.first())
                 val est = if (kotlin.math.abs(avg * median / 1e6 - 1) < 0.02) avg else 1e6 / median
-                STANDARD_RATES.minBy { kotlin.math.abs(it.toDouble() / est - 1) }
-                    .takeIf { kotlin.math.abs(it.toDouble() / est - 1) < 0.005 }
-                    ?.let { return it }
+                fun standard(e: Double) = STANDARD_RATES.minBy { kotlin.math.abs(it.toDouble() / e - 1) }
+                    .takeIf { kotlin.math.abs(it.toDouble() / e - 1) < 0.005 }
+                standard(est)?.let { return it }
+                // a few dropped frames (AVI) lower the average: the usual frame spacing decides
+                standard(1e6 / median)?.let { return it }
                 return Rational.fromDouble(est)
             }
         }
@@ -229,6 +237,7 @@ object Probe {
             MediaFormat.MIMETYPE_AUDIO_OPUS -> "Opus"
             MediaFormat.MIMETYPE_AUDIO_AC3 -> "AC-3"
             MediaFormat.MIMETYPE_AUDIO_EAC3 -> "E-AC-3"
+            MediaFormat.MIMETYPE_AUDIO_MPEG -> "MP3"
             else -> m?.removePrefix("audio/") ?: "?"
         }
         val ch = when (val c = f.intOrNull(MediaFormat.KEY_CHANNEL_COUNT)) {
