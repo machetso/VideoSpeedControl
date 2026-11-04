@@ -28,7 +28,7 @@ IDEAS.md – add new ones there instead of building them unasked.
   About), code in `vsc/gui/help.py`. Guide = `vsc/docs/manual.md` (+ images from
   `tools/build_docs.py --screenshots`, synthetic Mandelbrot clip – no private footage) → PDF.
   MIT LICENSE, header in every .py, README "License & Attribution", THIRD_PARTY_NOTICES.md.
-  Version in `vsc/__init__.py` (0.9.4; Android versionName 0.9.4 / versionCode 6; numbering changed from 0.93.1 to 0.9.3.x on 2026-11-03, user request).
+  Version in `vsc/__init__.py` (0.9.5; Android versionName 0.9.5 / versionCode 7; numbering changed from 0.93.1 to 0.9.3.x on 2026-11-03, user request).
 - Milestone 7 – packaging (in progress, 2026-10-26). User decisions: GitHub Actions, private
   repo, Inno Setup installer (per-user install, admin optional), build on tag `v*` + manual,
   AV2 NOT on Windows yet (later: build AVM with MSVC in the workflow).
@@ -55,6 +55,54 @@ IDEAS.md – add new ones there instead of building them unasked.
   editor's single export), output Movies/VideoSpeedControl/Converted/. UI `ui/ConvertScreen.kt`
   (ConvertList singleton; SAF multi-select + folder tree). Device test `ConvertDeviceTest` needs
   synth_divx.avi (command in its KDoc).
+- CONVERT PRO + SMART (2026-11-04, user request, both platforms, DESKTOP DONE, Android next):
+  user decisions: desktop first; own MKV writer on Android (MP3 copy needs it – Android's
+  MediaMuxer and Media3 Mp4Muxer refuse MP3, tested on the Pixel); smart goal selectable,
+  default "looks identical". Desktop: `core/convert.py` ConvertSettings (codec, container
+  mp4/mov/mkv, fps None = own, rate level / crf / kbps / smart, goal, audio default / smart /
+  copy / aac / opus / mp3 / flac / none, channels, audio_kbps), `make_pro_job` (other fps →
+  speed 1 + interpolation dup = same length; channels ≤ source), `audio_problem`,
+  `containers_for` (FFmpeg: AV1 not in MOV). OutputSettings: `bitrate` (kbit/s replaces the
+  quality args, drops libaom/libvpx "-b:v 0"), `audio_codec` / `audio_bitrate` /
+  `audio_channels` / `audio_rate`. `audio.direct(job)` (audio_codec set + `is_plain`): the final
+  mux takes the sound straight from the source (copy, or encoded once with apad/-t to the
+  video length, source sample rate kept; Opus snapped to its rates) – no Sonic / WAV.
+  `audio.CONTAINER_AUDIO` = what each container holds. Probe: audio_codec / channels /
+  bitrate, `video_bitrate`. `core/suggest.py`: 3 samples (20/50/80 %, 48–150 frames by pixel
+  budget) → FFV1 reference → encode at CRF → libvmaf AT THE FILE'S OWN SIZE (upscaled-to-1080p
+  VMAF rated 800k AV1 < 95 on the DivX cartoons although 2× zoom showed no difference at
+  ~160k – it counts removed DivX noise) → binary search for the highest CRF with mean ≥ 96 and
+  every sample ≥ 94.5 ("identical"; "smaller": 93 / 91). Sound: copy if the container holds it,
+  else AAC at source rate × codec factor (mp3 0.85, ac3 0.6 …). Real result (Maulwurf, AV1):
+  ~20 s measuring per episode, files 29–41 % of the original, picture checked by eye.
+  GUI `gui/convert_dialog.py`: Easy | Pro radio (QSettings convert/pro, convert/easy,
+  convert/general as JSON), SettingsEditor (shows only the fields that apply), Settings
+  column "General" / "Own: …" + measured result, "Own settings for selected" / "Back to
+  general settings" (editor shows own settings when every selected row has some), "Measure
+  now", Convert measures first. Tests: tests/test_convert_pro.py (16).
+  ANDROID PART (2026-11-04, done, uncommitted): `core/Mkv.kt` MkvMuxer (own Matroska writer:
+  SeekHead in a reserved Void, Info with Duration patched at the end, Tracks, clusters at a video
+  keyframe ≥ 1 s, Cues; ms timestamps; needs a seekable fd – MediaStore "rw" is) + Mkv helpers
+  (Annex-B → 4-byte lengths, avcC / hvcC from csd, AV1 temporal-delimiter OBUs dropped, Android's
+  "AOPUSHDR"-wrapped OpusHead unwrapped, Vorbis xiph lacing). `core/OutMuxer.kt` (MediaMuxer or
+  MKV; MOV = MP4 structure with .mov name; canHold: MediaMuxer MP4 takes only AAC (MP3 AND Opus
+  refused – tested)). `core/ConvertAudio.kt` (convert sound straight from the source: copy, or
+  decode → mix (5.1 → stereo / mono) → Sonic resample only if the codec needs it → AAC (≤ 6 ch) /
+  Opus (≤ 2) / FLAC (≤ 2); aligned to the first video frame, padded / cut to the video length).
+  `ReencodeExport(…, container, audioPlan)`, `ReencodeJob.bitrateOverride`. `Convert.Settings`
+  (JSON in prefs convert_easy / convert_general, pref convert_pro; no own CRF value – the
+  hardware encoders only take a data rate), `Convert.plan`, `Convert.suggest` = RULES (RATIO
+  family → target codec, calibrated 2026-11-04 on the Pixel against VMAF with a PHONE-decoded
+  reference – FFmpeg and Android decode a few frames of DivX / Pixel HEVC differently, which
+  looked like a one-frame shift; the grey-ramp test proved ReencodeExport frame-exact).
+  Phone encoders are far less efficient: "looks identical" ≈ 0.88–1.36 × source rate, "smaller"
+  ≈ 0.5–0.8. Software AV1 (videos < 256 px, fastest complexity) overshoots: real ≈ 1.75 × asked
+  + 80 kbit/s → `softwareAv1Request`. HW HEVC / H.264 at 1080p don't go below ~3.2 Mbit/s.
+  ClipInfo: audioMime / audioChannels / audioBitrate (estimated from packet sizes when missing),
+  FrameMap.bytes → videoBitrate. UI `ui/ConvertScreen.kt`: Easy | Pro, ⚙ own settings dialog,
+  smart line per row, ⚠ problems block "Convert". Tests: MkvTest, ConvertTest (rules),
+  ConvertProDeviceTest (6 combinations, outputs verified with desktop FFmpeg: 0 decode errors).
+  NOT yet tried by the user on the phone UI.
 - Open option: enable Intel Quick Sync on the dev laptop (needs Intel media runtime / oneVPL).
 - ANDROID LANGUAGES (0.93): `ui/I18n.kt` – `tr("English text", args…)` / `trp(one, other, n, args…)`
   look the text up in `i18n/<code>.json` (repo top level, packed as assets via

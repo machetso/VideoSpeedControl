@@ -16,21 +16,22 @@ Diese Anleitung erklärt alles kurz und den **Pro**-Modus ausführlich.
 8. Export: verlustfrei, Smart, neu kodieren
 9. Ton
 10. Batch-Liste
-11. Clip Speed Treatments
-12. Das Menü hinter dem Logo
-13. Tipps und Problemlösungen
-14. Lizenz und Hinweise zu Drittsoftware
+11. Videos umwandeln
+12. Clip Speed Treatments
+13. Das Menü (⚙ / Logo)
+14. Tipps und Problemlösungen
+15. Lizenz und Hinweise zu Drittsoftware
 
 ## 1. Easy und Pro
 
-Die App hat zwei Modi. Du kannst jederzeit wechseln – über das **Easy / Pro**-Abzeichen neben dem App-Namen, den Schalter in der Speichern-Karte oder im Menü hinter dem Logo. Deine Abschnitte und Einstellungen bleiben erhalten.
+Die App hat zwei Modi. Du kannst jederzeit wechseln – über das **Easy / Pro**-Abzeichen neben dem App-Namen, den Schalter in der Speichern-Karte oder im Menü (⚙ oder Logo). Deine Abschnitte und Einstellungen bleiben erhalten.
 
 - **Easy** (Standard) zeigt nur, was du für schnelle Ergebnisse brauchst: Clip Sections mit einer einfachen Videogeschwindigkeit („4× langsamer“), die gelben Klammern auf der Zeitleiste zum Zuschneiden und **Video speichern**. Jeder Geschwindigkeitswechsel wird automatisch weich. Smart behält den Codec des Originals, beim Neu-Kodieren wählt die App den Codec und eine hohe Qualität.
 - **Pro** ergänzt alles für genaues Arbeiten: Bildnummern und Bildraten, Keyframe-Tasten, Abschnitts-Anfang und -Ende an der Abspielposition, weiche Übergänge je Grenze, die Zuschnitt-Karte, die Auswahl, welche Teile Smart neu kodiert, Codec, Qualität und Auflösung beim Neu-Kodieren, eine Geschwindigkeit für das Neu-Kodieren ohne Abschnitte und das Speichern von Änderungen in einen Eintrag der Batch-Liste.
 
 ## 2. Schnellstart
 
-1. Tippe auf **Clip wählen** und such dir ein Video aus – am besten eine Zeitlupen-Aufnahme. Die Galerie der App zeigt den Kamera-Ordner, das neueste Video zuerst; **Andere Dateien …** öffnet jede andere Datei.
+1. Tippe auf dem Startbildschirm auf **Clip wählen** und such dir ein Video aus – am besten eine Zeitlupen-Aufnahme. Die Galerie der App zeigt den Kamera-Ordner, das neueste Video zuerst; **Andere Dateien …** öffnet jede andere Datei.
 2. Geh mit der Abspielposition dorthin, wo ein Abschnitt enden soll, und tippe auf **Ende ]**. Der erste Abschnitt beginnt am Anfang des Clips, jeder weitere direkt nach dem vorherigen.
 3. Tippe den Abschnitt in der Liste (oder auf der Zeitleiste) an und wähle seine Geschwindigkeit.
 4. Zieh die gelben Klammern auf der Zeitleiste, um Anfang und Ende wegzuschneiden.
@@ -40,7 +41,8 @@ Die App hat zwei Modi. Du kannst jederzeit wechseln – über das **Easy / Pro**
 
 Von oben nach unten:
 
-- **Kopfzeile** – das Logo (öffnet das Menü), das **Easy / Pro**-Abzeichen und **＋ Clip** für das nächste Video. Hat der aktuelle Clip ungespeicherte Abschnitte, fragt die App, ob er zuerst in die Batch-Liste soll.
+- **Startbildschirm** (kein Clip geöffnet) – der Hinweis, eine Zeitlupen-Aufnahme zu wählen, **Clip wählen**, unter einem Strich der Bereich **Videoumwandlung (Alpha)** mit **Videos umwandeln** und die Batch-Liste.
+- **Kopfzeile** – das Logo (öffnet das Menü), das **Easy / Pro**-Abzeichen, **＋ Clip** für das nächste Video (solange ein Clip offen ist) und das **⚙ Zahnrad** am rechten Rand (öffnet das Menü, wie das Logo). Hat der aktuelle Clip ungespeicherte Abschnitte, fragt die App, ob er zuerst in die Batch-Liste soll.
 - **Vorschau** – das aktuelle Bild. Wisch seitlich über das Bild, um Bild für Bild zu gehen.
 - **Zeitleiste** – Bilder aus dem Clip mit den Clip Sections (farbig, mit ihrer Geschwindigkeit beschriftet), ihren Grenzen, den weichen Übergängen, den gelben Zuschnitt-Klammern, den Keyframe-Strichen unter dem Streifen und der Abspielposition.
 - **Steuerung** – Vorschau abspielen, Länge und Geschwindigkeit der Ausgabe, der Magnet 🧲 und die Tasten zum Bewegen im Clip.
@@ -75,7 +77,7 @@ Auf der Zeitleiste **tippst** du, um die Abspielposition zu setzen (und den Absc
 
 Der **Magnet 🧲** lässt die Abspielposition an Abschnittsgrenzen einrasten, wenn sie in die Nähe kommt – praktisch, um den nächsten Abschnitt genau dort beginnen zu lassen, wo der vorherige endet. Antippen schaltet ihn ein oder aus.
 
-Während die App die Bilder zum Durchfahren vorbereitet, zeigt ein dünner Balken auf der Zeitleiste den Fortschritt. Clips, die du erneut öffnest, sind fast sofort bereit – die App bewahrt diese Vorschauen eine Weile auf (siehe Abschnitt 12).
+Während die App die Bilder zum Durchfahren vorbereitet, zeigt ein dünner Balken auf der Zeitleiste den Fortschritt. Clips, die du erneut öffnest, sind fast sofort bereit – die App bewahrt diese Vorschauen eine Weile auf (siehe Abschnitt 13).
 
 ## 6. Clip Sections im Pro-Modus
 
@@ -143,7 +145,24 @@ Sammle mehrere Videos – oder mehrere Versionen desselben Videos – und speich
 - **Tippe einen Eintrag an**, um ihn in den Editor zu laden. Ändere ihn und tippe auf **✔ Änderungen in diesen Eintrag speichern** (Pro) – oder füge ihn als weitere Version hinzu.
 - **Fertige entfernen** räumt die gespeicherten Einträge weg; **✕** entfernt einen einzelnen.
 
-## 11. Clip Speed Treatments
+## 11. Videos umwandeln
+
+**Videos umwandeln** (Startbildschirm, Bereich *Videoumwandlung (Alpha)*, und Menü) kodiert viele Videos auf einmal neu – zum Beispiel einen Ordner alter AVI-Dateien in einen modernen Codec. Jedes Bild bleibt einmal erhalten, die Länge bleibt gleich; die Originale werden nie verändert. Videos oder einen ganzen Ordner fügst du mit **＋ Videos** / **＋ Ordner** hinzu. Die neuen Dateien landen in *Movies/VideoSpeedControl/Converted*.
+
+**Easy**: Codec, Qualität und *Ton behalten* – dazu **Smart**.
+
+**Pro** zeigt alle Einstellungen:
+
+- **Bildrate**: Original oder eine Rate aus der Liste (die Länge bleibt gleich: Bilder werden weggelassen oder wiederholt).
+- **Container**: MP4, MOV oder MKV. Android kann kein echtes QuickTime schreiben – ein MOV ist eine Datei im MP4-Format mit der Endung .mov, die Apple-Geräte abspielen. AV1 passt nicht in MOV.
+- **Codec** und **Bild**: Qualitätsstufe, Datenrate in kbit/s oder Smart.
+- **Ton**: Smart, unverändert kopieren, AAC, Opus, FLAC oder kein Ton, dazu **Kanäle** (nie mehr, als das Original hat) und die **Ton-Datenrate**. MP3-Ton (alte AVI-Dateien) lässt sich nur in **MKV** kopieren: Das Handy kann MP3 und Opus nicht in MP4 speichern.
+
+Das sind die **allgemeinen Einstellungen**. Mit **⚙** bekommt ein Video **eigene Einstellungen**; *Allgemeine Einstellungen verwenden* nimmt sie wieder weg. Einstellungen, die zu einem Video nicht passen, sind mit ⚠ markiert, und das Umwandeln wartet, bis sie passen.
+
+**Smart** wählt die Datenrate pro Video aus seinem Codec und seiner Datenrate – mit Werten, die auf einem Pixel mit VMAF gemessen wurden – und kopiert den Ton, wo der Container ihn aufnehmen kann. Jedes Video zeigt, was zu erwarten ist, z. B. *Smart: ≈ 230 kbit/s · Ton kopiert · ≈ 45 % des Originals*. Ziele: **Sieht gleich aus** oder **Kleiner**. Die Encoder des Handys sind für Aufnahmen in Echtzeit gebaut und brauchen für dasselbe Bild deutlich mehr Daten als die am PC: Auf dem Handy spart *Sieht gleich aus* wenig, *Kleiner* mit AV1 etwa die Hälfte. Für die kleinsten Dateien ohne sichtbaren Verlust wandle am PC um (die Desktop-Version misst jedes Video).
+
+## 12. Clip Speed Treatments
 
 Ein **Clip Speed Treatment** (.cst-Datei) speichert alles, was du für einen Clip vorgesehen hast – Abschnitte, Zuschnitt, Geschwindigkeiten und Export-Einstellungen –, damit du es später noch einmal ändern kannst.
 
@@ -153,9 +172,9 @@ Ein **Clip Speed Treatment** (.cst-Datei) speichert alles, was du für einen Cli
 
 Das Dateiformat ist dasselbe wie in der Desktop-App für Linux und Windows: Du kannst auf dem Handy anfangen und am Computer weitermachen oder umgekehrt.
 
-## 12. Das Menü hinter dem Logo
+## 13. Das Menü (⚙ / Logo)
 
-Tippe oben links auf das Logo.
+Tippe oben rechts auf das **⚙ Zahnrad** – oder oben links auf das Logo.
 
 - **Modus** – Easy oder Pro, jeweils mit einer Beschreibung, was er bietet.
 - **Sprache** – die App folgt der Sprache des Handys; hier kannst du eine andere wählen (Englisch, Deutsch, Spanisch, Französisch, Rumänisch, Hebräisch, Klingonisch).
@@ -163,7 +182,7 @@ Tippe oben links auf das Logo.
 - **Vorschauen** – wie viel Platz die gespeicherten Vorschauen belegen, und **Vorschauen löschen**. Die App speichert die Bilder, die sie zum Durchfahren vorbereitet, damit ein erneut geöffneter Clip sofort bereit ist. Vorschauen, die niemand braucht, werden 2 Minuten nach dem Start automatisch gelöscht, wenn die App gerade nichts zu tun hat; zusammen belegen sie höchstens 2 GB.
 - **← Zurück** oder **Schließen & zurück zur App** führen zurück zum Editor.
 
-## 13. Tipps und Problemlösungen
+## 14. Tipps und Problemlösungen
 
 - **Das gespeicherte Video ruckelt in manchen Playern.** Verlustfreie Videos und kopierte Smart-Teile behalten ihre Aufnahme-Bildrate. Nutze Smart mit der automatischen Auswahl oder kodiere neu.
 - **Das Video läuft nicht auf iPhone oder Mac.** Smart-Exporte laufen möglicherweise nicht auf Apple-Geräten. Kodiere mit HEVC oder H.264 neu.
@@ -173,7 +192,7 @@ Tippe oben links auf das Logo.
 - **Das Speichern dauert lange.** Beim Neu-Kodieren wird jedes Bild verarbeitet; AV1 (beste Qualität) ist deutlich langsamer als die anderen Codecs. Verlustfrei ist am schnellsten.
 - **Ein Batch-Eintrag schlägt fehl, nachdem die App geschlossen war.** Clips, die über *Öffnen mit* oder *Teilen* aus einer anderen App kommen, sind oft nur lesbar, solange die App läuft. Öffne sie stattdessen über die Galerie von VideoSpeedControl.
 
-## 14. Lizenz und Hinweise zu Drittsoftware
+## 15. Lizenz und Hinweise zu Drittsoftware
 
 Copyright © 2026 Alex Vulcu. Konzept, Architektur, Leitung und Kuratierung: Alex Vulcu. Bei der Umsetzung wurden generative KI-Werkzeuge eingesetzt.
 

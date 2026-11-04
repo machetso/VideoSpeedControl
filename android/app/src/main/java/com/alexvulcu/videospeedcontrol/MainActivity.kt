@@ -29,6 +29,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.alexvulcu.videospeedcontrol.ui.tr
+import com.alexvulcu.videospeedcontrol.ui.GearIcon
 import com.alexvulcu.videospeedcontrol.ui.I18n
 import androidx.compose.foundation.clickable
 import com.alexvulcu.videospeedcontrol.ui.TreatmentCard
@@ -213,10 +214,11 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
             // stays visible while the editor scrolls, so a further clip can be added at any time
             Surface(tonalElevation = 3.dp) {
                 Row(
-                    Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     // the logo opens the menu (Easy / Pro, folders, previews)
                     Image(painterResource(R.drawable.vsc_logo), tr("Menu"),
                         Modifier.size(36.dp).clickable { showMenu = true })
@@ -234,7 +236,12 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
                     }
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(0.01f))
                     if (vm.clip is ClipState.Loaded) OutlinedButton(onClick = choose) { Text(tr("＋ Clip")) }
-                    else Button(onClick = choose) { Text(tr("Choose clip")) }
+                }
+                    // settings at the right margin: the same menu as the logo (user request 2026-11-04;
+                    // "Choose clip" moved to the start screen)
+                    androidx.compose.material3.IconButton({ showMenu = true }) {
+                        androidx.compose.material3.Icon(GearIcon, tr("Settings"), Modifier.size(28.dp))
+                    }
                 }
             }
         },
@@ -246,11 +253,17 @@ fun MainScreen(vm: EditorViewModel = viewModel()) {
             when (val s = vm.clip) {
                 ClipState.None -> {
                     Text(tr("Choose a clip – ideally a slow-motion recording."))
+                    Button(onClick = choose) { Text(tr("Choose clip")) }
+                    androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    Text(tr("Video conversion (alpha)"), style = MaterialTheme.typography.titleMedium)
                     OutlinedButton({ showConvert = true }) { Text(tr("Convert videos (many at once) …")) }
                     BatchCard(vm, choose)
                 }
                 ClipState.Loading -> CircularProgressIndicator()
-                is ClipState.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
+                is ClipState.Failed -> {
+                    Text(s.message, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = choose) { Text(tr("Choose clip")) }
+                }
                 is ClipState.Loaded -> {
                     val edit = vm.edit ?: return@Column
                     vm.decodeNote?.let {

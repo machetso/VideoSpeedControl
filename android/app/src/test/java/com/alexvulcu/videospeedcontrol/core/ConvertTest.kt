@@ -63,4 +63,45 @@ class ConvertTest {
         assertTrue(t.treatment.settings.sound)
         assertFalse(Convert.task(8, divx().copy(audio = null), VideoCodec.AVC, Quality.GOOD, sound = true).treatment.settings.sound)
     }
+
+    // ------------------------------------------------------------------ pro mode / smart (2026-11-04)
+    private fun divxMeasured() = divx().copy(sizeBytes = 4_800_000, audioMime = "audio/mpeg", audioChannels = 2,
+        audioBitrate = 96_000, frames = FrameMap(LongArray(600) { it * 100_000L }, IntArray(6) { it * 100 }, bytes = 3_300_000))
+
+    @Test fun measuredVideoRate() = assertEquals(440_000, divxMeasured().videoBitrate)
+
+    @Test fun smartRulesForDivx() {
+        val info = divxMeasured()
+        val id = Convert.suggest(info, VideoCodec.AV1_FAST, Convert.Goal.IDENTICAL, OutMuxer.Container.MKV)
+        assertEquals(387, id.videoKbps)                                   // 440 × 0.88
+        assertEquals("copy", id.audio)                                    // MP3 into MKV
+        val small = Convert.suggest(info, VideoCodec.AV1_FAST, Convert.Goal.SMALLER, OutMuxer.Container.MP4)
+        assertEquals(224, small.videoKbps)                                // 440 × 0.51
+        assertEquals(Triple("aac", 64, 2), Triple(small.audio, small.audioKbps, small.channels))  // 96 × 0.85 × 0.8
+        // HEVC "looks identical" needs more than the source on the phone → capped, with a note
+        val hevc = Convert.suggest(info, VideoCodec.HEVC, Convert.Goal.IDENTICAL, OutMuxer.Container.MKV)
+        assertEquals(440, hevc.videoKbps)
+        assertTrue(hevc.note.isNotEmpty())
+    }
+
+    @Test fun softwareAv1Overshoot() {
+        assertEquals(175, Convert.softwareAv1Request(387))                // measured: 200 asked → ~435 real
+        assertEquals(30, Convert.softwareAv1Request(50))
+    }
+
+    @Test fun audioRules() {
+        val info = divxMeasured()
+        assertTrue(Convert.audioProblem(info, Convert.Settings(audio = "copy")) != null)          // MP3 into MP4
+        assertEquals(null, Convert.audioProblem(info, Convert.Settings(audio = "copy", container = OutMuxer.Container.MKV)))
+        assertTrue(Convert.audioProblem(info, Convert.Settings(audio = "opus", container = OutMuxer.Container.MOV)) != null)
+        assertTrue(Convert.audioProblem(info, Convert.Settings(audio = "flac")) != null)          // FLAC only in MKV
+        assertFalse(OutMuxer.canHoldVideo(OutMuxer.Container.MOV, VideoCodec.AV1_FAST))
+    }
+
+    @Test fun settingsJsonRoundTrip() {
+        val s = Convert.Settings(codec = VideoCodec.HEVC, container = OutMuxer.Container.MKV, fps = Rational.of(25),
+            rate = Convert.Rate.KBPS, kbps = 800, goal = Convert.Goal.SMALLER, audio = "aac", channels = 1, audioKbps = 64)
+        assertEquals(s, Convert.Settings.fromJson(org.json.JSONObject(s.toJson().toString())))
+        assertEquals(Convert.Settings(), Convert.Settings.fromJson(null))
+    }
 }

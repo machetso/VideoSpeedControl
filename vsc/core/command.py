@@ -187,11 +187,14 @@ def encode_args(job: Job, output: Path) -> list[str]:
     if codec.preset_flag and codec.presets:
         preset = s.preset if s.preset in codec.presets else codec.default_preset
         args += [codec.preset_flag, preset]
-    if codec.quality:
+    by_rate = bool(s.bitrate) and codec.quality is not None and not codec.lossless
+    if by_rate:                     # fixed data rate instead of constant quality
+        args += ["-b:v", f"{int(s.bitrate)}k"]
+    elif codec.quality:
         q = s.quality if s.quality is not None else codec.quality.default
         q = min(max(q, codec.quality.minimum), codec.quality.maximum)
         args += [a.replace("{q}", str(q)) for a in codec.quality.args]
-    args += list(codec.args)
+    args += _without_zero_rate(codec.args) if by_rate else list(codec.args)
     args += list(codec.container_args.get(job.container, ()))
     if not codec.rgb:
         for attr, flag in COLOR_ARGS:
@@ -202,6 +205,20 @@ def encode_args(job: Job, output: Path) -> list[str]:
         args += ["-f", "image2"]
     args.append(str(output))
     return args
+
+
+def _without_zero_rate(args) -> list[str]:
+    """Codec args minus '-b:v 0' (libaom / libvpx need it for constant quality only)."""
+    out, it = [], iter(args)
+    for a in it:
+        if a == "-b:v":
+            nxt = next(it, None)
+            if nxt == "0":
+                continue
+            out += [a, nxt]
+        else:
+            out.append(a)
+    return out
 
 
 def _build_encode(job: Job, output: Path, supported: list[str] | None) -> list[str]:

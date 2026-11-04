@@ -820,6 +820,27 @@ val PlayIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
     }.build()
 }
 
+/** Settings gear (top bar, 2026-11-04): 8 teeth around a ring, drawn here – the app uses no icon library. */
+val GearIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    val d = StringBuilder()
+    val teeth = 8
+    for (i in 0 until teeth) {
+        val a = i * 2 * Math.PI / teeth
+        val pts = listOf(a - 0.30 to 8.0, a - 0.17 to 11.0, a + 0.17 to 11.0, a + 0.30 to 8.0)
+        for ((k, p) in pts.withIndex()) {
+            val x = 12 + p.second * Math.cos(p.first)
+            val y = 12 + p.second * Math.sin(p.first)
+            d.append(if (i == 0 && k == 0) "M" else "L").append("%.3f,%.3f".format(java.util.Locale.US, x, y))
+        }
+    }
+    d.append("Z M8.5,12a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0Z")      // the hole
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("Settings", 24.dp, 24.dp, 24f, 24f).apply {
+        addPath(androidx.compose.ui.graphics.vector.addPathNodes(d.toString()),
+            pathFillType = androidx.compose.ui.graphics.PathFillType.EvenOdd,
+            fill = androidx.compose.ui.graphics.SolidColor(Color.Black))
+    }.build()
+}
+
 /** Chosen options are green (user): segmented buttons and switches that are on. */
 val ChosenGreen = Color(0xFF2E9E4F)
 

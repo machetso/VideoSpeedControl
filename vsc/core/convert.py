@@ -9,15 +9,23 @@
 quality, nothing else changed – every frame once at the file's own frame rate, source size,
 sound kept – into MP4. Meant for old collections (AVI / DivX / Xvid …) as well as phone clips.
 
+Pro mode (user request 2026-11-04): `ConvertSettings` – frame rate, container (MP4 / MOV /
+MKV), codec, quality level / own quality value / kbit/s, sound (copy, AAC, Opus, MP3, FLAC,
+channels, kbit/s) – as general settings for every file, with own settings per file. "Smart"
+(both modes, `core/suggest.py`): measured per file, the smallest file that keeps the picture
+(VMAF) and the sound.
+
 No Qt here: the GUI (`gui/convert_dialog.py`) probes the files, builds the jobs with
-`make_job` and runs them with `batch.Batch`.
+`make_job` / `make_pro_job` and runs them with `batch.Batch`.
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, replace
+from fractions import Fraction
 from pathlib import Path
 
-from . import batch, formats
+from . import audio, batch, formats
 from .job import Job, OutputSettings
 from .probe import FrameMap, MediaInfo
 
@@ -26,6 +34,7 @@ CODECS = ("svtav1", "aom", "x265", "x264")
 DEFAULT_CODEC = "svtav1"            # user choice 2026-11-03: AV1 in MP4
 DEFAULT_LEVEL = 1                   # index in formats.QUALITY_LEVELS: "High"
 CONTAINER = "mp4"
+CONTAINERS = ("mp4", "mov", "mkv")    # pro mode
 FOLDER_NAME = "Converted"           # default: a sub-folder next to the originals
 
 VIDEO_EXTENSIONS = frozenset({
@@ -112,3 +121,127 @@ def plan(jobs: list[tuple[Job, list[str] | None]], folder: Path | None,
     return batch.plan(jobs, None, "{name}", policy,
                       folders=[output_folder(j.info.path, folder) for j, _ in jobs],
                       names=[clean_stem(j.info.path) for j, _ in jobs])
+
+
+# --------------------------------------------------------------------------- pro mode
+
+RATE_MODES = ("level", "crf", "kbps", "smart")
+AUDIO_MODES = ("default", "smart", "copy", "aac", "opus", "mp3", "flac", "none")
+GOALS = ("identical", "smaller")
+
+
+@dataclass
+class ConvertSettings:
+    """What a conversion does. Easy mode uses codec, level, `rate` "level" / "smart", `goal` and
+    `audio` "default" / "smart" / "none"; pro mode everything. None = like the source."""
+    codec: str = DEFAULT_CODEC
+    container: str = CONTAINER
+    fps: Fraction | None = None          # None = the file's own rate
+    rate: str = "level"                  # "level" | "crf" (own value) | "kbps" | "smart"
+    level: int = DEFAULT_LEVEL           # index in formats.QUALITY_LEVELS
+    crf: int | None = None               # rate "crf": the codec's own quality value
+    kbps: int | None = None              # rate "kbps": video data rate
+    goal: str = "identical"              # rate / audio "smart": "identical" | "smaller"
+    audio: str = "default"               # see AUDIO_MODES; "default" = AAC 192k stereo 48 kHz
+    channels: int | None = None          # None = like the source
+    audio_kbps: int | None = None        # None = the codec's default / the suggestion
+
+    def copy(self, **changes) -> "ConvertSettings":
+        return replace(self, **changes)
+
+    @property
+    def measures(self) -> bool:
+        """Needs a measurement per file (`suggest.suggest`) before it can be converted."""
+        return self.rate == "smart" or self.audio == "smart"
+
+
+def containers_for(codec_key: str) -> list[str]:
+    """Pro containers this codec can be written into (AV1 not in MOV – FFmpeg refuses it)."""
+    codec = formats.CODECS_BY_KEY.get(codec_key)
+    return [c for c in CONTAINERS if codec and c in codec.containers]
+
+
+def audio_problem(info: MediaInfo, cs: ConvertSettings) -> str | None:
+    """Why the chosen sound setting does not work for this file / container (None = it does).
+    A frame-rate change keeps the length, so copying still works then."""
+    if cs.audio in ("none", "default", "smart") or not info.has_audio:
+        return None
+    if cs.audio == "copy":
+        if not audio.container_holds(cs.container, info.audio_codec):
+            return (f"{(info.audio_codec or 'this sound').upper()} cannot be copied into "
+                    f"{cs.container.upper()} – choose MKV or another sound codec.")
+        return None
+    return audio.encode_reason(cs.container, cs.audio)
+
+
+def fps_choices(info: MediaInfo) -> list[tuple[str, Fraction | None]]:
+    """(label, rate) for the frame-rate list: the original first, then the app's usual rates."""
+    out: list[tuple[str, Fraction | None]] = [(f"{float(info.fps):.5g} fps (original)", None)]
+    out += [(f"{label} fps", r) for label, r in formats.FRAME_RATES if r != info.fps]
+    return out
+
+
+def make_pro_job(info: MediaInfo, frames: FrameMap | None, cs: ConvertSettings,
+                 measured=None) -> Job:
+    """The job for one file. `measured` = its `suggest.Suggestion` (needed for "smart").
+
+    A different frame rate keeps the length (speed 1): frames are dropped or repeated, never
+    invented. Sound: "default" = the app's AAC 192k stereo; everything else is taken straight
+    from the source (`audio.direct`) – copied, or encoded once.
+    """
+    fps = cs.fps or info.fps
+    codec = formats.CODECS_BY_KEY[cs.codec]
+    container = cs.container if cs.container in codec.containers else codec.containers[0]
+    if cs.measures and measured is None:
+        raise ValueError("This file has not been measured yet.")
+    quality = bitrate = None
+    if cs.rate == "smart":
+        quality = measured.crf
+    elif cs.rate == "crf" and cs.crf is not None:
+        quality = cs.crf
+    elif cs.rate == "kbps" and cs.kbps:
+        bitrate = cs.kbps
+    else:
+        quality = quality_value(cs.codec, cs.level)
+
+    mode = measured.audio if cs.audio == "smart" else cs.audio
+    keep_sound = mode != "none" and info.has_audio
+    a_codec = a_kbps = a_ch = None
+    if keep_sound and mode != "default":
+        a_codec = mode
+        if mode != "copy":
+            sug = measured if cs.audio == "smart" else None
+            a_kbps = cs.audio_kbps or (sug.audio_kbps if sug else None)
+            a_ch = cs.channels or (sug.channels if sug else None) or info.audio_channels or 2
+            a_ch = min(a_ch, audio.MAX_CHANNELS[mode])
+            if info.audio_channels:         # more channels would only copy the same sound
+                a_ch = min(a_ch, info.audio_channels)
+    settings = OutputSettings(
+        fps=fps, speed=None if fps == info.fps else Fraction(1), codec=cs.codec,
+        container=container, quality=quality, bitrate=bitrate, audio=keep_sound,
+        interpolation="dup", audio_codec=a_codec, audio_bitrate=a_kbps, audio_channels=a_ch)
+    return Job(info, settings, frames=frames)
+
+
+def describe(cs: ConvertSettings) -> str:
+    """Short text for a row with its own settings, e.g. 'HEVC MKV · 25 fps · 800 kbit/s · …'."""
+    parts = [f"{formats.CODECS_BY_KEY[cs.codec].label.split(' (')[0]} {cs.container.upper()}"]
+    if cs.fps:
+        parts.append(f"{float(cs.fps):.5g} fps")
+    if cs.rate == "level":
+        parts.append(formats.QUALITY_LEVELS[cs.level][0])
+    elif cs.rate == "crf":
+        parts.append(f"quality {cs.crf}")
+    elif cs.rate == "kbps":
+        parts.append(f"{cs.kbps} kbit/s")
+    else:
+        parts.append("smart, " + ("looks identical" if cs.goal == "identical" else "smaller"))
+    a = {"default": "AAC", "smart": "sound smart", "copy": "sound copied",
+         "none": "no sound"}.get(cs.audio) or audio.LABELS[cs.audio]
+    if cs.audio in audio.ENCODERS:
+        if cs.channels:
+            a += {1: " mono", 2: " stereo"}.get(cs.channels, f" {cs.channels} ch")
+        if cs.audio_kbps and cs.audio != "flac":
+            a += f" {cs.audio_kbps}k"
+    parts.append(a)
+    return " · ".join(parts)

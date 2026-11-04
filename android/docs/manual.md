@@ -16,21 +16,22 @@ This guide explains everything briefly and the **Pro** mode in detail.
 8. Export: lossless, smart, re-encode
 9. Sound
 10. Batch list
-11. Clip Speed Treatments
-12. The menu behind the logo
-13. Tips and troubleshooting
-14. Licence and third-party notices
+11. Convert videos
+12. Clip Speed Treatments
+13. The menu (⚙ / logo)
+14. Tips and troubleshooting
+15. Licence and third-party notices
 
 ## 1. Easy and Pro
 
-The app has two modes. Switch at any time – tap the **Easy / Pro** badge next to the app name, use the switch in the save card, or choose in the menu behind the logo. Your sections and settings are kept.
+The app has two modes. Switch at any time – tap the **Easy / Pro** badge next to the app name, use the switch in the save card, or choose in the menu (⚙ or the logo). Your sections and settings are kept.
 
 - **Easy** (the default) shows only what you need for quick results: Clip Sections with a simple video speed ("4× slower"), the yellow brackets on the timeline to cut, and **Save video**. Every speed change is smoothed automatically. Smart export keeps the source codec, re-encode uses a codec chosen by the app in high quality.
 - **Pro** adds everything for exact work: frame numbers and frame rates, keyframe buttons, section start / end at the playhead, smooth transitions chosen per border, the trim card, a choice of which parts smart export re-encodes, codec, quality and resolution for re-encoding, a speed for re-encoding without sections, and saving changes back into a batch entry.
 
 ## 2. Quick start
 
-1. Tap **Choose clip** and pick a video – ideally a slow-motion recording. The app's gallery shows the camera folder, newest first; **Other files…** opens any other file.
+1. Tap **Choose clip** on the start screen and pick a video – ideally a slow-motion recording. The app's gallery shows the camera folder, newest first; **Other files…** opens any other file.
 2. Move the playhead to where a section should end and tap **End ]**. The first section starts at the beginning of the clip, each further one right after the one before.
 3. Tap the section in the list (or on the timeline) and choose its speed.
 4. Drag the yellow brackets on the timeline to cut away the start and end.
@@ -40,7 +41,8 @@ The app has two modes. Switch at any time – tap the **Easy / Pro** badge next 
 
 From top to bottom:
 
-- **Top bar** – the logo (opens the menu), the **Easy / Pro** badge and **＋ Clip** for the next video. If the current clip has unsaved sections, the app asks whether to add it to the batch list first.
+- **Start screen** (no clip open) – the hint to choose a slow-motion recording, **Choose clip**, below a line the section **Video conversion (alpha)** with **Convert videos**, and the batch list.
+- **Top bar** – the logo (opens the menu), the **Easy / Pro** badge, **＋ Clip** for the next video (while a clip is open) and the **⚙ gear** at the right edge (opens the menu, like the logo). If the current clip has unsaved sections, the app asks whether to add it to the batch list first.
 - **Preview** – the current frame. Drag sideways on the picture to move frame by frame.
 - **Timeline** – pictures of the clip with the Clip Sections (coloured, labelled with their speed), their borders, the smooth transitions, the yellow trim brackets, the keyframe ticks below the strip and the playhead.
 - **Transport** – play preview, the output length and speed, the magnet 🧲 and the buttons to move through the clip.
@@ -75,7 +77,7 @@ On the timeline, **tap** to move the playhead (and select the section there) and
 
 The **magnet 🧲** makes the playhead snap to section borders when it comes close – useful to start the next section exactly where the previous one ends. Tap it to switch it on or off.
 
-While the app prepares the pictures for scrubbing, a thin bar on the timeline shows the progress. Clips you open again are ready almost at once – the app keeps these previews for a while (see section 12).
+While the app prepares the pictures for scrubbing, a thin bar on the timeline shows the progress. Clips you open again are ready almost at once – the app keeps these previews for a while (see section 13).
 
 ## 6. Clip Sections in Pro
 
@@ -143,7 +145,24 @@ Collect several videos – or several versions of the same video – and save th
 - **Tap an entry** to load it into the editor. Change it and tap **✔ Save changes to this entry** (Pro) – or add it as another version.
 - **Remove done** clears the saved entries; **✕** removes one.
 
-## 11. Clip Speed Treatments
+## 11. Convert videos
+
+**Convert videos** (start screen, section *Video conversion (alpha)*, and the menu) re-encodes many videos at once – for example a folder of old AVI files into a modern codec. Every frame is kept once and the length stays the same; the originals are never changed. Add videos or a whole folder with **＋ Videos** / **＋ Folder**. The new files are saved in *Movies/VideoSpeedControl/Converted*.
+
+**Easy**: codec, quality and *Keep the sound* – plus **Smart**.
+
+**Pro** shows every setting:
+
+- **Frame rate**: original or a rate from the list (the length stays the same: frames are dropped or repeated).
+- **Container**: MP4, MOV or MKV. Android has no QuickTime writer – a MOV is an MP4-type file with the .mov name, which Apple devices play. AV1 can't go into MOV.
+- **Codec** and **Picture**: quality level, a data rate in kbit/s, or Smart.
+- **Sound**: Smart, copy unchanged, AAC, Opus, FLAC or none, with **channels** (never more than the original has) and the **sound data rate**. Copying MP3 sound (old AVI files) works only in **MKV**: the phone can't put MP3 or Opus into MP4.
+
+These are the **general settings**. Tap **⚙** on a video to give it **own settings**; *Use general settings* removes them. Settings that don't fit a video are marked with ⚠ and converting waits until they are fixed.
+
+**Smart** chooses the data rate per video from its codec and data rate – with values measured on a Pixel against VMAF – and copies the sound where the container allows it. Each video shows what to expect, e.g. *Smart: ≈ 230 kbit/s · sound copied · ≈ 45 % of the original*. Goals: **Looks identical** or **Smaller**. The phone's encoders are made for recording in real time and need much more data than the desktop's for the same picture: on the phone *Looks identical* saves little, *Smaller* about half with AV1. For the smallest files with no visible loss, convert on the PC (the desktop version measures every video).
+
+## 12. Clip Speed Treatments
 
 A **Clip Speed Treatment** (.cst file) stores everything you planned for a clip – sections, trim, speeds and export settings – so you can change it again later.
 
@@ -153,9 +172,9 @@ A **Clip Speed Treatment** (.cst file) stores everything you planned for a clip 
 
 The file format is the same as in the desktop app for Linux and Windows: you can start on the phone and continue on the computer, or the other way round.
 
-## 12. The menu behind the logo
+## 13. The menu (⚙ / logo)
 
-Tap the logo at the top left.
+Tap the **⚙ gear** at the top right – or the logo at the top left.
 
 - **Mode** – Easy or Pro, with what each one offers.
 - **Language** – the app follows the phone's language; choose another here (English, German, Spanish, French, Romanian, Hebrew, Klingon).
@@ -163,7 +182,7 @@ Tap the logo at the top left.
 - **Previews** – the space the stored previews take and **Delete previews**. The app stores the pictures it prepares for scrubbing, so a clip opened again is ready at once. Previews nobody needs are deleted automatically 2 minutes after the start, when the app is idle; together they take at most 2 GB.
 - **← Back** or **Close & return to app** go back to the editor.
 
-## 13. Tips and troubleshooting
+## 14. Tips and troubleshooting
 
 - **The saved video stutters on some players.** Lossless videos and copied smart parts keep their recorded frame rate. Use smart export with the automatic choice, or re-encode.
 - **The video doesn't play on an iPhone or Mac.** Smart exports may not play on Apple devices. Re-encode with HEVC or H.264.
@@ -173,7 +192,7 @@ Tap the logo at the top left.
 - **Saving takes long.** Re-encoding works through every frame; AV1 (best quality) is much slower than the other codecs. Lossless is the fastest.
 - **A batch entry fails after the app was closed.** Clips opened through *Open with* or *Share* from another app may only be readable while the app is running. Open them in VideoSpeedControl's own gallery instead.
 
-## 14. Licence and third-party notices
+## 15. Licence and third-party notices
 
 Copyright © 2026 Alex Vulcu. Concept, architecture, direction, and curation by Alex Vulcu. Implementation assisted by generative AI tools.
 

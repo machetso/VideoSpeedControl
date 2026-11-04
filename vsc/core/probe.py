@@ -105,6 +105,20 @@ class MediaInfo:
     capture_fps: Fraction | None = None       # phones: rate the sensor recorded at
     audio: str | None = None                  # first audio track, e.g. "aac stereo 48 kHz"
     audio_rate: int | None = None             # its sample rate in Hz
+    audio_codec: str | None = None            # its codec name, e.g. "mp3", "aac"
+    audio_channels: int | None = None
+    audio_bitrate: int | None = None          # bit/s (None = not stored)
+
+    @property
+    def video_bitrate(self) -> int | None:
+        """Bit/s of the picture: the stream's own value, else the file's minus the sound."""
+        if self.stream_bitrate:
+            return self.stream_bitrate
+        if self.bitrate:
+            return max(1, self.bitrate - (self.audio_bitrate or 0))
+        if self.duration > 0:
+            return max(1, int(self.size_bytes * 8 / self.duration) - (self.audio_bitrate or 0))
+        return None
 
     @property
     def slowmo_factor(self) -> float | None:
@@ -292,6 +306,16 @@ def _audio_rate(streams: list[dict]) -> int | None:
     return int(rate) if rate.isdigit() else None
 
 
+def _audio_details(streams: list[dict]) -> dict:
+    a = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    if a is None:
+        return {}
+    ch, br = str(a.get("channels", "")), str(a.get("bit_rate", ""))
+    return {"audio_codec": a.get("codec_name"),
+            "audio_channels": int(ch) if ch.isdigit() else None,
+            "audio_bitrate": int(br) if br.isdigit() else None}
+
+
 def _recording(fmt_tags: dict, streams: list[dict], v: dict) -> dict:
     tags = _tags(fmt_tags)
     device = _device(tags, _tags(v.get("tags", {})))
@@ -302,7 +326,8 @@ def _recording(fmt_tags: dict, streams: list[dict], v: dict) -> dict:
             "recorded": _recorded(tags, bool(device and device.startswith("GoPro"))),
             "capture_fps": capture,
             "audio": _audio(streams),
-            "audio_rate": _audio_rate(streams)}
+            "audio_rate": _audio_rate(streams),
+            **_audio_details(streams)}
 
 
 @dataclass

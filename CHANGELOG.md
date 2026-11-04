@@ -3,6 +3,29 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
+## 0.9.5 – 2026-11-04
+
+- *(Android)* **New start screen**: "Choose clip" sits under the app name with the hint to choose
+  a slow-motion recording; below a line the section **Video conversion (alpha)** with "Convert
+  videos". The top bar has a **⚙ gear** at the right edge that opens the menu (like the logo).
+- **Convert videos – Pro mode** (both): frame rate (original or the usual list; the length stays
+  the same), container MP4 / MOV / MKV, codec, picture by quality level, own quality value
+  (desktop) or kbit/s, sound copied unchanged / AAC / Opus / MP3 (desktop) / FLAC / none with
+  channels (never more than the original) and data rate. General settings for every video plus
+  own settings per video; settings that don't fit a video are marked ⚠.
+- **Convert videos – Smart** (both, Easy and Pro): the smallest file that keeps picture and sound.
+  Goals "Looks identical" (default) and "Smaller". Desktop: every video is measured (samples
+  encoded at several quality values, compared with the original by VMAF) – old DivX cartoons
+  became AV1 files of about 30–40 % of their size. Android: data rate from rules calibrated on a
+  Pixel against VMAF (the phone's real-time encoders save less). The sound is copied where the
+  container can hold it, else matched AAC.
+- *(Android)* Own **MKV writer** (Android has none): AV1 / HEVC / H.264 with MP3, AAC, Opus,
+  FLAC, AC-3 … – needed to keep the MP3 sound of old AVI files unchanged.
+- *(Android)* Data rates of AVI / MP3 files are measured from their packets (Android states none).
+- *(Android)* AVI files picked through the folder / file picker could not be read ("no video
+  frames") – fixed (c88e4c2).
+- User guides: new section "Convert videos" (desktop, Android EN / DE).
+
 ## 0.9.4 – 2026-11-03
 
 - **Convert videos** (both): re-encode many videos or whole folders at once with one codec and

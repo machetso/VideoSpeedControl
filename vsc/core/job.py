@@ -65,6 +65,12 @@ class OutputSettings:
     interpolation: str = formats.DEFAULT_INTERPOLATION
     smart: bool = False                    # smart re-encode (codec = the source's encoder)
     audio: bool = True                     # keep the sound (stretched, pitch preserved)
+    # Convert videos, pro mode (2026-11-04); None = the app's defaults as before
+    bitrate: int | None = None             # video kbit/s instead of the quality value
+    audio_codec: str | None = None         # None = container default; "copy" = source unchanged
+    audio_bitrate: int | None = None       # kbit/s
+    audio_channels: int | None = None      # None = stereo
+    audio_rate: int | None = None          # Hz, None = 48 kHz
 
     def clone(self) -> "OutputSettings":
         return copy.deepcopy(self)

@@ -7,4 +7,4 @@
 # See the LICENSE file in the repository root for details.
 """VideoSpeedControl – full control over the speed of a video clip."""
 
-__version__ = "0.9.4"
+__version__ = "0.9.5"

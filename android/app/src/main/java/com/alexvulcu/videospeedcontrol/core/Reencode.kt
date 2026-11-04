@@ -30,18 +30,27 @@ class ReencodeExport(
     private val context: Context,
     private val job: ReencodeJob,
     private val withAudio: Boolean = false,
+    /** Convert videos: output container (MKV = own writer). */
+    private val container: OutMuxer.Container = OutMuxer.Container.MP4,
+    /** Convert videos, pro / smart: sound straight from the source ([ConvertAudio]); null = [Audio]. */
+    private val audioPlan: ConvertAudio.Plan? = null,
 ) {
     @Volatile var cancelled = false
 
     private class Decoded(val index: Int, val ptsUs: Long, val size: Int, val eos: Boolean)
 
-    /** Writes an MP4 to [fd]; [progress] gets 0..1. Returns the number of frames encoded. */
+    /** Writes the file to [fd]; [progress] gets 0..1. Returns the number of frames encoded. */
     fun run(fd: FileDescriptor, progress: (Float) -> Unit = {}): Int {
         val blockers = job.blockers()
         require(blockers.isEmpty()) { blockers.joinToString("; ") }
         val info = job.info
         val audioShare = if (withAudio && info.audio != null) 0.15f else 0f
-        val audio = if (audioShare > 0) Audio.render(context, job, { cancelled }) { progress(it * audioShare) } else null
+        val audio = when {
+            audioShare <= 0 -> null
+            audioPlan != null -> ConvertAudio.render(context, info, audioPlan, info.frames.ptsUs[job.trim.start],
+                (Rational.of(job.outputFrameCount.toLong()) / job.fps * Rational.of(1_000_000)).floor(), { cancelled }) { progress(it * audioShare) }
+            else -> Audio.render(context, job, { cancelled }) { progress(it * audioShare) }
+        }
         val videoProgress = { p: Float -> progress(audioShare + p * (1 - audioShare)) }
 
         val pieces = job.pieces()
@@ -71,7 +80,7 @@ class ReencodeExport(
 
         val encThread = HandlerThread("vsc-encoder").apply { start() }
         val decThread = HandlerThread("vsc-decoder").apply { start() }
-        val muxer = MediaMuxer(fd, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val muxer = OutMuxer.create(fd, container)
         val encoder = MediaCodec.createByCodecName(encName)
         val ex = Extractor()
         var decoder: MediaCodec? = null

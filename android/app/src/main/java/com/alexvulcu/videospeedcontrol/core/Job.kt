@@ -148,6 +148,8 @@ data class ReencodeJob(
     val minBitrate: Int = 1_000_000,
     /** Software AV1 at its lowest complexity (Convert: videos the AV1 chip can't take). */
     val fastest: Boolean = false,
+    /** Convert pro / smart: this video data rate (bit/s) instead of the quality level. */
+    val bitrateOverride: Int? = null,
 ) : Timing {
     override val baseRate: Rational get() = speedSetting?.let { info.realFps * it } ?: fps
 
@@ -165,6 +167,7 @@ data class ReencodeJob(
 
     val bitrate: Int
         get() {
+            bitrateOverride?.let { return it }
             val (w, h) = outputSize()
             val bps = w.toDouble() * h * fps.toDouble() * quality.bitsPerPixel * codec.bitsFactor
             return bps.coerceIn(minBitrate.toDouble(), 200e6).toInt()

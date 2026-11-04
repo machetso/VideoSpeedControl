@@ -39,6 +39,7 @@ object Treatment {
         val smartAuto: Boolean = true,
         val size: Pair<Int, Int>? = null,          // re-encode output size when shortSide is set (desktop fit_box)
         val convert: Boolean = false,              // "Convert videos" task (never stored in a .cst)
+        val convertSettings: Convert.Settings? = null,   // its pro / smart settings (null = easy as in 0.9.4)
     )
 
     data class Data(

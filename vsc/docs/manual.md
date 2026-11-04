@@ -19,10 +19,11 @@ The app saves the speed edits of every clip, so you can resume your work later �
 7. Smart re-encode
 8. Test encode and time estimates
 9. Export and the batch list
-10. AV2 (experimental)
-11. Keyboard shortcuts
-12. Tips and troubleshooting
-13. Licence and credits
+10. Convert videos
+11. AV2 (experimental)
+12. Keyboard shortcuts
+13. Tips and troubleshooting
+14. Licence and credits
 
 ## 1. Quick start
 
@@ -234,11 +235,40 @@ Estimates also appear in the clip list. Clips with the same settings share a tes
 
 Whenever you add a clip that is already in the batch list, VideoSpeedControl asks whether you want another encoding and offers **name additions** with checkboxes – codec, preset, quality and resolution, e.g. `jump_x265_slow_high_1920x1080.mp4`. A preview shows the resulting file name; your choice of boxes is remembered.
 
-## 10. AV2 (experimental)
+## 10. Convert videos
+
+**Convert videos…** (toolbar) re-encodes many videos at once – for example a folder of old AVI / DivX files into a modern codec. It is independent of the clip list and the speed settings: every frame is kept once, the length stays the same, and the originals are never changed. Add files or whole folders (with sub-folders if you like) or drop them onto the window. The new files go into a *Converted* folder next to each original, or into a folder you choose; existing files are never overwritten.
+
+**Easy** (top right): codec, quality level and *Keep the sound* – plus **Smart**.
+
+**Pro** shows every setting:
+
+| Setting | What it does |
+|---|---|
+| **Frame rate** | *Original* (each video keeps its own) or a rate from the list. Another rate keeps the length: frames are dropped or repeated, never invented. |
+| **Container** | MP4, MOV or MKV. AV1 cannot be stored in MOV, so MOV is greyed out for AV1. |
+| **Codec** | AV1 (SVT-AV1 or libaom), HEVC, H.264. |
+| **Picture** | *Quality level*, an *own quality value* (the codec's CRF), a *data rate* in kbit/s, or *Smart*. |
+| **Sound** | *Smart*, *Copy unchanged*, AAC, Opus, MP3, FLAC or *No sound*, with **channels** (like the original, mono, stereo, 5.1, 7.1 – never more than the original has) and the **sound data rate**. |
+
+The settings are the **general settings** for every video. Select one or more videos and click **Own settings for selected** to give them their own settings – the Settings column then shows *Own: …*; select them again later to change them, or click **Back to general settings**. Combinations that do not work are marked with ⚠ in the list (for example copying MP3 sound into MOV), and converting waits until they are fixed.
+
+### Smart: smaller files with the same picture and sound
+
+With **Smart** every video is measured before it is converted: three short samples are encoded at several quality values and compared with the original by **VMAF** (a perceptual score from 0 to 100). The smallest file that still reaches the goal is used:
+
+- **Looks identical** (default): no visible difference (VMAF ≥ 96 on average, every sample ≥ 94.5).
+- **Smaller, minimal loss**: noticeably smaller, a slight loss only on a close look (VMAF ≥ 93).
+
+The sound is **copied unchanged** when the container can hold it – nothing is lost and it is the smallest choice; otherwise it becomes AAC with the same channels and sample rate at a data rate matched to the source (for example MP3 96 kbit/s → AAC 80 kbit/s). The Settings column shows the result before you convert, e.g. *quality 27 ≈ 145 kbit/s, ~28 %*. **Measure now** measures without converting; *Convert* measures first anyway. Measuring takes about 20 seconds for a small old video and longer for HD.
+
+A re-encode can never be better than its source – Smart keeps what is there and saves the space. Example: old DivX cartoons (368×208, 10 fps) became AV1 files of about 30–40 % of their size with the MP3 sound copied.
+
+## 11. AV2 (experimental)
 
 AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30 % smaller at the same quality. FFmpeg cannot handle AV2 yet, so the app uses the AVM reference software. It is a research tool and **extremely slow** – about 75 seconds per 1080p frame on a laptop CPU, about 20 seconds at 360p – so use it for short clips and small sizes. Test encodes use at most 5 frames. Output is IVF or WebM; hardly any player can play AV2 yet. On Linux the encoder is built with `tools/fetch_avm.py`; without it, AV2 is shown as unavailable.
 
-## 11. Keyboard shortcuts
+## 12. Keyboard shortcuts
 
 | Key | Action |
 |---|---|
@@ -256,7 +286,7 @@ AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30
 | Ctrl+S | Save Clip Speed Treatment (.cst) |
 | Ctrl+L | Load Clip Speed Treatment (.cst) |
 
-## 12. Tips and troubleshooting
+## 13. Tips and troubleshooting
 
 - **Which mode?** Lossless whenever the frame rates fit – it is instant and perfect. Smart re-encode when only some parts need a constant frame rate. Re-encode for a different size, codec, or editing-friendly constant frame rate.
 - **Editing programs and variable frame rate:** DaVinci Resolve and Premiere handle variable-frame-rate files poorly. Export with Re-encode (e.g. ProRes or DNxHR) for editing.
@@ -266,7 +296,7 @@ AV2 is the successor of AV1 (AOMedia, specification 1.0 from May 2026), about 30
 - **The sound is hard to understand:** that is normal for strong slow motion – 10× slower speech keeps its pitch but is stretched. Switch the sound off (🔇) or add music later.
 - **Smart re-encode is greyed out:** the clip is not H.264 / HEVC, the keyframe analysis is still running, or no keyframe allows a join.
 
-## 13. Licence and credits
+## 14. Licence and credits
 
 Copyright © 2026 Alex Vulcu. Concept, architecture, direction, and curation by Alex Vulcu. Implementation assisted by generative AI tools. Licensed under the MIT License – see the LICENSE file.
 

@@ -52,6 +52,91 @@ CODEC_ARGS = {
 }
 
 
+# Convert videos, pro mode (2026-11-04): sound codecs the user can choose (key → FFmpeg encoder)
+ENCODERS = {"aac": "aac", "opus": "libopus", "mp3": "libmp3lame", "flac": "flac"}
+LABELS = {"aac": "AAC", "opus": "Opus", "mp3": "MP3", "flac": "FLAC (lossless)"}
+DEFAULT_KBPS = {"aac": 192, "opus": 160, "mp3": 192}
+MAX_CHANNELS = {"aac": 8, "opus": 8, "mp3": 2, "flac": 8}
+OPUS_RATES = (8000, 12000, 16000, 24000, 48000)
+# sound codecs (FFmpeg codec names) each container can hold – checked with the bundled FFmpeg
+CONTAINER_AUDIO = {
+    "mp4": {"aac", "mp3", "opus", "flac", "alac", "ac3", "eac3", "mp2"},
+    "mov": {"aac", "mp3", "alac", "ac3", "eac3", "mp2", "pcm_s16le", "pcm_s16be", "pcm_s24le",
+            "pcm_s24be", "pcm_f32le"},
+    "mkv": None,                                          # None = (practically) anything
+    "webm": {"opus", "vorbis"},
+}
+
+
+def container_holds(container: str, codec_name: str | None) -> bool:
+    if not codec_name or container not in CONTAINER_AUDIO:
+        return False
+    allowed = CONTAINER_AUDIO[container]
+    return allowed is None or codec_name in allowed
+
+
+def is_plain(job: Job) -> bool:
+    """True when the sound is neither stretched nor cut: the whole clip at real-time speed (e.g.
+    Convert videos) – then it can be taken straight from the source (copied or re-encoded once)."""
+    return (abs(slowmo_factor(job) - 1) < 1e-6 and not job.settings.smart and not job.has_segments
+            and job.trim.start == 0 and job.trim.end in (None, job.total_frames)
+            and abs(float(job.speed) - 1) < 1e-6)
+
+
+def copy_reason(job: Job) -> str | None:
+    """Why the source's sound cannot be copied unchanged into this output (None = it can)."""
+    if not job.info.has_audio:
+        return "This clip has no sound."
+    if not is_plain(job):
+        return "The sound is stretched or cut, so it has to be encoded again."
+    if not container_holds(job.container, job.info.audio_codec):
+        return (f"{(job.info.audio_codec or 'This sound').upper()} cannot be stored in "
+                f"{job.container.upper()} files.")
+    return None
+
+
+def encode_reason(container: str, codec_key: str) -> str | None:
+    """Why `codec_key` can't be written into `container` (None = it can)."""
+    if not container_holds(container, codec_key):
+        return f"{LABELS.get(codec_key, codec_key)} cannot be stored in {container.upper()} files."
+    return None
+
+
+def direct(job: Job) -> bool:
+    """Sound taken straight from the source (no Sonic, no temporary WAV)."""
+    return job.settings.audio_codec is not None and is_plain(job)
+
+
+def out_rate(job: Job, source_rate: int | None = None) -> int:
+    """Sample rate of the output sound."""
+    s = job.settings
+    rate = s.audio_rate or (source_rate if direct(job) and source_rate else OUT_RATE)
+    if s.audio_codec == "opus" and rate not in OPUS_RATES:
+        rate = min((r for r in OPUS_RATES if r >= rate), default=48000)
+    return rate
+
+
+def codec_args(job: Job) -> list[str]:
+    """-c:a … for the final mux."""
+    s = job.settings
+    key = s.audio_codec
+    if key is None:
+        args = list(CODEC_ARGS[job.container])
+        if s.audio_bitrate and "-b:a" in args:
+            args[args.index("-b:a") + 1] = f"{s.audio_bitrate}k"
+    elif key == "copy":
+        return ["-c:a", "copy"]
+    else:
+        args = ["-c:a", ENCODERS[key]]
+        if key != "flac":
+            args += ["-b:a", f"{s.audio_bitrate or DEFAULT_KBPS[key]}k"]
+    if s.audio_channels:
+        args += ["-ac", str(s.audio_channels)]
+    if key is not None:
+        args += ["-ar", str(out_rate(job, job.info.audio_rate))]
+    return args
+
+
 def unavailable_reason(job: Job) -> str | None:
     """Why this output gets no sound (None = it can)."""
     if not job.info.has_audio:
@@ -216,11 +301,25 @@ def _video_tag(path: Path) -> str | None:
 
 
 def mux_args(job: Job, video: Path, sound: Path, output: Path) -> list[str]:
-    args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-y", "-v", "error", "-nostdin",
-            "-i", str(video), "-i", str(sound), "-map", "0:v", "-map", "1:a", "-c:v", "copy"]
+    """Final step: video copied, sound from `sound` (the rendered WAV) – or, for `direct` jobs,
+    straight from the source file: copied, or encoded once (padded / cut to the video length)."""
+    args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-y", "-v", "error", "-nostdin", "-i", str(video)]
+    if direct(job):
+        start = pieces(job)[0][0] - job.info.format_start     # first frame on the file timeline
+        if start > 0.0005:
+            args += ["-ss", f"{start:.6f}"]
+        args += ["-i", str(job.info.path), "-map", "0:v", "-map", "1:a:0", "-c:v", "copy"]
+    else:
+        args += ["-i", str(sound), "-map", "0:v", "-map", "1:a", "-c:v", "copy"]
     if job.container in ("mp4", "mov") and video.exists() and (tag := _video_tag(video)):
         args += ["-tag:v", tag]              # keep hvc1 (Apple) / hev1 (smart) as written
-    return args + CODEC_ARGS[job.container] + [str(output)]
+    args += codec_args(job)
+    if direct(job):
+        length = f"{job.output_duration:.6f}"
+        if job.settings.audio_codec != "copy":
+            args += ["-af", f"apad=whole_dur={length}"]
+        args += ["-t", length]
+    return args + [str(output)]
 
 
 class AudioRunner:
@@ -257,7 +356,7 @@ class AudioRunner:
                           frames=res.frames, error=res.error)
         sound = temp_sound_path(self.output)
         try:
-            if not render(self.job, sound, lambda: self._cancelled):
+            if not direct(self.job) and not render(self.job, sound, lambda: self._cancelled):
                 raise AudioError("cancelled")
         except Exception as e:  # noqa: BLE001 – reported on the result
             self.video.unlink(missing_ok=True)

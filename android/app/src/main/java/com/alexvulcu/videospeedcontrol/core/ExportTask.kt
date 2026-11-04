@@ -79,10 +79,11 @@ object Exporter {
                 Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, job.fileStem(), "mp4", "video/mp4")
             }
             Treatment.Mode.REENCODE -> if (s.convert) {
-                val job = Convert.job(info, s.codec, s.quality)
-                val x = ReencodeExport(context, job, sound)
-                Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, Convert.cleanStem(info.name), "mp4", "video/mp4",
-                    Convert.FOLDER)
+                val plan = Convert.plan(info, s.convertSettings ?: Convert.Settings(codec = s.codec, quality = s.quality,
+                    audio = if (sound) "default" else "none"))
+                val x = ReencodeExport(context, plan.job, plan.sound, plan.container, plan.audio)
+                Running({ x.cancelled = true }, { fd, p -> x.run(fd, p) }, Convert.cleanStem(info.name),
+                    plan.container.extension, plan.container.mime, Convert.FOLDER)
             } else {
                 val job = ReencodeJob(info, s.fps, s.speed, t.trim, rampedSegments(t.segments, t.trim, info), s.codec, s.shortSide, s.quality)
                 val blockers = job.blockers()

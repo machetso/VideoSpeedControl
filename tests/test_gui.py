@@ -580,7 +580,7 @@ def test_help_about_and_icons(qapp, window):
     window.show_help()
     h = window._help
     titles = [t for _, t in h.headings]
-    assert "7. Smart re-encode" in titles and "13. Licence and credits" in titles
+    assert "7. Smart re-encode" in titles and "14. Licence and credits" in titles and "10. Convert videos" in titles
     h.toc.setCurrentRow(titles.index("9. Export and the batch list"))
     assert h.browser.textCursor().block().text() == "9. Export and the batch list"
     doc = h.browser.document()

@@ -14,7 +14,7 @@ const val SLOWMO_MIN = 1.5
  * Presentation times (µs, display order) of every video frame plus keyframe indices.
  * Built from sample headers only (no decoding) – the Android counterpart of `probe.FrameMap`.
  */
-class FrameMap(val ptsUs: LongArray, val keyframes: IntArray) {
+class FrameMap(val ptsUs: LongArray, val keyframes: IntArray, val bytes: Long = 0) {
     val count get() = ptsUs.size
 
     fun keyframeAtOrBefore(frame: Int): Int {
@@ -95,7 +95,18 @@ data class ClipInfo(
     val recorded: java.time.Instant?,  // container creation time
     val frames: FrameMap,
     val videoProfile: Int? = null,  // MediaFormat KEY_PROFILE (decoder check), if the file says
+    val audioMime: String? = null,  // first audio track: "audio/mpeg", "audio/mp4a-latm", …
+    val audioChannels: Int? = null,
+    val audioBitrate: Int? = null,  // bit/s if the file says
 ) {
+    /** Bit/s of the picture: from its packet sizes, else the file's rate minus the sound. */
+    val videoBitrate: Int?
+        get() {
+            if (frames.bytes > 0 && durationUs > 0) return (frames.bytes * 8e6 / durationUs).toInt()
+            val total = bitrate ?: if (durationUs > 0 && sizeBytes > 0) (sizeBytes * 8e6 / durationUs).toInt() else return null
+            return maxOf(1, total - (audioBitrate ?: 0))
+        }
+
     /** > 1 if the file is already slowed down (recorded faster than it plays). */
     val slowmoFactor: Double?
         get() = captureFps?.let { (it / fps).toDouble() }?.takeIf { it >= SLOWMO_MIN }
@@ -137,10 +148,11 @@ object Probe {
             ex.setDataSource(context, uri, null)
             var video = -1
             var audioFmt: MediaFormat? = null
+            var audioTrack = -1
             for (i in 0 until ex.trackCount) {
                 val mime = ex.getTrackFormat(i).getString(MediaFormat.KEY_MIME) ?: continue
                 if (video < 0 && mime.startsWith("video/")) video = i
-                if (audioFmt == null && mime.startsWith("audio/")) audioFmt = ex.getTrackFormat(i)
+                if (audioFmt == null && mime.startsWith("audio/")) { audioFmt = ex.getTrackFormat(i); audioTrack = i }
             }
             require(video >= 0) { "$name has no video track." }
             val fmt = ex.getTrackFormat(video)
@@ -179,6 +191,10 @@ object Probe {
                     recorded = parseDate(meta?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)),
                     frames = frames,
                     videoProfile = fmt.intOrNull(MediaFormat.KEY_PROFILE),
+                    audioMime = audioFmt?.getString(MediaFormat.KEY_MIME),
+                    audioChannels = audioFmt?.intOrNull(MediaFormat.KEY_CHANNEL_COUNT),
+                    audioBitrate = audioFmt?.intOrNull(MediaFormat.KEY_BIT_RATE)
+                        ?: if (audioTrack >= 0) runCatching { estimateBitrate(ex, audioTrack) }.getOrNull() else null,
                 )
             } finally {
                 meta?.release()
@@ -193,10 +209,12 @@ object Probe {
         ex.selectTrack(track)
         ex.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
         val samples = ArrayList<Pair<Long, Boolean>>()
+        var bytes = 0L
         while (true) {
             val t = ex.sampleTime
             if (t < 0) break
             samples += t to (ex.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0)
+            bytes += maxOf(0L, ex.sampleSize)
             if (!ex.advance()) break
         }
         ex.unselectTrack(track)
@@ -205,7 +223,31 @@ object Probe {
         return FrameMap(
             LongArray(samples.size) { samples[it].first },
             if (keys.isEmpty() && samples.isNotEmpty()) intArrayOf(0) else keys,
+            bytes,
         )
+    }
+
+    /**
+     * Data rate of a sound track that does not state one (AVI / MP3 through Media3): its packet
+     * sizes over the first [seconds] (only sizes are read, no data).
+     */
+    fun estimateBitrate(ex: Extractor, track: Int, seconds: Double = 60.0): Int? {
+        ex.selectTrack(track)
+        ex.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+        var bytes = 0L
+        var first = -1L
+        var last = -1L
+        while (true) {
+            val t = ex.sampleTime
+            if (t < 0) break
+            if (first < 0) first = t
+            last = t
+            bytes += maxOf(0L, ex.sampleSize)
+            if (t - first > seconds * 1e6 || !ex.advance()) break
+        }
+        ex.unselectTrack(track)
+        val span = last - first
+        return if (span > 500_000 && bytes > 0) (bytes * 8e6 / span).toInt() else null
     }
 
     /**
