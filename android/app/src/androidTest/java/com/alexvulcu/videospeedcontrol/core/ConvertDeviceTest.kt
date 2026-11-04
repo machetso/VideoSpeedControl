@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -39,6 +40,24 @@ class ConvertDeviceTest {
         assertEquals(Rational.of(10), info.fps)
         assertEquals(200, info.frames.count)
         assertTrue(info.audio, info.audio!!.startsWith("MP3"))
+    }
+
+    /**
+     * The same AVI through a content:// link (folder picker / MediaStore). Media3 found the tracks
+     * of the user's DivX files that way but read no frames (2026-11-04) – [Extractor] now hands it
+     * an open file. Needs an AVI in the phone's video library; skipped when there is none.
+     */
+    @Test fun aviThroughContentLink() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(ctx.packageName, "android.permission.READ_MEDIA_VIDEO")
+        val coll = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val uri = ctx.contentResolver.query(coll, arrayOf("_id"), "_display_name LIKE ?", arrayOf("%.avi"), null)
+            ?.use { c -> if (c.moveToFirst()) android.content.ContentUris.withAppendedId(coll, c.getLong(0)) else null }
+        assumeTrue("no AVI in the phone's video library", uri != null)
+        val info = Probe.probe(ctx, uri!!)
+        Log.i("ConvertDeviceTest", "content link: ${info.name} ${info.frames.count} frames")
+        assertTrue(info.frames.count > 0)
+        assertTrue(info.durationUs > 0)
     }
 
     @Test fun convertAviToAv1WithSound() {

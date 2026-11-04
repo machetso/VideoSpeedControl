@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.inspector.MediaExtractorCompat
@@ -16,11 +17,16 @@ import java.nio.ByteBuffer
  * [setDataSource] tries Android's extractor first – it is what every other file was tested
  * with – and falls back to Media3's extractors (AVI, and whatever else Media3 reads) when
  * Android refuses the file or finds no track in it.
+ *
+ * Media3 gets content:// links (folder / file picker, MediaStore) as an open file
+ * (/proc/self/fd/N): through the content link it found the tracks of the user's DivX AVIs but
+ * read no frames at all ("contains no video frames", 2026-11-04).
  */
 @OptIn(UnstableApi::class)
 class Extractor {
     private var android: MediaExtractor? = null
     private var media3: MediaExtractorCompat? = null
+    private var media3File: ParcelFileDescriptor? = null
 
     /** True when Media3 reads the file (Android's extractor could not). */
     val usesMedia3: Boolean get() = media3 != null
@@ -39,15 +45,23 @@ class Extractor {
         }
         ex.release()
         val m3 = MediaExtractorCompat(context)
+        var pfd: ParcelFileDescriptor? = null
         try {
-            m3.setDataSource(context, uri, headers)
+            var source = uri
+            if (uri.scheme == "content") {
+                pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: throw IOException("can't open $uri")
+                source = Uri.fromFile(java.io.File("/proc/self/fd/${pfd.fd}"))
+            }
+            m3.setDataSource(context, source, headers)
             if (m3.trackCount == 0) throw IOException("no tracks")
         } catch (e: Exception) {
             m3.release()
+            pfd?.close()
             throw IOException("This file format can't be read" +
                 (first?.message?.let { " ($it)" } ?: ""), e)
         }
         media3 = m3
+        media3File = pfd
     }
 
     private val a: MediaExtractor? get() = android
@@ -69,7 +83,9 @@ class Extractor {
     fun release() {
         android?.release()
         media3?.release()
+        media3File?.close()
         android = null
         media3 = null
+        media3File = null
     }
 }
