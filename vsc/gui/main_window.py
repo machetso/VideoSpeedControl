@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
                         triggered=self.show_help)
         self.addAction(guide)                     # F1 works without opening the menu
         pdf = QAction(tr("User guide (PDF)"), self, triggered=self._open_pdf)
-        pdf.setEnabled(help.PDF.is_file())
+        pdf.setEnabled(help.pdf_path().is_file())
         menu = QMenu(self)
         menu.addAction(guide)
         menu.addAction(pdf)

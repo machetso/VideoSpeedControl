@@ -143,9 +143,15 @@ def screenshots(app: QApplication) -> None:
 
 # --------------------------------------------------------------------------- PDF
 
-def build_pdf() -> None:
-    writer = QPdfWriter(str(help.PDF))
-    writer.setTitle("VideoSpeedControl – User guide")
+def build_pdf(code: str = "en") -> None:
+    """The PDF of the guide in one language (docs/manual_<code>.md → VideoSpeedControl_Manual_<code>.pdf)."""
+    from vsc import i18n
+    i18n.use(code)
+    out = help.PDF if code == "en" else help.DOCS / f"VideoSpeedControl_Manual_{code}.pdf"
+    if code != "en" and not (help.DOCS / f"manual_{code}.md").is_file():
+        return
+    writer = QPdfWriter(str(out))
+    writer.setTitle("VideoSpeedControl – " + i18n.tr("User guide"))
     writer.setCreator(f"VideoSpeedControl {__version__}")
     writer.setPageLayout(QPageLayout(QPageSize(QPageSize.A4), QPageLayout.Portrait,
                                      QMarginsF(5, 5, 5, 5), QPageLayout.Millimeter))   # + Qt's own 2 cm
@@ -154,17 +160,18 @@ def build_pdf() -> None:
     # no page size: print_() lays out at screen resolution, scales to the printer itself and
     # adds a 2 cm margin – pictures are limited to that text width in screen pixels (96/inch)
     text_mm = writer.pageLayout().paintRect(QPageLayout.Millimeter).width() - 2 * 20
-    help.load_manual(doc, text_mm / 25.4 * 96 * 0.98, prefix=TITLE_PAGE.format(version=__version__))
+    help.load_manual(doc, text_mm / 25.4 * 96 * 0.98, prefix=TITLE_PAGE.format(
+        version=__version__, guide=i18n.tr("User guide"), version_word=i18n.tr("Version")))
     _finish_title_page(doc)
     doc.print_(writer)
-    print(f"PDF written: {help.PDF} ({help.PDF.stat().st_size // 1024} KB)")
+    print(f"PDF written: {out} ({out.stat().st_size // 1024} KB)")
 
 
 TITLE_PAGE = """![VideoSpeedControl](../gui/resources/splash.webp)
 
-**VideoSpeedControl – User guide**
+**VideoSpeedControl – {guide}**
 
-Version {version}
+{version_word} {version}
 
 Copyright © 2026 Alex Vulcu. Concept, architecture, direction, and curation by Alex Vulcu. Implementation assisted by generative AI tools. Licensed under the MIT License.
 
@@ -204,7 +211,9 @@ def main() -> None:
     app = QApplication(sys.argv[:1])
     if "--screenshots" in sys.argv:
         screenshots(app)
-    build_pdf()
+    from vsc import i18n
+    for lang in i18n.languages():          # English + every language that has a translated guide
+        build_pdf(lang.code)
 
 
 if __name__ == "__main__":

@@ -21,12 +21,27 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, Q
                                QSplitter, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
+from .. import i18n
 from ..i18n import tr
 
 RESOURCES = Path(__file__).with_name("resources")
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 MANUAL = DOCS / "manual.md"
 PDF = DOCS / "VideoSpeedControl_Manual.pdf"
+
+
+def manual_path(code: str | None = None) -> Path:
+    """The guide in the interface language (docs/manual_<code>.md), else the English one."""
+    code = code or i18n.current().code
+    p = DOCS / f"manual_{code}.md"
+    return p if code != "en" and p.is_file() else MANUAL
+
+
+def pdf_path(code: str | None = None) -> Path:
+    """The PDF guide in the interface language (VideoSpeedControl_Manual_<code>.pdf), else English."""
+    code = code or i18n.current().code
+    p = DOCS / f"VideoSpeedControl_Manual_{code}.pdf"
+    return p if code != "en" and p.is_file() else PDF
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 
 ATTRIBUTION = ("Concept, architecture, direction, and curation by Alex Vulcu.<br>"
@@ -52,7 +67,8 @@ def splash_pixmap(width: int) -> QPixmap:
 def load_manual(doc: QTextDocument, max_image_width: float,
                 prefix: str = "") -> list[tuple[int, str]]:
     """Fill `doc` with the user guide; returns (level, title) of every heading."""
-    text = MANUAL.read_text(encoding="utf-8") if MANUAL.is_file() else "# " + tr("User guide missing")
+    manual = manual_path()
+    text = manual.read_text(encoding="utf-8") if manual.is_file() else "# " + tr("User guide missing")
     doc.setBaseUrl(QUrl.fromLocalFile(str(DOCS) + "/"))
     doc.setMarkdown(prefix + text, QTextDocument.MarkdownDialectGitHub)
     fit_images(doc, max_image_width)
@@ -98,9 +114,9 @@ class HelpWindow(QDialog):
         for level, title in self.headings:
             self.toc.addItem(("    " * (level - 1)) + title)
         self.toc.currentRowChanged.connect(self._jump)
-        pdf = QLabel(f"<a href='{QUrl.fromLocalFile(str(PDF)).toString()}'>{tr('Open as PDF')}</a>")
+        pdf = QLabel(f"<a href='{QUrl.fromLocalFile(str(pdf_path())).toString()}'>{tr('Open as PDF')}</a>")
         pdf.setOpenExternalLinks(True)
-        pdf.setVisible(PDF.is_file())
+        pdf.setVisible(pdf_path().is_file())
         left = QWidget()
         lay = QVBoxLayout(left)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -130,7 +146,8 @@ class HelpWindow(QDialog):
 
 
 def open_pdf() -> bool:
-    return PDF.is_file() and QDesktopServices.openUrl(QUrl.fromLocalFile(str(PDF)))
+    p = pdf_path()
+    return p.is_file() and QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
 
 
 class AboutDialog(QDialog):
