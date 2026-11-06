@@ -3,6 +3,18 @@
 All notable changes to VideoSpeedControl – the desktop app (Linux / Windows, Python) and the
 Android app (native Kotlin). Entries marked *(Android)* or *(desktop)* concern one of them only.
 
+## 0.9.6 – 2026-11-06
+
+- *(desktop)* **All languages of the Android app on Windows and Linux too:** English, Deutsch,
+  Español, Français, Română, עברית (Hebrew, right-to-left) and tlhIngan Hol (Klingon). Everything
+  is translated: windows, buttons, messages and the **user guide** (F1 and PDF). Switch with
+  **Help → Language** (the program offers to restart); "System language" follows the computer.
+  Both apps share the same dictionaries (`i18n/<code>.json`).
+- *(desktop)* **Windows installer in all 7 languages** – chosen at the start of setup; the program
+  then starts in that language.
+- *(desktop)* Hebrew: the window is mirrored, the transport row and timeline stay left-to-right.
+- The Android app is unchanged (0.9.5).
+
 ## 0.9.5 – 2026-11-04
 
 - *(Android)* **New start screen**: "Choose clip" sits under the app name with the hint to choose
