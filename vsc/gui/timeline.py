@@ -479,7 +479,12 @@ class PreviewPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.view, 1)
         layout.addWidget(self.timeline)
-        layout.addLayout(transport)
+        # time runs left to right in every language (also Hebrew): the transport row is never mirrored
+        transport_box = QWidget()
+        transport_box.setLayoutDirection(Qt.LeftToRight)
+        transport.setContentsMargins(0, 0, 0, 0)
+        transport_box.setLayout(transport)
+        layout.addWidget(transport_box)
         layout.addLayout(trim_row)
         layout.addLayout(self._build_sections())
         layout.addWidget(self.sections_table)

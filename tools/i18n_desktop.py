@@ -58,7 +58,9 @@ def main(argv: list[str]) -> int:
     if "--missing" in argv:
         code = argv[argv.index("--missing") + 1]
         texts = dictionaries()[code]["texts"]
-        print(json.dumps({t: "" for t in k if t not in texts}, ensure_ascii=False, indent=1))
+        # plural texts (trp) get a template with the English singular as a hint
+        print(json.dumps({t: ({"one (English)": v[1], "other": ""} if v[0] == "trp" else "")
+                          for t, v in k.items() if t not in texts}, ensure_ascii=False, indent=1))
         return 0
     print(f"{len(k)} desktop texts")
     for code, d in dictionaries().items():
