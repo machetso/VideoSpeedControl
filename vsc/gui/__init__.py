@@ -13,16 +13,23 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 
-    from . import help
-    from .main_window import MainWindow
+    from .. import i18n
 
     argv = sys.argv if argv is None else argv
     app = QApplication(argv)
     app.setApplicationName("VideoSpeedControl")
     app.setOrganizationName("VideoSpeedControl")   # QSettings → ~/.config/VideoSpeedControl/
     app.setDesktopFileName("videospeedcontrol")   # Wayland: matches the launcher entry's icon
+    # the language BEFORE the window modules are imported and built (texts are read once)
+    lang = i18n.use(i18n.stored_choice())
+    if lang.rtl:
+        app.setLayoutDirection(Qt.RightToLeft)
+
+    from . import help
+    from .main_window import MainWindow
     app.setWindowIcon(help.app_icon())
     window = MainWindow()
     window.add_files([Path(a) for a in argv[1:]])

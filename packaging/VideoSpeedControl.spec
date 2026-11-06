@@ -29,6 +29,7 @@ def tree(src: Path, dest: str) -> list[tuple[str, str]]:
 
 datas = tree(ROOT / "vsc" / "gui" / "resources", "vsc/gui/resources")
 datas += tree(ROOT / "vsc" / "docs", "vsc/docs")
+datas += tree(ROOT / "i18n", "i18n")          # interface languages (shared with Android)
 datas += [(str(ROOT / "LICENSE"), "."), (str(ROOT / "THIRD_PARTY_NOTICES.md"), ".")]
 
 for tool, required, script in (("ffmpeg", True, "fetch_ffmpeg"), ("rife", True, "fetch_rife"),

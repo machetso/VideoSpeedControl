@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
+import sys
 import threading
 import time
 from pathlib import Path
@@ -176,6 +177,8 @@ class MainWindow(QMainWindow):
         menu.addAction(guide)
         menu.addAction(pdf)
         menu.addSeparator()
+        menu.addMenu(self._language_menu())
+        menu.addSeparator()
         menu.addAction(QAction("About VideoSpeedControl", self, triggered=self.show_about))
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -251,6 +254,48 @@ class MainWindow(QMainWindow):
     def _open_pdf(self) -> None:
         if not help.open_pdf():
             self.statusBar().showMessage("The PDF user guide could not be opened", 5000)
+
+    def _language_menu(self) -> QMenu:
+        """Help → Language: every dictionary in i18n/ (shared with the Android app); the choice
+        is stored and used from the next start – the program offers to restart now."""
+        from PySide6.QtGui import QActionGroup
+
+        from .. import i18n
+        menu = QMenu(i18n.tr("Language"), self)
+        group = QActionGroup(menu)
+        stored = i18n.stored_choice()
+        system = i18n.resolve(i18n.SYSTEM)
+        entries = [(i18n.SYSTEM, i18n.tr("System language (%s)", system.name))] + \
+                  [(l.code, l.name) for l in i18n.languages()]
+        for code, name in entries:
+            act = QAction(name, menu, checkable=True)
+            act.setChecked(code == stored or (stored not in {c for c, _ in entries} and code == i18n.SYSTEM))
+            act.triggered.connect(lambda _=False, c=code: self._choose_language(c))
+            group.addAction(act)
+            menu.addAction(act)
+        return menu
+
+    def _choose_language(self, code: str) -> None:
+        from .. import i18n
+        if code == i18n.stored_choice():
+            return
+        i18n.store_choice(code)
+        new = i18n.resolve(code)
+        # the question in the NEW language – that is what the user just picked
+        old = i18n.current()
+        i18n.use(code)
+        title, text = i18n.tr("Language"), i18n.tr(
+            "The program shows %s after a restart. Restart now?", new.name)
+        yes, no = i18n.tr("Restart now"), i18n.tr("Later")
+        i18n.use(old.code)
+        box = QMessageBox(QMessageBox.Question, title, text, parent=self)
+        restart = box.addButton(yes, QMessageBox.AcceptRole)
+        box.addButton(no, QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is restart and self.close():
+            from PySide6.QtCore import QProcess
+            args = sys.argv[1:] if getattr(sys, "frozen", False) else ["-m", "vsc.gui", *sys.argv[1:]]
+            QProcess.startDetached(sys.executable, args)
 
     def show_about(self) -> None:
         help.AboutDialog(self).exec()

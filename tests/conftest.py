@@ -16,6 +16,9 @@ from pathlib import Path
 # stored previews of the test clips go to a temporary cache, never into the user's
 os.environ["XDG_CACHE_HOME"] = tempfile.mkdtemp(prefix="vsc-test-cache-")
 os.environ["LOCALAPPDATA"] = os.environ["XDG_CACHE_HOME"]
+# the interface language is English in tests (the developer's computer is German) – i18n tests
+# switch it explicitly
+os.environ["VSC_LANG"] = "en"
 
 import pytest
 
