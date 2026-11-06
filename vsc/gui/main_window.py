@@ -25,6 +25,7 @@ from ..core import batch, convert, preview_cache, testencode, treatment
 from ..core.command import CommandError
 from ..core.formats import CODECS_BY_KEY, COPY
 from ..core.job import Job
+from ..i18n import N_, tr, trp
 from .clips import Clip, ClipModel, Status, fmt_bytes, fmt_seconds
 from .convert_dialog import ConvertDialog
 from .export_panel import ExportPanel
@@ -36,9 +37,23 @@ from .timeline import PreviewPanel
 from . import help, workers
 
 _VIDEO_GLOBS = " ".join(f"*{e} *{e.upper()}" for e in sorted(convert.VIDEO_EXTENSIONS))
+
+
+# English, for callers that still import them – new code uses video_filter() / cst_filter()
 VIDEO_FILTER = (f"Video files ({_VIDEO_GLOBS});;"
                 "Clip Speed Treatments (*.cst);;All files (*)")
 CST_FILTER = "Clip Speed Treatments (*.cst);;All files (*)"
+# Status column text per batch result status (key = internal status, value shown via tr)
+_EXPORT_STATES = {"done": N_("Exported"), "failed": N_("Export failed"),
+                  "cancelled": N_("Export cancelled"), "skipped": N_("Skipped (file exists)")}
+
+
+def video_filter() -> str:
+    return (tr("Video files (%s)", _VIDEO_GLOBS) + ";;" + cst_filter())
+
+
+def cst_filter() -> str:
+    return tr("Clip Speed Treatments (*.cst)") + ";;" + tr("All files (*)")
 PREVIEW_CLEANUP_DELAY_MS = 120_000      # the app runs 2 minutes before stored previews are cleaned up
 PREVIEW_CLEANUP_RETRY_MS = 30_000
 
@@ -96,12 +111,12 @@ class MainWindow(QMainWindow):
         self.preview.add_to_batch.connect(self.add_to_batch)
         self.preview.update_entry.connect(self._update_entry)
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.preview, "Preview && trim")
+        self.tabs.addTab(self.preview, tr("Preview && trim"))
         self.test_panel = TestPanel()
         self.test_panel.start_test.connect(self._start_test)
         self.test_panel.cancel_test.connect(self._cancel_test)
-        self.tabs.addTab(self.test_panel, "Test encode")
-        self.tabs.addTab(self.info, "Clip info")
+        self.tabs.addTab(self.test_panel, tr("Test encode"))
+        self.tabs.addTab(self.info, tr("Clip info"))
         self.export_panel = ExportPanel()
         self.export_panel.start.connect(self.start_export)
         self.export_panel.cancel.connect(self._cancel_export)
@@ -113,7 +128,7 @@ class MainWindow(QMainWindow):
         self.batch_entries: list[BatchEntry] = []     # snapshots from "Add to batch"
         self._editing: BatchEntry | None = None       # entry opened with "Edit this entry"
         self._pending: dict[Path, tuple[Path, treatment.Treatment]] = {}   # clip → (.cst, data)
-        self.tabs.addTab(self.export_panel, "Export")
+        self.tabs.addTab(self.export_panel, tr("Export"))
         self._batch: batch.Batch | None = None
         self._batch_clips: list[Clip] = []
         self._batch_entries: list[BatchEntry] | None = None   # batch list run: item → entry
@@ -138,40 +153,40 @@ class MainWindow(QMainWindow):
         split.setSizes([170, 680])
         self.setCentralWidget(split)
 
-        toolbar = QToolBar("Clips")
+        toolbar = QToolBar(tr("Clips"))
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-        add = QAction("Add files…", self, shortcut=QKeySequence.Open, triggered=self.add_dialog)
-        remove = QAction("Remove", self, shortcut=QKeySequence.Delete, triggered=self.remove_selected)
-        clear = QAction("Clear list", self, triggered=self.clear)
+        add = QAction(tr("Add files…"), self, shortcut=QKeySequence.Open, triggered=self.add_dialog)
+        remove = QAction(tr("Remove"), self, shortcut=QKeySequence.Delete, triggered=self.remove_selected)
+        clear = QAction(tr("Clear list"), self, triggered=self.clear)
         self._list_actions = (remove, clear)    # disabled while an export runs
         for action in (add, remove, clear):
             toolbar.addAction(action)
         toolbar.addSeparator()
-        load_cst = QAction("Load Clip Speed Treatment…", self, shortcut=QKeySequence("Ctrl+L"),
+        load_cst = QAction(tr("Load Clip Speed Treatment…"), self, shortcut=QKeySequence("Ctrl+L"),
                            triggered=self.load_treatment_dialog)
-        load_cst.setToolTip("Load a clip speed treatment (.cst): sections, trim and output "
-                            "settings – only onto the video it was saved for (Ctrl+L)")
-        save_cst = QAction("Save Clip Speed Treatment…", self, shortcut=QKeySequence.Save,
+        load_cst.setToolTip(tr("Load a clip speed treatment (.cst): sections, trim and output "
+                               "settings – only onto the video it was saved for (Ctrl+L)"))
+        save_cst = QAction(tr("Save Clip Speed Treatment…"), self, shortcut=QKeySequence.Save,
                            triggered=self.save_treatment)
-        save_cst.setToolTip("Save the sections, trim and output settings of the current clip "
-                            "as a clip speed treatment (.cst) (Ctrl+S)")
+        save_cst.setToolTip(tr("Save the sections, trim and output settings of the current clip "
+                               "as a clip speed treatment (.cst) (Ctrl+S)"))
         for action in (load_cst, save_cst):
             toolbar.addAction(action)
         toolbar.addSeparator()
-        convert_action = QAction("Convert videos…", self, shortcut=QKeySequence("Ctrl+Shift+C"),
+        convert_action = QAction(tr("Convert videos…"), self, shortcut=QKeySequence("Ctrl+Shift+C"),
                                  triggered=lambda: self.show_convert())
-        convert_action.setToolTip("Re-encode many videos or whole folders at once – same length, "
-                                  "frame rate and size, e.g. old AVI files to AV1 MP4 "
-                                  "(Ctrl+Shift+C)")
+        convert_action.setToolTip(tr("Re-encode many videos or whole folders at once – same "
+                                     "length, frame rate and size, e.g. old AVI files to AV1 MP4 "
+                                     "(Ctrl+Shift+C)"))
         toolbar.addAction(convert_action)
         self._convert: ConvertDialog | None = None
 
         # Help: a button with a menu at the right end of the same row
-        guide = QAction("User guide", self, shortcut=QKeySequence.HelpContents,
+        guide = QAction(tr("User guide"), self, shortcut=QKeySequence.HelpContents,
                         triggered=self.show_help)
         self.addAction(guide)                     # F1 works without opening the menu
-        pdf = QAction("User guide (PDF)", self, triggered=self._open_pdf)
+        pdf = QAction(tr("User guide (PDF)"), self, triggered=self._open_pdf)
         pdf.setEnabled(help.PDF.is_file())
         menu = QMenu(self)
         menu.addAction(guide)
@@ -179,13 +194,13 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addMenu(self._language_menu())
         menu.addSeparator()
-        menu.addAction(QAction("About VideoSpeedControl", self, triggered=self.show_about))
+        menu.addAction(QAction(tr("About VideoSpeedControl"), self, triggered=self.show_about))
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(spacer)
         self.help_button = QToolButton()
-        self.help_button.setText("Help")
-        self.help_button.setToolTip("User guide (F1), PDF and About")
+        self.help_button.setText(tr("Help"))
+        self.help_button.setToolTip(tr("User guide (F1), PDF and About"))
         self.help_button.setMenu(menu)
         self.help_button.setPopupMode(QToolButton.InstantPopup)
         toolbar.addWidget(self.help_button)
@@ -198,7 +213,7 @@ class MainWindow(QMainWindow):
             sig.connect(self._plan_export)
         self.table.selectionModel().selectionChanged.connect(
             lambda *_: self.export_panel.selected_only() and self._plan_export())
-        self.statusBar().showMessage("Detecting encoders…")
+        self.statusBar().showMessage(tr("Detecting encoders…"))
         self.clip_signals = workers.ClipSignals(self)
         self.clip_signals.probed.connect(self._probed)
         self.clip_signals.identified.connect(self._identified)
@@ -220,7 +235,7 @@ class MainWindow(QMainWindow):
         self.encoder_signals = workers.EncoderSignals(self)
         self.encoder_signals.done.connect(self._encoders_done)
         self.encoder_signals.failed.connect(
-            lambda msg: self.statusBar().showMessage(f"Encoder detection failed: {msg}"))
+            lambda msg: self.statusBar().showMessage(tr("Encoder detection failed: %s", msg)))
         workers.start(workers.EncoderDetector(self.encoder_signals))
         # stored previews nobody needs are removed after 2 minutes, when nothing heavy runs
         QTimer.singleShot(PREVIEW_CLEANUP_DELAY_MS, self._clean_previews)
@@ -228,9 +243,9 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self._batch:
             answer = QMessageBox.question(
-                self, "Export running",
-                "An export is still running. Cancel it and quit?\n"
-                "The clip being encoded right now is deleted; finished clips are kept.")
+                self, tr("Export running"),
+                tr("An export is still running. Cancel it and quit?\n"
+                   "The clip being encoded right now is deleted; finished clips are kept."))
             if answer != QMessageBox.Yes:
                 event.ignore()
                 return
@@ -253,7 +268,7 @@ class MainWindow(QMainWindow):
 
     def _open_pdf(self) -> None:
         if not help.open_pdf():
-            self.statusBar().showMessage("The PDF user guide could not be opened", 5000)
+            self.statusBar().showMessage(tr("The PDF user guide could not be opened"), 5000)
 
     def _language_menu(self) -> QMenu:
         """Help → Language: every dictionary in i18n/ (shared with the Android app); the choice
@@ -311,7 +326,7 @@ class MainWindow(QMainWindow):
         return self._convert
 
     def add_dialog(self) -> None:
-        files, _ = QFileDialog.getOpenFileNames(self, "Add video files", "", VIDEO_FILTER)
+        files, _ = QFileDialog.getOpenFileNames(self, tr("Add video files"), "", video_filter())
         self.add_files([Path(f) for f in files])
 
     def add_files(self, paths: list[Path]) -> None:
@@ -434,13 +449,14 @@ class MainWindow(QMainWindow):
         n = sum(st.available for st in status.values())
         hw = [CODECS_BY_KEY[k].label for k, st in status.items()
               if st.available and CODECS_BY_KEY[k].hw]
-        text = f"{n} encoders available" + (f", hardware: {', '.join(hw)}" if hw else
-                                            ", no working hardware encoder (software only)")
+        text = trp("%d encoder available", "%d encoders available", n, n) + (
+            tr(", hardware: %s", ", ".join(hw)) if hw else
+            tr(", no working hardware encoder (software only)"))
         if rife_status.available:
-            text += f" · RIFE on {rife_status.gpu}" + (" (software, slow)" if rife_status.software
-                                                     else "")
+            text += tr(" · RIFE on %s", rife_status.gpu) + (
+                tr(" (software, slow)") if rife_status.software else "")
         else:
-            text += f" · RIFE unavailable: {rife_status.reason}"
+            text += tr(" · RIFE unavailable: %s", rife_status.reason)
         self.statusBar().showMessage(text)
         self.settings.set_encoders(status, rife_status)
         if self._convert is not None:
@@ -512,7 +528,7 @@ class MainWindow(QMainWindow):
             test = testencode.TestEncode(clip.job, clip.playhead, n_frames,
                                          self.settings.supported_pix_fmts(clip))
         except (CommandError, ValueError) as e:
-            QMessageBox.warning(self, "Test encode", f"These settings cannot be encoded:\n{e}")
+            QMessageBox.warning(self, tr("Test encode"), tr("These settings cannot be encoded:\n%s", e))
             return
         testencode.discard(clip.test)
         clip.test = clip.test_media = None
@@ -548,11 +564,11 @@ class MainWindow(QMainWindow):
             self.batch_label.clear()
             return
         seconds, size, missing = self.model.batch_estimate()
-        text = f"Batch: {len(clips)} clip(s)"
+        text = trp("Batch: %d clip", "Batch: %d clips", len(clips), len(clips))
         if missing < len(clips):
             text += f" ≈ {fmt_seconds(seconds)}, {fmt_bytes(size)}"
         if missing:
-            text += f" – {missing} without estimate (run a test encode)"
+            text += tr(" – %d without estimate (run a test encode)", missing)
         self.batch_label.setText(text)
 
     def _apply_to_all(self) -> None:
@@ -566,8 +582,10 @@ class MainWindow(QMainWindow):
         self.model.refresh_all()
         self._plan_export()
         others = len(self.model.clips) - 1
-        self.statusBar().showMessage(f"Output settings (not the trim) of {source.path.name} "
-                                     f"applied to {others} other clip(s)", 5000)
+        self.statusBar().showMessage(trp("Output settings (not the trim) of %s applied to %d "
+                                         "other clip",
+                                         "Output settings (not the trim) of %s applied to %d "
+                                         "other clips", others, source.path.name, others), 5000)
 
     # ------------------------------------------------------------------ export
 
@@ -580,9 +598,9 @@ class MainWindow(QMainWindow):
         ok, problems = [], []
         for clip in clips:
             if clip.status == Status.ERROR:
-                problems.append(f"{clip.path.name} (cannot be read)")
+                problems.append(tr("%s (cannot be read)", clip.path.name))
             elif clip.status != Status.READY:
-                problems.append(f"{clip.path.name} (still loading)")
+                problems.append(tr("%s (still loading)", clip.path.name))
             else:
                 ok.append(clip)
         return ok, problems
@@ -595,13 +613,13 @@ class MainWindow(QMainWindow):
             clips = [e.clip for e in entries]
             labels = [e.label for e in entries]
             problems = [] if entries else [
-                "the batch list is empty – use “Add to batch” in the Preview & trim tab"]
+                tr("the batch list is empty – use “Add to batch” in the Preview & trim tab")]
             # entries exported before keep their file; only the others are planned
             todo = [e for e in entries if not e.done]
             planned = iter(batch.plan([(_snapshot(e.job), e.pix_fmts) for e in todo],
                                       panel.output_folder(), panel.pattern_text(),
                                       panel.policy_key(), [e.additions for e in todo]))
-            items = [batch.Item(e.job, e.exported, e.pix_fmts, "exported earlier", done=True)
+            items = [batch.Item(e.job, e.exported, e.pix_fmts, tr("exported earlier"), done=True)
                      if e.done else next(planned) for e in entries]
             return clips, labels, items, problems
         else:
@@ -633,8 +651,8 @@ class MainWindow(QMainWindow):
             self.export_panel.show_batch_list()
         self._plan_export()
         self.statusBar().showMessage(
-            f"Added to the batch list: {entry.label} ({len(self.batch_entries)} in the list – "
-            "Export tab)", 6000)
+            tr("Added to the batch list: %s (%d in the list – Export tab)", entry.label,
+               len(self.batch_entries)), 6000)
 
     def _remove_entries(self, rows: list[int]) -> None:
         if self._batch:
@@ -660,17 +678,18 @@ class MainWindow(QMainWindow):
         clip.settings = entry.job.settings.clone()
         clip.ui = copy.deepcopy(entry.ui)
         clip.trim = copy.copy(entry.job.trim)
-        clip.edit_segments(entry.job.segments, "open batch entry")
+        clip.edit_segments(entry.job.segments, tr("open batch entry"))
         self._select(clip)
         self._loaded(clip)
         self.tabs.setCurrentWidget(self.preview)
         if action == EDIT:
             self._editing = entry
             self.preview.set_editing(entry.label)
-            text = "Change it, then click “✔ Update batch entry”"
+            text = tr("Opened %s. Change it, then click “✔ Update batch entry”.", entry.label)
         else:
-            text = "Change it, then click “➕ Add to batch” for another encoding"
-        self.statusBar().showMessage(f"Opened {entry.label}. {text}.", 10000)
+            text = tr("Opened %s. Change it, then click “➕ Add to batch” for another encoding.",
+                      entry.label)
+        self.statusBar().showMessage(text, 10000)
 
     def _update_entry(self, clip: Clip) -> None:
         entry = self._editing
@@ -683,7 +702,7 @@ class MainWindow(QMainWindow):
         entry.exported = None                  # changed: export it again
         self._stop_editing()
         self._plan_export()
-        self.statusBar().showMessage(f"Batch entry updated: {entry.label}", 6000)
+        self.statusBar().showMessage(tr("Batch entry updated: %s", entry.label), 6000)
 
     def _stop_editing(self) -> None:
         self._editing = None
@@ -701,21 +720,21 @@ class MainWindow(QMainWindow):
     def load_treatment_dialog(self) -> None:
         clip = self.current_clip()
         start = str(clip.path.with_suffix(treatment.SUFFIX)) if clip else ""
-        path, _ = QFileDialog.getOpenFileName(self, "Load Clip Speed Treatment", start,
-                                              CST_FILTER)
+        path, _ = QFileDialog.getOpenFileName(self, tr("Load Clip Speed Treatment"), start,
+                                              cst_filter())
         if path:
             self.open_treatment(Path(path))
 
     def save_treatment(self) -> None:
         clip = self.current_clip()
         if not clip or clip.status != Status.READY:
-            self.statusBar().showMessage("Select a loaded clip to save its treatment", 5000)
+            self.statusBar().showMessage(tr("Select a loaded clip to save its treatment"), 5000)
             return
         folder = treatments_folder()            # Documents/VideoSpeedControl/Clip Speed Treatments
         folder.mkdir(parents=True, exist_ok=True)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Clip Speed Treatment", str(folder / (clip.path.stem + treatment.SUFFIX)),
-            CST_FILTER)
+            self, tr("Save Clip Speed Treatment"), str(folder / (clip.path.stem + treatment.SUFFIX)),
+            cst_filter())
         if not path:
             return
         target = Path(path)
@@ -726,7 +745,8 @@ class MainWindow(QMainWindow):
             treatment.save(target, clip.path, clip.frames.count, clip.settings, clip.ui,
                            clip.trim, clip.job.segments)
         except OSError as e:
-            QMessageBox.warning(self, "Save Clip Speed Treatment", f"Could not save {target.name}:\n{e}")
+            QMessageBox.warning(self, tr("Save Clip Speed Treatment"),
+                                tr("Could not save %s:\n%s", target.name, e))
             return
         if target.parent.resolve() != folder.resolve():      # elsewhere: keep its preview too
             try:
@@ -734,8 +754,9 @@ class MainWindow(QMainWindow):
             except OSError:
                 pass
         n = len(clip.segments)
-        self.statusBar().showMessage(f"Saved {target.name} ({n} section{'s' * (n != 1)}, trim "
-                                     "and output settings)", 6000)
+        self.statusBar().showMessage(trp("Saved %s (%d section, trim and output settings)",
+                                         "Saved %s (%d sections, trim and output settings)",
+                                         n, target.name, n), 6000)
 
     def open_treatment(self, path: Path) -> None:
         """Load a .cst onto the video it belongs to: the current clip, another clip in the
@@ -743,7 +764,7 @@ class MainWindow(QMainWindow):
         try:
             t = treatment.load(path)
         except treatment.TreatmentError as e:
-            QMessageBox.warning(self, "Load Clip Speed Treatment", str(e))
+            QMessageBox.warning(self, tr("Load Clip Speed Treatment"), str(e))
             return
         clips = [self.current_clip()] + [c for c in self.model.clips if c is not self.current_clip()]
         for clip in clips:
@@ -765,11 +786,14 @@ class MainWindow(QMainWindow):
                     self._select(clip)
                 return
         QMessageBox.warning(
-            self, "Load Clip Speed Treatment",
-            f"{path.name} belongs to {t.source_name} ({t.source_size:,} bytes, {t.frames} "
-            "frames).\n\nNone of the clips in the list is that video, and it was not found "
-            "where it was saved. Add the video first (a renamed copy works too), then load "
-            "the treatment again.")
+            self, tr("Load Clip Speed Treatment"),
+            trp("%s belongs to %s (%s bytes, %d frame).\n\nNone of the clips in the list is "
+                "that video, and it was not found where it was saved. Add the video first (a "
+                "renamed copy works too), then load the treatment again.",
+                "%s belongs to %s (%s bytes, %d frames).\n\nNone of the clips in the list is "
+                "that video, and it was not found where it was saved. Add the video first (a "
+                "renamed copy works too), then load the treatment again.",
+                t.frames, path.name, t.source_name, f"{t.source_size:,}", t.frames))
 
     @staticmethod
     def _matches(path: Path, t: treatment.Treatment) -> bool:
@@ -783,15 +807,17 @@ class MainWindow(QMainWindow):
         try:
             t.check(clip.path, clip.frames.count)
         except (treatment.TreatmentError, OSError) as e:
-            QMessageBox.warning(self, "Load Clip Speed Treatment", str(e))
+            QMessageBox.warning(self, tr("Load Clip Speed Treatment"), str(e))
             return
         if clip.segments:
             n = len(clip.segments)
             answer = QMessageBox.question(
-                self, "Load Clip Speed Treatment",
-                f"Replace the {n} speed section{'s' * (n != 1)}, the trim and the output "
-                f"settings of {clip.path.name} with {path.name}?\n\n"
-                "The current sections can be brought back with “↶ Undo”.",
+                self, tr("Load Clip Speed Treatment"),
+                trp("Replace the %d speed section, the trim and the output settings of %s with "
+                    "%s?\n\nThe current sections can be brought back with “↶ Undo”.",
+                    "Replace the %d speed sections, the trim and the output settings of %s with "
+                    "%s?\n\nThe current sections can be brought back with “↶ Undo”.",
+                    n, n, clip.path.name, path.name),
                 QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes)
             if answer != QMessageBox.Yes:
                 return
@@ -800,18 +826,18 @@ class MainWindow(QMainWindow):
         clip.settings = t.settings.clone()
         clip.ui = copy.deepcopy(t.ui)
         clip.trim = copy.copy(t.trim)
-        clip.edit_segments(t.segments, f"load {path.name}")
+        clip.edit_segments(t.segments, tr("load %s", path.name))
         self._select(clip)
         self._loaded(clip)
         self.tabs.setCurrentWidget(self.preview)
-        text = f"Loaded {path.name} onto {clip.path.name}"
+        text = tr("Loaded %s onto %s", path.name, clip.path.name)
         st = self.settings.encoders.get(clip.settings.codec) if self.settings.encoders else None
         if st is not None and not st.available:
             QMessageBox.information(
-                self, "Load Clip Speed Treatment",
-                f"{text}.\n\nIts codec ({CODECS_BY_KEY[clip.settings.codec].label}) is not "
-                f"available on this computer ({st.reason}). Choose another codec before "
-                "exporting.")
+                self, tr("Load Clip Speed Treatment"),
+                tr("%s.\n\nIts codec (%s) is not available on this computer (%s). Choose "
+                   "another codec before exporting.",
+                   text, CODECS_BY_KEY[clip.settings.codec].label, st.reason))
         self.statusBar().showMessage(text, 6000)
 
     def _plan_export(self, *_) -> None:
@@ -819,7 +845,7 @@ class MainWindow(QMainWindow):
             return
         clips, labels, items, problems = self._plan()
         if self.settings.encoders is None and clips:
-            problems.append("waiting for encoder detection")
+            problems.append(tr("waiting for encoder detection"))
         self.export_panel.show_plan(labels, items, problems)
         if self.settings.encoders is None:
             self.export_panel.start_button.setEnabled(False)
@@ -835,7 +861,7 @@ class MainWindow(QMainWindow):
             try:
                 folder.mkdir(parents=True, exist_ok=True)
             except OSError as e:
-                QMessageBox.warning(self, "Export", f"Cannot create the output folder:\n{e}")
+                QMessageBox.warning(self, tr("Export"), tr("Cannot create the output folder:\n%s", e))
                 return
         self.export_panel.show_plan(labels, items, problems)
         self._batch = batch.Batch(items)
@@ -850,7 +876,7 @@ class MainWindow(QMainWindow):
         for clip, item in zip(clips, items):
             if item.done:
                 continue
-            clip.export = "Queued" if item.output else "Skipped (file exists)"
+            clip.export = tr("Queued") if item.output else tr("Skipped (file exists)")
             self.model.clip_changed(clip)
         for action in self._list_actions:
             action.setEnabled(False)
@@ -861,30 +887,30 @@ class MainWindow(QMainWindow):
         if self._batch:
             self._batch.cancel()
             self.export_panel.cancel_button.setEnabled(False)
-            self.export_panel.message.setText("Cancelling…")
+            self.export_panel.message.setText(tr("Cancelling…"))
 
     def _export_started(self, index: int) -> None:
         self.export_panel.set_status(index, "running")
         clip = self._batch_clips[index]
-        clip.export = "Encoding 0 %"
+        clip.export = tr("Encoding %d%%", 0)
         self.model.clip_changed(clip)
 
     def _export_progress(self, index: int, p) -> None:
         if not self._batch:
             return
         clip = self._batch_clips[index]
-        clip.export = f"Encoding {p.fraction:.0%}"
+        clip.export = tr("Encoding %d%%", round(p.fraction * 100))
         self.model.clip_changed(clip)
-        clip_text = f"{p.frame}/{p.total_frames} frames, {p.fps:.1f} fps"
+        clip_text = tr("%d/%d frames, %.1f fps", p.frame, p.total_frames, p.fps)
         if p.eta is not None:
-            clip_text += f", {fmt_seconds(p.eta)} left"
+            clip_text += tr(", %s left", fmt_seconds(p.eta))
         total = max(1, self._batch.total_frames)
         overall = min(1.0, (self._batch_done_frames + p.frame) / total)
-        overall_text = f"{fmt_seconds(time.monotonic() - self._batch_start)} elapsed"
+        overall_text = tr("%s elapsed", fmt_seconds(time.monotonic() - self._batch_start))
         later = [self._batch_estimates[i] for i, it in enumerate(self._batch.items)
                  if i > index and it.output and not it.done]
         if p.eta is not None and None not in later:
-            overall_text += f", ≈ {fmt_seconds(p.eta + sum(later))} left"
+            overall_text += tr(", ≈ %s left", fmt_seconds(p.eta + sum(later)))
         self.export_panel.set_progress(clip.path.name, p.fraction, clip_text,
                                        overall, overall_text)
 
@@ -896,14 +922,13 @@ class MainWindow(QMainWindow):
             self._batch_done_frames += item.job.output_frame_count
         detail = fmt_seconds(r.elapsed) if r.status == "done" else ""
         if r.status == "skipped":
-            detail = item.note.removeprefix("skipped: ")
+            detail = item.note                 # translated "skipped: … exists" (no prefix parsing)
         self.export_panel.set_status(r.index, r.status, detail)
         self.export_panel.set_error(r.index, r.error)
         if r.status == "done" and self._batch_entries:
             self._batch_entries[r.index].exported = r.output
         clip = self._batch_clips[r.index]
-        clip.export = {"done": "Exported", "failed": "Export failed",
-                       "cancelled": "Export cancelled", "skipped": "Skipped (file exists)"}[r.status]
+        clip.export = tr(_EXPORT_STATES[r.status])
         self.model.clip_changed(clip)
 
     def _export_finished(self, result: batch.BatchResult) -> None:

@@ -140,7 +140,7 @@ def plural_category(code: str, n: int) -> str:
     return "one" if n == 1 else "other"
 
 
-_PH = re.compile(r"%(?:(\d+)\$)?([-+ 0#,]*\d*(?:\.\d+)?)([sdfi%])")
+_PH = re.compile(r"%(?:(\d+)\$)?([-+ 0#,]*\d*(?:\.\d+)?)([sdfigeExX%])")
 
 
 def _format(template: str, args: tuple) -> str:
@@ -158,7 +158,7 @@ def _format(template: str, args: tuple) -> str:
             v = args[i]
         except (StopIteration, IndexError, ValueError):
             return m.group(0)
-        if conv in "di":
+        if conv in "dixX":
             try:
                 v = int(v)
             except (TypeError, ValueError):

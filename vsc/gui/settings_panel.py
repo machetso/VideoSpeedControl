@@ -25,23 +25,24 @@ from ..core import audio, formats, rife, smart
 from ..core.encoders import EncoderStatus
 from ..core.formats import COPY, CODECS
 from ..core.job import KEYFRAME_TRIM_REASON, MODE_LABELS, Mode, _even
+from ..i18n import N_, tr, trp
 from .clips import (Clip, chroma_label, fmt_duration, fmt_rate, fmt_seconds, fmt_slowdown,
                     frame_rate_choices)
 
 CUSTOM = "custom"
 LOSSLESS, SMART, REENCODE = "lossless", "smart", "reencode"
-AUDIO_TIP = ("The original sound, stretched or compressed to the new length of the video.\n"
+AUDIO_TIP = N_("The original sound, stretched or compressed to the new length of the video.\n"
              "The pitch stays the same – no deep or squeaky voices. Very strong slow motion\n"
              "makes speech hard to understand (it is 10× slower), but it keeps its pitch.\n"
              "Phone slow-mo sound (stored lowered) is first brought back to its real pitch.")
 PANEL_MIN_WIDTH = 330   # the form needs ~300 px (see CLAUDE.md) + the vertical scrollbar
-SMART_DETAILS = ("Smart re-encode joins copied and re-encoded parts only at keyframes: in / out "
+SMART_DETAILS = N_("Smart re-encode joins copied and re-encoded parts only at keyframes: in / out "
                  "points snap to them,\nand sections marked “Re-encode” are widened to the "
                  "nearest ones – the extra frames are re-encoded\nat the speed they have "
-                 "anyway.\n\n{apple}")
+                 "anyway.\n\n%s")
 SPEED_PRESETS = [Fraction(1, n) for n in (2, 4, 5, 8, 10, 16, 20, 32)]
 CHROMA_ORDER = {"411": 0, "420": 1, "422": 2, "444": 3}
-RIFE_8BIT = ("RIFE works on 8-bit RGB pictures: the extra precision of 10-bit / HDR footage "
+RIFE_8BIT = N_("RIFE works on 8-bit RGB pictures: the extra precision of 10-bit / HDR footage "
              "is lost (risk of banding in gradients).")
 
 
@@ -80,7 +81,7 @@ class SettingsPanel(QGroupBox):
     apply_to_all = Signal()
 
     def __init__(self, parent=None):
-        super().__init__("Output settings", parent)
+        super().__init__(tr("Output settings"), parent)
         self.clip: Clip | None = None
         self.encoders: dict[str, EncoderStatus] | None = None
         self.rife = None          # rife.RifeStatus once detected
@@ -91,35 +92,35 @@ class SettingsPanel(QGroupBox):
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
         # --- easy / pro: easy hides the codec details (codec, profile, preset, quality, chroma)
-        self.easy_button = QRadioButton("Easy")
-        self.easy_button.setToolTip(
+        self.easy_button = QRadioButton(tr("Easy"))
+        self.easy_button.setToolTip(tr(
             "Fewer settings: no codec choice – smart re-encode uses the source codec,\n"
-            "re-encode always AV1 (fast) – and the codec's default preset, quality and chroma.")
-        self.pro_button = QRadioButton("Pro")
-        self.pro_button.setToolTip("All settings: codec, profile, preset, quality, chroma and bit depth.")
+            "re-encode always AV1 (fast) – and the codec's default preset, quality and chroma."))
+        self.pro_button = QRadioButton(tr("Pro"))
+        self.pro_button.setToolTip(tr("All settings: codec, profile, preset, quality, chroma and bit depth."))
         self.level_group = QButtonGroup(self)
         self.level_group.addButton(self.easy_button)
         self.level_group.addButton(self.pro_button)
         self.easy = not _setting_bool("settings/pro", False)
         (self.easy_button if self.easy else self.pro_button).setChecked(True)
         self.level_group.buttonClicked.connect(self._level_clicked)
-        form.addRow("Settings:", _row(self.easy_button, self.pro_button))
+        form.addRow(tr("Settings:"), _row(self.easy_button, self.pro_button))
 
         # --- processing: lossless / smart / re-encode
-        self.proc_lossless = QRadioButton("Lossless")
-        self.proc_lossless.setToolTip(
+        self.proc_lossless = QRadioButton(tr("Lossless"))
+        self.proc_lossless.setToolTip(tr(
             "No re-encoding: every frame stays untouched, only its timing changes.\n"
-            "Source codec and size, trim at keyframes. Fast and without any quality loss.")
-        self.proc_smart = QRadioButton("Smart re-encode")
-        self.proc_smart.setToolTip(
+            "Source codec and size, trim at keyframes. Fast and without any quality loss."))
+        self.proc_smart = QRadioButton(tr("Smart re-encode"))
+        self.proc_smart.setToolTip(tr(
             "Copies the clip and re-encodes only the speed sections you mark for it\n"
             "(Preview & trim tab), then joins everything into one file.\n"
             "Uses the source codec so the parts fit together; joins only at keyframes.\n"
-            "Not playable on Apple devices.")
+            "Not playable on Apple devices."))
         self._smart_tip = self.proc_smart.toolTip()
-        self.proc_reencode = QRadioButton("Re-encode")
-        self.proc_reencode.setToolTip("Re-encode the whole clip: any codec, size, speed and "
-                                      "frame rate.")
+        self.proc_reencode = QRadioButton(tr("Re-encode"))
+        self.proc_reencode.setToolTip(tr("Re-encode the whole clip: any codec, size, speed and "
+                                         "frame rate."))
         self.proc_group = QButtonGroup(self)
         for b in (self.proc_lossless, self.proc_smart, self.proc_reencode):
             self.proc_group.addButton(b)
@@ -129,30 +130,30 @@ class SettingsPanel(QGroupBox):
         proc_layout.setSpacing(2)
         for b in (self.proc_lossless, self.proc_smart, self.proc_reencode):
             proc_layout.addWidget(b)
-        form.addRow("Processing:", proc_box)
+        form.addRow(tr("Processing:"), proc_box)
 
         # --- sound: one click to keep or leave it out
         self.audio_button = QPushButton()
         self.audio_button.setCheckable(True)
         self.audio_button.clicked.connect(self._edited)
-        form.addRow("Sound:", _row(self.audio_button))
+        form.addRow(tr("Sound:"), _row(self.audio_button))
 
         # --- frame rate
         self.fps_combo = Combo()
-        self.fps_combo.setToolTip("Frame rate of the output file.")
+        self.fps_combo.setToolTip(tr("Frame rate of the output file."))
         self.fps_edit = QLineEdit()
-        self.fps_edit.setPlaceholderText("e.g. 48 or 24000/1001")
+        self.fps_edit.setPlaceholderText(tr("e.g. 48 or 24000/1001"))
         self.fps_edit.setMaximumWidth(140)
-        form.addRow("Frame rate:", _row(self.fps_combo, self.fps_edit, grow=self.fps_combo))
+        form.addRow(tr("Frame rate:"), _row(self.fps_combo, self.fps_edit, grow=self.fps_combo))
         self.original_info = QLabel()
         self.original_info.setWordWrap(True)
         form.addRow("", self.original_info)
 
         # --- speed
         self.speed_lossless = QRadioButton()
-        self.speed_lossless.setToolTip("Every source frame is used exactly once.\n"
-                                       "Required for lossless retiming (mode A).")
-        self.speed_custom = QRadioButton("Custom:")
+        self.speed_lossless.setToolTip(tr("Every source frame is used exactly once.\n"
+                                          "Required for lossless retiming (mode A)."))
+        self.speed_custom = QRadioButton(tr("Custom:"))
         group = QButtonGroup(self)
         group.addButton(self.speed_lossless)
         group.addButton(self.speed_custom)
@@ -161,16 +162,16 @@ class SettingsPanel(QGroupBox):
         self.speed_spin.setRange(0.0001, 100)
         self.speed_spin.setSingleStep(0.01)
         self.speed_spin.setSuffix(" ×")
-        self.speed_spin.setToolTip("Playback speed relative to real time (0.1 = 10× slower).\n"
-                                   "Faster than the lossless speed → frames are skipped (B),\n"
-                                   "slower → in-between frames are calculated (C).")
+        self.speed_spin.setToolTip(tr("Playback speed relative to real time (0.1 = 10× slower).\n"
+                                      "Faster than the lossless speed → frames are skipped (B),\n"
+                                      "slower → in-between frames are calculated (C)."))
         self.speed_presets = Combo()
-        self.speed_presets.addItem("Presets…", None)
+        self.speed_presets.addItem(tr("Presets…"), None)
         for f in SPEED_PRESETS:
-            self.speed_presets.addItem(f"1/{f.denominator}  ({f.denominator}× slower)", str(f))
+            self.speed_presets.addItem(tr("1/%d  (%d× slower)", f.denominator, f.denominator), str(f))
         self.speed_info = QLabel()
         self.speed_info.setWordWrap(True)
-        form.addRow("Speed:", self.speed_lossless)
+        form.addRow(tr("Speed:"), self.speed_lossless)
         form.addRow("", _row(self.speed_custom, self.speed_spin))
         form.addRow("", self.speed_presets)
         form.addRow("", self.speed_info)
@@ -178,74 +179,74 @@ class SettingsPanel(QGroupBox):
         # --- codec
         self.codec_combo = Combo()
         self.container_combo = Combo()
-        self.container_combo.setToolTip("File format that holds the video stream.")
-        self.codec_label = QLabel("Codec:")
+        self.container_combo.setToolTip(tr("File format that holds the video stream."))
+        self.codec_label = QLabel(tr("Codec:"))
         form.addRow(self.codec_label, self.codec_combo)
-        form.addRow("Container:", self.container_combo)
+        form.addRow(tr("Container:"), self.container_combo)
         self.profile_combo = Combo()
-        self.profile_label = QLabel("Profile:")
+        self.profile_label = QLabel(tr("Profile:"))
         form.addRow(self.profile_label, self.profile_combo)
         self.preset_combo = Combo()
-        self.preset_combo.setToolTip(formats.PRESET_TIP)
-        self.preset_label = QLabel("Preset:")
+        self.preset_combo.setToolTip(tr(formats.PRESET_TIP))
+        self.preset_label = QLabel(tr("Preset:"))
         form.addRow(self.preset_label, self.preset_combo)
         self.quality_combo = Combo()
         self.quality_spin = QSpinBox()
-        self.quality_spin.setToolTip("The codec's own quality number")
-        self.quality_label = QLabel("Quality:")
+        self.quality_spin.setToolTip(tr("The codec's own quality number"))
+        self.quality_label = QLabel(tr("Quality:"))
         self.quality_row = _row(self.quality_combo, self.quality_spin, grow=self.quality_combo)
         form.addRow(self.quality_label, self.quality_row)
         self.chroma_combo = Combo()
         self.depth_combo = Combo()
-        self.chroma_label = QLabel("Chroma:")
-        self.depth_label = QLabel("Bit depth:")
+        self.chroma_label = QLabel(tr("Chroma:"))
+        self.depth_label = QLabel(tr("Bit depth:"))
         form.addRow(self.chroma_label, self.chroma_combo)
         form.addRow(self.depth_label, self.depth_combo)
 
         # --- size
         self.res_combo = Combo()
-        self.res_combo.addItem("Keep source size", "source")
+        self.res_combo.addItem(tr("Keep source size"), "source")
         for r in formats.RESOLUTIONS:
-            self.res_combo.addItem(r.label, r.key)
-            self.res_combo.setItemData(self.res_combo.count() - 1, r.tooltip, Qt.ToolTipRole)
-        self.res_combo.addItem("Custom…", CUSTOM)
+            self.res_combo.addItem(tr(r.label), r.key)
+            self.res_combo.setItemData(self.res_combo.count() - 1, tr(r.tooltip), Qt.ToolTipRole)
+        self.res_combo.addItem(tr("Custom…"), CUSTOM)
         self.width_spin = QSpinBox()
         self.height_spin = QSpinBox()
         for spin in (self.width_spin, self.height_spin):
             spin.setRange(16, 16384)
             spin.setSingleStep(2)
-        form.addRow("Resolution:", self.res_combo)
+        form.addRow(tr("Resolution:"), self.res_combo)
         form.addRow("", _row(self.width_spin, QLabel("×"), self.height_spin))
         self.aspect_combo = Combo()
-        self.aspect_combo.addItem("Keep original aspect (fit inside)", "fit")
-        self.aspect_combo.setItemData(0, "The picture keeps its proportions and is scaled to fit\n"
-                                         "inside the chosen frame size.", Qt.ToolTipRole)
-        self.aspect_combo.addItem("Exactly this frame size", "exact")
+        self.aspect_combo.addItem(tr("Keep original aspect (fit inside)"), "fit")
+        self.aspect_combo.setItemData(0, tr("The picture keeps its proportions and is scaled to fit\n"
+                                            "inside the chosen frame size."), Qt.ToolTipRole)
+        self.aspect_combo.addItem(tr("Exactly this frame size"), "exact")
         for label, _ in formats.ASPECT_PRESETS:
-            self.aspect_combo.addItem(f"Aspect ratio {label}", label)
+            self.aspect_combo.addItem(tr("Aspect ratio %s", tr(label)), label)
         self.fit_combo = Combo()
         for key, (label, tip) in formats.FIT_MODES.items():
-            self.fit_combo.addItem(label, key)
-            self.fit_combo.setItemData(self.fit_combo.count() - 1, tip, Qt.ToolTipRole)
-        form.addRow("Aspect:", self.aspect_combo)
-        form.addRow("Fit:", self.fit_combo)
+            self.fit_combo.addItem(tr(label), key)
+            self.fit_combo.setItemData(self.fit_combo.count() - 1, tr(tip), Qt.ToolTipRole)
+        form.addRow(tr("Aspect:"), self.aspect_combo)
+        form.addRow(tr("Fit:"), self.fit_combo)
         self.scaler_combo = Combo()
         for s in formats.SCALERS:
-            self.scaler_combo.addItem(f"{s.label}  (quality {s.quality}/5, speed {s.speed}/5)",
+            self.scaler_combo.addItem(tr("%s  (quality %d/5, speed %d/5)", tr(s.label), s.quality, s.speed),
                                       s.key)
-            self.scaler_combo.setItemData(self.scaler_combo.count() - 1, s.tooltip, Qt.ToolTipRole)
-        form.addRow("Scaling:", self.scaler_combo)
+            self.scaler_combo.setItemData(self.scaler_combo.count() - 1, tr(s.tooltip), Qt.ToolTipRole)
+        form.addRow(tr("Scaling:"), self.scaler_combo)
 
         # --- interpolation
         self.interp_combo = Combo()
-        form.addRow("Interpolation:", self.interp_combo)
+        form.addRow(tr("Interpolation:"), self.interp_combo)
 
         # --- summary + apply
         self.summary = QLabel()
         self.summary.setWordWrap(True)
         self.summary.setTextFormat(Qt.RichText)
-        self.apply_button = QPushButton("Apply to all clips")
-        self.apply_button.setToolTip("Copy these output settings to every clip in the list.")
+        self.apply_button = QPushButton(tr("Apply to all clips"))
+        self.apply_button.setToolTip(tr("Copy these output settings to every clip in the list."))
         self.apply_button.clicked.connect(self.apply_to_all)
 
         scroll = self._scroll = QScrollArea()
@@ -451,9 +452,9 @@ class SettingsPanel(QGroupBox):
          REENCODE: self.proc_reencode}[process].setChecked(True)
         reason = smart.unavailable_reason(info)
         if reason is None and clip.joins is None:
-            reason = "Analysing the keyframes of this clip …"
+            reason = tr("Analysing the keyframes of this clip …")
         elif reason is None and not clip.joins:
-            reason = "No keyframe found where the parts could be joined."
+            reason = tr("No keyframe found where the parts could be joined.")
         self.proc_smart.setEnabled(reason is None or process == SMART)
         self.proc_smart.setToolTip(reason or self._smart_tip)
 
@@ -462,9 +463,10 @@ class SettingsPanel(QGroupBox):
         custom_fps = ui.get("fps") == CUSTOM or s.fps not in [f for _, f in rates]
         fill_combo(self.fps_combo, self._fps_items(job, rates), CUSTOM if custom_fps else str(s.fps))
         self.original_info.setText(
-            f"Original: {job.source_frame_count} frames at {fmt_rate(info.real_fps)} fps = "
-            f"{fmt_seconds(job.source_frame_count / float(info.real_fps))}"
-            + (f" (recorded slow-mo, the file plays at {fmt_rate(info.fps)} fps)"
+            trp("Original: %d frame at %s fps = %s", "Original: %d frames at %s fps = %s",
+                job.source_frame_count, job.source_frame_count, fmt_rate(info.real_fps),
+                fmt_seconds(job.source_frame_count / float(info.real_fps)))
+            + (tr(" (recorded slow-mo, the file plays at %s fps)", fmt_rate(info.fps))
                if info.slowmo_factor else ""))
         self.fps_edit.setVisible(custom_fps)
         if custom_fps and parse_fps(self.fps_edit.text()) != s.fps:
@@ -473,29 +475,31 @@ class SettingsPanel(QGroupBox):
 
         # speed
         lossless = float(job.lossless_speed)
-        self.speed_lossless.setText(f"Lossless: {lossless:.4g}× ({fmt_slowdown(1 / lossless)})")
+        self.speed_lossless.setText(tr("Lossless: %s× (%s)", f"{lossless:.4g}",
+                                        fmt_slowdown(1 / lossless)))
         self.speed_lossless.setChecked(s.speed is None)
         self.speed_custom.setChecked(s.speed is not None)
         self.speed_spin.setEnabled(s.speed is not None)
         self.speed_spin.setValue(float(job.speed))
         sp = float(job.speed)
         if job.has_segments:
-            mode = ("lossless, variable frame rate" if s.codec == COPY
-                    else f"re-encoded to a constant {fmt_rate(s.fps)} fps")
-            self.speed_info.setText(f"<b>Output length {fmt_seconds(job.output_duration)}</b> – "
-                                    f"speed sections ({mode})")
+            mode = (tr("lossless, variable frame rate") if s.codec == COPY
+                    else tr("re-encoded to a constant %s fps", fmt_rate(s.fps)))
+            self.speed_info.setText(tr("<b>Output length %s</b> – speed sections (%s)",
+                                       fmt_seconds(job.output_duration), mode))
         else:
-            self.speed_info.setText(f"<b>Output length {fmt_seconds(job.output_duration)}</b> – "
-                                    f"{fmt_slowdown(1 / sp)} than the original" if abs(sp - 1) > 1e-4
-                                    else f"<b>Output length {fmt_seconds(job.output_duration)}</b> – "
-                                         "real time, like the original")
+            self.speed_info.setText(tr("<b>Output length %s</b> – %s than the original",
+                                       fmt_seconds(job.output_duration), fmt_slowdown(1 / sp))
+                                    if abs(sp - 1) > 1e-4 else
+                                    tr("<b>Output length %s</b> – real time, like the original",
+                                       fmt_seconds(job.output_duration)))
 
         # codec
         fill_combo(self.codec_combo, self._codec_items(), s.codec)
         codec = job.codec
-        self.codec_combo.setToolTip(codec.description if codec else
-                                    "Keeps the original video stream untouched; only the\n"
-                                    "timestamps are changed. Fastest, no quality loss.")
+        self.codec_combo.setToolTip(tr(codec.description) if codec else
+                                    tr("Keeps the original video stream untouched; only the\n"
+                                       "timestamps are changed. Fastest, no quality loss."))
         if process == SMART:
             containers = list(smart.CONTAINERS)
         elif codec is None:
@@ -505,14 +509,14 @@ class SettingsPanel(QGroupBox):
         fill_combo(self.container_combo, [(c.upper(), c) for c in containers], job.container)
 
         profiles = codec.profiles if codec else ()
-        fill_combo(self.profile_combo, [(p.label, p.key, p.tooltip) for p in profiles],
+        fill_combo(self.profile_combo, [(tr(p.label), p.key, tr(p.tooltip)) for p in profiles],
                    job.profile.key if job.profile else None)
         presets = codec.presets if codec else ()
         fill_combo(self.preset_combo, [(formats.preset_label(codec, p), p) for p in presets],
                    s.preset or (codec.default_preset if codec else None))
         cineform = bool(codec) and codec.key == "cineform"
-        self.preset_label.setText("Compression:" if cineform else "Preset:")
-        self.preset_combo.setToolTip(formats.CINEFORM_TIP if cineform else formats.PRESET_TIP)
+        self.preset_label.setText(tr("Compression:") if cineform else tr("Preset:"))
+        self.preset_combo.setToolTip(tr(formats.CINEFORM_TIP if cineform else formats.PRESET_TIP))
         q = codec.quality if codec else None
         if q:
             self._sync_quality(clip, codec, q)
@@ -555,8 +559,8 @@ class SettingsPanel(QGroupBox):
         interpolating = job.mode == Mode.INTERPOLATE
         self.interp_combo.setEnabled(interpolating)
         current = next(i for i in formats.INTERPOLATIONS if i.key == s.interpolation)
-        self.interp_combo.setToolTip(current.tooltip if interpolating else
-                                     "Only used when the speed is slower than the lossless speed.")
+        self.interp_combo.setToolTip(tr(current.tooltip) if interpolating else
+                                     tr("Only used when the speed is slower than the lossless speed."))
 
         # each processing mode enables only what it can use
         locked_size = (self.res_combo, self.width_spin, self.height_spin, self.aspect_combo,
@@ -572,10 +576,10 @@ class SettingsPanel(QGroupBox):
                 w.setEnabled(False)
             for w in (self.preset_combo, self.quality_combo, self.quality_spin, self.interp_combo):
                 w.setEnabled(True)
-            self.codec_combo.setToolTip("Smart re-encode always uses the source codec – "
-                                        "otherwise the parts could not be joined.")
-            self.interp_combo.setToolTip("Used by re-encoded sections that play slower than "
-                                         "their output frame rate.")
+            self.codec_combo.setToolTip(tr("Smart re-encode always uses the source codec – "
+                                           "otherwise the parts could not be joined."))
+            self.interp_combo.setToolTip(tr("Used by re-encoded sections that play slower than "
+                                            "their output frame rate."))
         else:
             for w in (self.speed_custom, self.speed_presets, self.codec_combo, self.profile_combo,
                       self.preset_combo, self.quality_combo, self.quality_spin, self.res_combo):
@@ -587,34 +591,35 @@ class SettingsPanel(QGroupBox):
         if sections:
             for w in (self.speed_custom, self.speed_spin, self.speed_presets):
                 w.setEnabled(False)
-        self.speed_info.setToolTip("Speed sections (Preview & trim tab) set the speed of this clip."
+        self.speed_info.setToolTip(tr("Speed sections (Preview & trim tab) set the speed of this clip.")
                                    if sections else "")
         copy_sections = sections and s.codec == COPY
         self.fps_combo.setEnabled(not copy_sections)
         self.fps_edit.setEnabled(not copy_sections)
         self.fps_combo.setToolTip(
-            "Not used: without re-encoding every frame keeps its own duration (variable frame "
-            "rate). Choose a codec to re-encode to one constant frame rate."
+            tr("Not used: without re-encoding every frame keeps its own duration (variable frame "
+               "rate). Choose a codec to re-encode to one constant frame rate.")
             if copy_sections else
-            "Constant frame rate of the output; each section is converted to it."
-            if sections else "Frame rate of the output file.")
+            tr("Constant frame rate of the output; each section is converted to it.")
+            if sections else tr("Frame rate of the output file."))
         if process == SMART:
             for w in (self.speed_lossless, self.fps_combo, self.fps_edit):
                 w.setEnabled(False)
-            self.fps_combo.setToolTip("Not used: copied parts keep their timing, re-encoded "
-                                      "sections have their own output frame rate.")
+            self.fps_combo.setToolTip(tr("Not used: copied parts keep their timing, re-encoded "
+                                         "sections have their own output frame rate."))
 
         # sound
         reason = audio.unavailable_reason(job)
         on = s.audio and reason is None
         self.audio_button.setChecked(on)
-        self.audio_button.setText("🔊 Sound on – pitch preserved" if on else "🔇 Sound off")
+        self.audio_button.setText(tr("🔊 Sound on – pitch preserved") if on else tr("🔇 Sound off"))
         self.audio_button.setEnabled(reason is None)
-        self.audio_button.setToolTip(reason or AUDIO_TIP + "\n\nClick to switch the sound "
-                                     + ("off." if on else "on."))
+        self.audio_button.setToolTip(tr(reason) if reason else tr(AUDIO_TIP) + "\n\n"
+                                     + (tr("Click to switch the sound off.") if on
+                                        else tr("Click to switch the sound on.")))
 
         self.summary.setText(self._summary(clip))
-        self.summary.setToolTip(SMART_DETAILS.format(apple=smart.APPLE_WARNING)
+        self.summary.setToolTip(tr(SMART_DETAILS, tr(smart.APPLE_WARNING))
                                 if process == SMART else "")
 
     def _sync_quality(self, clip: Clip, codec, q) -> None:
@@ -622,108 +627,120 @@ class SettingsPanel(QGroupBox):
         value = clip.settings.quality if clip.settings.quality is not None else q.default
         levels = formats.quality_levels(codec)
         custom = clip.ui.get("quality") == CUSTOM or value not in [v for _, _, v in levels]
-        direction = "lower = better" if q.lower_is_better else "higher = better"
-        items = [(f"{name} ({q.label} {v})", str(v), f"{tip}\n\n{q.label} {v} ({direction})")
+        direction = tr("lower = better") if q.lower_is_better else tr("higher = better")
+        qlabel = tr(q.label)
+        items = [(tr("%s (%s %d)", tr(name), qlabel, v), str(v),
+                  tr("%s\n\n%s %d (%s)", tr(tip), qlabel, v, direction))
                  for name, tip, v in levels]
-        items.append(("Custom…", CUSTOM, f"Enter the {q.label} value yourself "
-                                         f"({q.minimum}–{q.maximum}, {direction})."))
+        items.append((tr("Custom…"), CUSTOM, tr("Enter the %s value yourself (%d–%d, %s).",
+                                                qlabel, q.minimum, q.maximum, direction)))
         fill_combo(self.quality_combo, items, CUSTOM if custom else str(value))
-        self.quality_combo.setToolTip(
+        self.quality_combo.setToolTip(tr(
             "How much detail is kept: the levels mean about the same for every codec.\n"
-            f"In brackets: this codec's own setting ({q.label}, {direction}).\n"
-            "One level down makes the file roughly 30–50 % smaller.")
+            "In brackets: this codec's own setting (%s, %s).\n"
+            "One level down makes the file roughly 30–50 %% smaller.", qlabel, direction))
         self.quality_spin.setRange(q.minimum, q.maximum)
         self.quality_spin.setValue(value)
         self.quality_spin.setVisible(custom)
-        self.quality_spin.setToolTip(f"{q.label}: {q.tooltip}" if q.tooltip else q.label)
+        self.quality_spin.setToolTip(f"{qlabel}: {tr(q.tooltip)}" if q.tooltip else qlabel)
 
     def _fps_items(self, job, rates: list[tuple[str, Fraction]]) -> list[tuple]:
         """Frame rates with the resulting slow-down and length when every frame is kept."""
         src, frames = job.info.real_fps, job.source_frame_count
         if job.has_segments:     # the sections decide the speed; this is only the output rate
-            return [(label, str(fps), "Constant output frame rate") for label, fps in rates] + [
-                ("Custom…", CUSTOM, "Enter any frame rate.")]
+            return [(label, str(fps), tr("Constant output frame rate")) for label, fps in rates] + [
+                (tr("Custom…"), CUSTOM, tr("Enter any frame rate."))]
         items = []
         for label, fps in rates:
             length = fmt_seconds(frames / float(fps))
             slowdown = fmt_slowdown(float(src / fps))
-            tip = (f"Every source frame shown once: {frames} frames at {fmt_rate(fps)} fps = "
-                   f"{length}, {slowdown} than the original.\n"
-                   "(With a custom speed the length follows the speed instead.)")
+            tip = trp("Every source frame shown once: %d frame at %s fps = %s, %s than the "
+                      "original.\n(With a custom speed the length follows the speed instead.)",
+                      "Every source frame shown once: %d frames at %s fps = %s, %s than the "
+                      "original.\n(With a custom speed the length follows the speed instead.)",
+                      frames, frames, fmt_rate(fps), length, slowdown)
             items.append((f"{label} – {slowdown}, {length}", str(fps), tip))
-        items.append(("Custom…", CUSTOM, "Enter any frame rate."))
+        items.append((tr("Custom…"), CUSTOM, tr("Enter any frame rate.")))
         return items
 
     def _interp_items(self) -> list[tuple]:
         items = []
         for i in formats.INTERPOLATIONS:
-            label, tip, enabled = f"{i.label}  (quality {i.quality}/5)", i.tooltip, True
+            label, tip, enabled = tr("%s  (quality %d/5)", tr(i.label), i.quality), tr(i.tooltip), True
             job = self.clip.job if self.clip and self.clip.info else None
             if i.needs_gpu and job and job.has_segments:
-                label += "  (not with speed sections)"
-                tip, enabled = tip + "\n\nRIFE cannot be combined with speed sections.", False
+                label += "  " + tr("(not with speed sections)")
+                tip, enabled = tip + "\n\n" + tr("RIFE cannot be combined with speed sections."), False
             elif i.needs_gpu and job and job.codec and job.codec.external:
-                label += "  (not with AV2)"
-                tip, enabled = tip + "\n\nRIFE cannot be combined with AV2.", False
+                label += "  " + tr("(not with AV2)")
+                tip, enabled = tip + "\n\n" + tr("RIFE cannot be combined with AV2."), False
             elif i.needs_gpu:
                 r = self.rife
                 if r is None:
-                    tip, enabled = tip + "\n\nChecking for a Vulkan GPU…", False
+                    tip, enabled = tip + "\n\n" + tr("Checking for a Vulkan GPU…"), False
                 elif not r.available:
-                    label += "  (unavailable)"
-                    tip, enabled = tip + f"\n\nNot available: {r.reason}", False
+                    label += "  " + tr("(unavailable)")
+                    tip, enabled = tip + "\n\n" + tr("Not available: %s", tr(r.reason)), False
                 elif r.software:
-                    label += "  (no GPU – very slow)"
-                    tip += (f"\n\nOnly a software Vulkan device was found ({r.gpu}).\n"
-                            "RIFE runs on the CPU and is extremely slow.")
+                    label += "  " + tr("(no GPU – very slow)")
+                    tip += "\n\n" + tr("Only a software Vulkan device was found (%s).\n"
+                                         "RIFE runs on the CPU and is extremely slow.", r.gpu)
                 else:
-                    tip += f"\n\nRuns on: {r.gpu}"
+                    tip += "\n\n" + tr("Runs on: %s", r.gpu)
             items.append((label, i.key, tip, enabled))
         return items
 
     def _codec_items(self) -> list[tuple]:
-        items = [("Keep source codec – lossless retime", COPY,
-                  "Choose “Lossless” under Processing to keep the source stream.", False)]
-        groups = (("Lossless", lambda c: c.lossless), ("Lossy", lambda c: not c.lossless and not c.hw),
-                  ("Hardware", lambda c: c.hw))
+        items = [(tr("Keep source codec – lossless retime"), COPY,
+                  tr("Choose “Lossless” under Processing to keep the source stream."), False)]
+        groups = ((tr("Lossless"), lambda c: c.lossless),
+                  (tr("Lossy"), lambda c: not c.lossless and not c.hw),
+                  (tr("Hardware"), lambda c: c.hw))
         for group, match in groups:
             for c in CODECS:
                 if not match(c):
                     continue
                 st = self.encoders.get(c.key) if self.encoders else None
+                label, desc = f"{group}: {tr(c.label)}", tr(c.description)
                 if self.encoders is None:
-                    items.append((f"{group}: {c.label}", c.key, "Detecting encoders…", False))
+                    items.append((label, c.key, tr("Detecting encoders…"), False))
                 elif st and st.available:
-                    items.append((f"{group}: {c.label}", c.key, c.description, True))
+                    items.append((label, c.key, desc, True))
                 else:
-                    reason = st.reason if st else "unknown"
-                    items.append((f"{group}: {c.label}  (unavailable)", c.key,
-                                  f"{c.description}\n\nNot available: {reason}", False))
+                    reason = tr(st.reason) if st else tr("unknown")
+                    items.append((label + "  " + tr("(unavailable)"), c.key,
+                                  desc + "\n\n" + tr("Not available: %s", reason), False))
         return items
 
     def _smart_summary(self, clip: Clip) -> list[str]:
         job = clip.job
         if clip.joins is None:
-            return ["Analysing the keyframes of this clip …"]
+            return [tr("Analysing the keyframes of this clip …")]
         parts = job.smart_parts()
         encoded = [p for p in parts if p.kind == "encode"]
-        lines = [f"Codec: {job.codec.label} – the source codec, so the parts fit together."]
+        lines = [tr("Codec: %s – the source codec, so the parts fit together.",
+                    tr(job.codec.label))]
         if not encoded:
-            lines.append("No section is marked “Re-encode” (Preview & trim tab) – the whole "
-                         "clip is copied.")
+            lines.append(tr("No section is marked “Re-encode” (Preview & trim tab) – the whole "
+                            "clip is copied."))
         else:
             n_copy = sum(p.frames for p in parts if p.kind == "copy")
             n_enc = sum(p.frames for p in encoded)
-            lines.append(f"{len(parts)} parts: {n_copy} frames copied, {n_enc} frames "
-                         f"re-encoded in {len(encoded)} part(s).")
-        lines.append(f"Joins only at keyframes (every {_key_interval(job.frames)} frames).")
-        lines.append("<span style='color:#d35400'>⚠ Does not play on Apple devices "
-                     "(hover for details).</span>")
-        lines.append(f"{job.source_frame_count} → {job.output_frame_count} frames, "
-                     f"{fmt_duration(job.output_duration)}")
+            lines.append(trp("%d part", "%d parts", len(parts), len(parts)) + ": "
+                         + trp("%d frame copied", "%d frames copied", n_copy, n_copy) + ", "
+                         + trp("%d frame re-encoded in %d part(s).",
+                               "%d frames re-encoded in %d part(s).", n_enc, n_enc, len(encoded)))
+        lines.append(trp("Joins only at keyframes (every %d frame).",
+                         "Joins only at keyframes (every %d frames).",
+                         _key_interval(job.frames), _key_interval(job.frames)))
+        lines.append("<span style='color:#d35400'>" + tr("⚠ Does not play on Apple devices "
+                     "(hover for details).") + "</span>")
+        lines.append(trp("%d → %d frame, %s", "%d → %d frames, %s", job.output_frame_count,
+                         job.source_frame_count, job.output_frame_count,
+                         fmt_duration(job.output_duration)))
         lines.append(_sound_line(job))
         ext = formats.CONTAINER_EXT[job.container]
-        lines.append(f"File: {job.default_output_name()}{ext}")
+        lines.append(tr("File: %s", f"{job.default_output_name()}{ext}"))
         return lines
 
     def supported_pix_fmts(self, clip: Clip) -> list[str] | None:
@@ -736,83 +753,96 @@ class SettingsPanel(QGroupBox):
         job, s, info = clip.job, clip.settings, clip.info
         codec = job.codec
         if codec is None:
-            src = f"Source ({chroma_label(info.chroma)})"
+            src = tr("Source (%s)", chroma_label(info.chroma))
             fill_combo(self.chroma_combo, [(src, None)], None)
-            fill_combo(self.depth_combo, [(f"Source ({info.bit_depth}-bit)", None)], None)
+            fill_combo(self.depth_combo, [(tr("Source (%d-bit)", info.bit_depth), None)], None)
             for w in (self.chroma_combo, self.depth_combo):
                 w.setEnabled(False)
-                w.setToolTip("Lossless retime keeps the source format.")
+                w.setToolTip(tr("Lossless retime keeps the source format."))
             return
         allowed = formats.allowed_formats(codec, job.profile, self.supported_pix_fmts(clip))
         chromas = sorted({c for c, _ in allowed}, key=CHROMA_ORDER.get)
         depths = sorted({d for _, d in allowed})
         src_rank = CHROMA_ORDER.get(info.chroma, 3)
-        chroma_items = [(f"Like source ({chroma_label(info.chroma)})", None,
-                         "Keep the source subsampling if the codec supports it.")]
+        chroma_items = [(tr("Like source (%s)", chroma_label(info.chroma)), None,
+                         tr("Keep the source subsampling if the codec supports it."))]
         for c in chromas:
             label, tip = formats.CHROMA[c]
+            tip = tr(tip)
             if CHROMA_ORDER[c] > src_rank:
-                tip += "\n\n" + formats.CHROMA_UPSAMPLE_NOTE
+                tip += "\n\n" + tr(formats.CHROMA_UPSAMPLE_NOTE)
             chroma_items.append((label, c, tip))
-        depth_items = [(f"Like source ({info.bit_depth}-bit)", None,
-                        "Keep the source bit depth (8 or 10-bit) if the codec supports it.")]
-        depth_items += [(formats.DEPTHS[d][0], d, formats.DEPTHS[d][1]) for d in depths]
+        depth_items = [(tr("Like source (%d-bit)", info.bit_depth), None,
+                        tr("Keep the source bit depth (8 or 10-bit) if the codec supports it."))]
+        depth_items += [(tr(formats.DEPTHS[d][0]), d, tr(formats.DEPTHS[d][1])) for d in depths]
         fill_combo(self.chroma_combo, chroma_items, s.chroma)
         fill_combo(self.depth_combo, depth_items, s.depth)
         for w in (self.chroma_combo, self.depth_combo):
             w.setEnabled(True)
-        self.chroma_combo.setToolTip(self.chroma_combo.currentData() and
-                                     formats.CHROMA[self.chroma_combo.currentData()][1] or
-                                     "Chroma subsampling – how much colour detail is stored.")
-        self.depth_combo.setToolTip("Bit depth – number of brightness / colour steps.")
+        self.chroma_combo.setToolTip(tr(self.chroma_combo.currentData() and
+                                        formats.CHROMA[self.chroma_combo.currentData()][1] or
+                                        "Chroma subsampling – how much colour detail is stored."))
+        self.depth_combo.setToolTip(tr("Bit depth – number of brightness / colour steps."))
 
     def _summary(self, clip: Clip) -> str:
         job = clip.job
-        lines = [f"<b>{MODE_LABELS[job.mode]}</b>"]
+        lines = [f"<b>{tr(MODE_LABELS[job.mode])}</b>"]
         if job.mode == Mode.SMART:
             return "<br>".join(lines + self._smart_summary(clip))
         if job.has_segments:
             n = sum(1 for g in job.segments if g.start < job.trim_end and g.end > job.trim.start)
             if job.mode == Mode.RETIME:
-                lines.append(f"{n} speed section(s), rest in real time – every frame keeps its "
-                             "own duration (variable frame rate). Plays in all common players; "
-                             "editing programs prefer a constant frame rate (choose a codec).")
+                lines.append(trp("%d speed section, rest in real time – every frame keeps its "
+                                 "own duration (variable frame rate). Plays in all common players; "
+                                 "editing programs prefer a constant frame rate (choose a codec).",
+                                 "%d speed sections, rest in real time – every frame keeps its "
+                                 "own duration (variable frame rate). Plays in all common players; "
+                                 "editing programs prefer a constant frame rate (choose a codec).",
+                                 n, n))
                 fastest = max(p.rate for p in job.pieces())
                 if fastest > clip.info.real_fps:
                     lines.append(
-                        f"<span style='color:#d35400'>Fast sections keep every frame: a player "
-                        f"has to decode {fmt_rate(fastest)} frames per second there, which most "
-                        "computers can't – it will stutter. For smooth playback choose a codec: "
-                        "the constant frame rate then skips the extra frames.</span>")
+                        "<span style='color:#d35400'>" + tr(
+                            "Fast sections keep every frame: a player "
+                            "has to decode %s frames per second there, which most "
+                            "computers can't – it will stutter. For smooth playback choose a codec: "
+                            "the constant frame rate then skips the extra frames.",
+                            fmt_rate(fastest)) + "</span>")
             else:
-                lines.append(f"{n} speed section(s), rest in real time – re-encoded to a constant "
-                             f"{fmt_rate(job.settings.fps)} fps.")
+                lines.append(trp("%d speed section, rest in real time – re-encoded to a "
+                                 "constant %s fps.",
+                                 "%d speed sections, rest in real time – re-encoded to a "
+                                 "constant %s fps.", n, n, fmt_rate(job.settings.fps)))
                 if rife.MODELS and job.settings.interpolation in rife.MODELS:
-                    lines.append("<span style='color:#c0392b'>RIFE cannot be combined with speed "
-                                 "sections – choose another interpolation.</span>")
+                    lines.append("<span style='color:#c0392b'>" + tr(
+                        "RIFE cannot be combined with speed sections – choose another "
+                        "interpolation.") + "</span>")
         if (job.codec and job.codec.external and job.mode == Mode.INTERPOLATE
                 and job.settings.interpolation in rife.MODELS):
-            lines.append("<span style='color:#c0392b'>RIFE cannot be combined with AV2 – "
-                         "choose another interpolation.</span>")
+            lines.append("<span style='color:#c0392b'>" + tr(
+                "RIFE cannot be combined with AV2 – choose another interpolation.") + "</span>")
         if job.codec and job.codec.external:
-            lines.append("<span style='color:#d35400'>AV2 reference encoder: ~75 s per 1080p "
-                         "frame – test encodes use at most 5 frames.</span>")
+            lines.append("<span style='color:#d35400'>" + tr(
+                "AV2 reference encoder: ~75 s per 1080p frame – test encodes use at most "
+                "5 frames.") + "</span>")
         if rife.is_rife(job) and (clip.info.bit_depth > 8 or clip.info.is_hdr):
-            lines.append(f"<span style='color:#d35400'>{RIFE_8BIT}</span>")
+            lines.append(f"<span style='color:#d35400'>{tr(RIFE_8BIT)}</span>")
         if job.mode == Mode.RETIME:
             blockers = job.retime_blockers()
             if blockers:
-                lines.append("<span style='color:#c0392b'>Lossless retime is not possible:<br>• "
-                             + "<br>• ".join(blockers)
-                             + "<br>Choose “lossless speed”, keep the source size, "
-                               "or pick a codec to re-encode.</span>")
+                lines.append("<span style='color:#c0392b'>"
+                             + tr("Lossless retime is not possible:") + "<br>• "
+                             + "<br>• ".join(tr(b) for b in blockers)
+                             + "<br>" + tr("Choose “lossless speed”, keep the source size, "
+                                           "or pick a codec to re-encode.") + "</span>")
             else:
-                lines.append("Trimming is only possible at keyframes. "
-                             f"<span title='{KEYFRAME_TRIM_REASON}'>(why?)</span>")
-        rate = ("variable frame rate" if job.has_segments and job.mode == Mode.RETIME
-                else f"{float(job.settings.fps):.5g} fps")
-        lines.append(f"{job.source_frame_count} → {job.output_frame_count} frames, "
-                     f"{fmt_duration(job.output_duration)} at {rate}")
+                lines.append(tr("Trimming is only possible at keyframes.")
+                             + f" <span title='{tr(KEYFRAME_TRIM_REASON)}'>{tr('(why?)')}</span>")
+        rate = (tr("variable frame rate") if job.has_segments and job.mode == Mode.RETIME
+                else tr("%s fps", f"{float(job.settings.fps):.5g}"))
+        lines.append(trp("%d → %d frame, %s at %s", "%d → %d frames, %s at %s",
+                         job.output_frame_count, job.source_frame_count, job.output_frame_count,
+                         fmt_duration(job.output_duration), rate))
         if job.codec:
             w, h = job.output_size()
             try:
@@ -823,25 +853,26 @@ class SettingsPanel(QGroupBox):
             lines.append(f"{w}×{h}, {fmt}")
         else:
             w, h = clip.info.display_size
-            lines.append(f"{w}×{h}, {clip.info.pix_fmt} (unchanged)")
+            lines.append(f"{w}×{h}, " + tr("%s (unchanged)", clip.info.pix_fmt))
         lines.append(_sound_line(job))
         ext = formats.CONTAINER_EXT[job.container]
-        lines.append(f"File: {job.default_output_name()}{ext}")
+        lines.append(tr("File: %s", f"{job.default_output_name()}{ext}"))
         return "<br>".join(lines)
 
 
 def _sound_line(job) -> str:
     if not audio.wanted(job):
-        return "Sound: none" + ("" if job.info.has_audio else " (the clip has none)")
-    restored = " – phone slow-mo sound back at its real pitch" if audio.slowmo_factor(job) > 1.001 \
-        else ""
+        return tr("Sound: none") + ("" if job.info.has_audio else tr(" (the clip has none)"))
+    restored = tr(" – phone slow-mo sound back at its real pitch") \
+        if audio.slowmo_factor(job) > 1.001 else ""
     if job.has_segments or job.settings.smart:
-        return f"Sound: follows the speed sections, pitch preserved{restored}"
+        return tr("Sound: follows the speed sections, pitch preserved") + restored
     real = sum(b - a for a, b, _ in audio.pieces(job))
     factor = job.output_duration / real if real > 0 else 1
-    change = ("unchanged length" if abs(factor - 1) < 1e-3 else
-              f"{factor:.3g}× longer" if factor > 1 else f"{1 / factor:.3g}× shorter")
-    return f"Sound: {change}, pitch preserved{restored}"
+    change = (tr("unchanged length") if abs(factor - 1) < 1e-3 else
+              tr("%s× longer", f"{factor:.3g}") if factor > 1 else
+              tr("%s× shorter", f"{1 / factor:.3g}"))
+    return tr("Sound: %s, pitch preserved", change) + restored
 
 
 def _key_interval(frames) -> int:

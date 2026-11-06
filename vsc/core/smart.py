@@ -39,6 +39,7 @@ from .formats import COPY
 from .job import Job, Trim
 from .probe import FrameMap, MediaInfo
 from .runner import Progress, Result
+from ..i18n import N_, tr
 
 # source codec → encoder codec key (catalogue) and the MP4 tag that allows in-band headers
 SMART_CODECS = {"hevc": ("x265", "hev1"), "h264": ("x264", "avc3")}
@@ -48,7 +49,7 @@ ENCODER_EXTRA = {
     "x265": ["-x265-params", "log-level=error:repeat-headers=1:open-gop=0"],
     "x264": ["-x264-params", "repeat-headers=1:open-gop=0"],
 }
-APPLE_WARNING = ("Smart re-encoded files change the decoder headers inside the stream "
+APPLE_WARNING = N_("Smart re-encoded files change the decoder headers inside the stream "
                  "(MP4 tag hev1 / avc3). Apple devices (QuickTime, iPhone, iPad, Final Cut) "
                  "cannot play them – VLC, mpv, Windows, Android, Chrome and Firefox can. "
                  "For Apple, re-encode the whole clip instead.")
@@ -56,8 +57,8 @@ APPLE_WARNING = ("Smart re-encoded files change the decoder headers inside the s
 
 def unavailable_reason(info: MediaInfo) -> str | None:
     if info.codec not in SMART_CODECS:
-        return (f"Smart re-encode needs H.264 or HEVC footage – this clip is {info.codec}. "
-                "Its parts could not be joined.")
+        return tr("Smart re-encode needs H.264 or HEVC footage – this clip is %s. "
+                  "Its parts could not be joined.", info.codec)
     return None
 
 
@@ -136,8 +137,8 @@ def _access_units(path: Path, info: MediaInfo, chunk: int = 1 << 20) -> Iterator
         reader.join(timeout=2)
     if proc.returncode != 0:
         msg = b"".join(err).decode("utf-8", "replace").strip()
-        raise AnalysisError(f"Reading the bitstream failed (ffmpeg exit code {proc.returncode})"
-                            + (f": {msg}" if msg else ""))
+        raise AnalysisError(tr("Reading the bitstream failed (ffmpeg exit code %d)",
+                               proc.returncode) + (f": {msg}" if msg else ""))
 
 
 def _decode_order_pts(path: Path, info: MediaInfo) -> list[int]:
@@ -145,8 +146,8 @@ def _decode_order_pts(path: Path, info: MediaInfo) -> list[int]:
                           str(info.stream_index), "-show_entries", "packet=pts,dts",
                           "-of", "csv=p=0", str(path)], timeout=600)
     if res.returncode != 0:
-        raise AnalysisError(f"Reading the packets failed (ffprobe exit code {res.returncode}): "
-                            + res.stderr.strip())
+        raise AnalysisError(tr("Reading the packets failed (ffprobe exit code %d): %s",
+                               res.returncode, res.stderr.strip()))
     out = []
     for line in res.stdout.splitlines():
         parts = line.split(",")
@@ -312,9 +313,9 @@ class SmartRunner:
         if reason := unavailable_reason(job.info):
             raise command.CommandError(reason)
         if joins is None:
-            raise command.CommandError("The keyframes of this clip are still being analysed")
+            raise command.CommandError(tr("The keyframes of this clip are still being analysed"))
         if job.trim.start not in joins and job.trim.start != 0:
-            raise command.CommandError("The in-point must be on a keyframe where a part can start")
+            raise command.CommandError(tr("The in-point must be on a keyframe where a part can start"))
         self.job, self.output, self.joins = job, output, joins
         self.parts = plan(job, joins)
         self.supported = supported_pix_fmts
@@ -408,7 +409,7 @@ class SmartRunner:
                 if self._cancelled:
                     break
                 if rc != 0:
-                    error = f"Part {i + 1} ({part.kind} {part.start}–{part.end - 1}): {err}"
+                    error = tr("Part %d (%s %d–%d): %s", i + 1, part.kind, part.start, part.end - 1, err)
                     break
                 done += part.frames
                 report(done)
@@ -417,7 +418,7 @@ class SmartRunner:
                 (work / "parts.txt").write_text("".join(listing))
                 rc, err = self._run(self._join_args(work / "parts.txt"))
                 if rc != 0 and not self._cancelled:
-                    error = "Joining the parts failed: " + err
+                    error = tr("Joining the parts failed: %s", err)
         finally:
             shutil.rmtree(work, ignore_errors=True)
         ok = not error and not self._cancelled

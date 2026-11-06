@@ -38,6 +38,7 @@ from . import ffmpeg_bin, segments as seg, sonic
 from .formats import COPY
 from .job import Job
 from .runner import Result
+from ..i18n import N_, tr
 
 OUT_RATE = 48000
 TEMPO_MIN, TEMPO_MAX = 0.01, 20.0           # Sonic: ≤ 100× slower (build patch), ≤ 20× faster
@@ -54,7 +55,7 @@ CODEC_ARGS = {
 
 # Convert videos, pro mode (2026-11-04): sound codecs the user can choose (key → FFmpeg encoder)
 ENCODERS = {"aac": "aac", "opus": "libopus", "mp3": "libmp3lame", "flac": "flac"}
-LABELS = {"aac": "AAC", "opus": "Opus", "mp3": "MP3", "flac": "FLAC (lossless)"}
+LABELS = {"aac": "AAC", "opus": "Opus", "mp3": "MP3", "flac": N_("FLAC (lossless)")}
 DEFAULT_KBPS = {"aac": 192, "opus": 160, "mp3": 192}
 MAX_CHANNELS = {"aac": 8, "opus": 8, "mp3": 2, "flac": 8}
 OPUS_RATES = (8000, 12000, 16000, 24000, 48000)
@@ -86,19 +87,21 @@ def is_plain(job: Job) -> bool:
 def copy_reason(job: Job) -> str | None:
     """Why the source's sound cannot be copied unchanged into this output (None = it can)."""
     if not job.info.has_audio:
-        return "This clip has no sound."
+        return tr("This clip has no sound.")
     if not is_plain(job):
-        return "The sound is stretched or cut, so it has to be encoded again."
+        return tr("The sound is stretched or cut, so it has to be encoded again.")
     if not container_holds(job.container, job.info.audio_codec):
-        return (f"{(job.info.audio_codec or 'This sound').upper()} cannot be stored in "
-                f"{job.container.upper()} files.")
+        return tr("%s cannot be stored in %s files.",
+                  (job.info.audio_codec or tr("This sound")).upper(),
+                  job.container.upper())
     return None
 
 
 def encode_reason(container: str, codec_key: str) -> str | None:
     """Why `codec_key` can't be written into `container` (None = it can)."""
     if not container_holds(container, codec_key):
-        return f"{LABELS.get(codec_key, codec_key)} cannot be stored in {container.upper()} files."
+        return tr("%s cannot be stored in %s files.", tr(LABELS.get(codec_key, codec_key)),
+                  container.upper())
     return None
 
 
@@ -140,15 +143,15 @@ def codec_args(job: Job) -> list[str]:
 def unavailable_reason(job: Job) -> str | None:
     """Why this output gets no sound (None = it can)."""
     if not job.info.has_audio:
-        return "This clip has no sound."
+        return tr("This clip has no sound.")
     if reason := sonic.unavailable_reason():
         return reason
     if job.codec and job.codec.image_sequence:
-        return "Image sequences cannot hold sound."
+        return tr("Image sequences cannot hold sound.")
     if job.codec and job.codec.external:
-        return "FFmpeg cannot handle AV2 yet, so the AV2 file stays without sound."
+        return tr("FFmpeg cannot handle AV2 yet, so the AV2 file stays without sound.")
     if job.container not in CODEC_ARGS:
-        return f"{job.container.upper()} files cannot hold sound."
+        return tr("%s files cannot hold sound.", job.container.upper())
     return None
 
 
@@ -255,8 +258,8 @@ def _decode(job: Job, seek: float, length: float) -> bytes:
                           "-ar", str(OUT_RATE), "-f", "s16le", "-"],
                          capture_output=True, timeout=600, **ffmpeg_bin.POPEN_FLAGS)
     if res.returncode != 0:
-        raise AudioError("Decoding the sound failed: "
-                         + res.stderr.decode("utf-8", "replace").strip()[-500:])
+        raise AudioError(tr("Decoding the sound failed: %s",
+                            res.stderr.decode("utf-8", "replace").strip()[-500:]))
     return res.stdout
 
 
@@ -363,7 +366,7 @@ class AudioRunner:
             sound.unlink(missing_ok=True)
             return Result(ok=False, cancelled=self._cancelled, output=self.output,
                           elapsed=time.monotonic() - start, frames=res.frames,
-                          error="" if self._cancelled else f"Preparing the sound failed: {e}")
+                          error="" if self._cancelled else tr("Preparing the sound failed: %s", e))
         err: deque[str] = deque(maxlen=30)
         self._proc = proc = subprocess.Popen(
             mux_args(self.job, self.video, sound, self.output), stdin=subprocess.DEVNULL,
@@ -380,7 +383,7 @@ class AudioRunner:
             self.output.unlink(missing_ok=True)
         return Result(ok=ok, cancelled=self._cancelled, output=self.output,
                       elapsed=time.monotonic() - start, frames=res.frames,
-                      error="" if ok else "Adding the sound failed: " + "".join(err).strip())
+                      error="" if ok else tr("Adding the sound failed: %s", "".join(err).strip()))
 
 
 def temp_sound_path(output: Path) -> Path:

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from . import ffmpeg_bin
 from .formats import CODECS, Codec
+from ..i18n import N_
 
 
 @dataclass
@@ -87,9 +88,9 @@ def hw_filter_suffix(codec: Codec, pix_fmt: str) -> list[str]:
 
 def _test_hw(codec: Codec, pix_fmts: list[str]) -> EncoderStatus:
     if codec.hw == "amf" and sys.platform != "win32":
-        return EncoderStatus(False, pix_fmts, "AMD AMF is only available on Windows")
+        return EncoderStatus(False, pix_fmts, N_("AMD AMF is only available on Windows"))
     if codec.hw == "vaapi" and (sys.platform == "win32" or not vaapi_device()):
-        return EncoderStatus(False, pix_fmts, "No VAAPI device (/dev/dri/renderD*)")
+        return EncoderStatus(False, pix_fmts, N_("No VAAPI device (/dev/dri/renderD*)"))
     pix = "nv12" if codec.hw in ("qsv", "vaapi") else "yuv420p"
     args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-v", "error", *hw_input_args(codec),
             "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=25:d=0.2"]
@@ -101,7 +102,7 @@ def _test_hw(codec: Codec, pix_fmts: list[str]) -> EncoderStatus:
     try:
         res = ffmpeg_bin.run(args, timeout=20)
     except subprocess.TimeoutExpired:
-        return EncoderStatus(False, pix_fmts, "Test encode timed out")
+        return EncoderStatus(False, pix_fmts, N_("Test encode timed out"))
     if res.returncode == 0:
         return EncoderStatus(True, pix_fmts)
     lines = [re.sub(r"^(\[[^\]]+\]\s*)+", "", ln) for ln in res.stderr.strip().splitlines()]
@@ -109,7 +110,7 @@ def _test_hw(codec: Codec, pix_fmts: list[str]) -> EncoderStatus:
     reason = lines[0] if lines else f"ffmpeg exit code {res.returncode}"
     # negative = killed by a signal (POSIX); 0xC0000005 = access violation (Windows)
     if res.returncode < 0 or res.returncode == 0xC0000005:
-        reason = "ffmpeg crashed during the test (driver / library mismatch)"
+        reason = N_("ffmpeg crashed during the test (driver / library mismatch)")
     return EncoderStatus(False, pix_fmts, reason[:200])
 
 
@@ -147,7 +148,7 @@ def _detect_ffmpeg(use_cache: bool) -> dict[str, EncoderStatus]:
         if c.external:
             continue
         if c.encoder not in compiled:
-            result[c.key] = EncoderStatus(False, [], "Not included in this FFmpeg build")
+            result[c.key] = EncoderStatus(False, [], N_("Not included in this FFmpeg build"))
         elif c.hw:
             hw_codecs.append(c)
         else:

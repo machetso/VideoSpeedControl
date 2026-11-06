@@ -23,36 +23,37 @@ from . import formats, runner
 from .command import CommandError
 from .formats import COPY
 from .job import Job, output_path
+from ..i18n import N_, tr, trp
 
 DEFAULT_PATTERN = "{name}_{speed}x_{fps}fps"
 
 PATTERN_TOKENS = {
-    "{name}": "source file name without extension",
-    "{speed}": "speed factor, e.g. 0_1",
-    "{slower}": "how many times slower, e.g. 10",
-    "{fps}": "output frame rate, e.g. 25",
-    "{codec}": "output codec, e.g. x264 or copy",
-    "{res}": "output size, e.g. 1920x1080",
-    "{mode}": "processing: lossless, smart or reencode",
-    "{n}": "position in the queue, 01, 02 …",
+    "{name}": N_("source file name without extension"),
+    "{speed}": N_("speed factor, e.g. 0_1"),
+    "{slower}": N_("how many times slower, e.g. 10"),
+    "{fps}": N_("output frame rate, e.g. 25"),
+    "{codec}": N_("output codec, e.g. x264 or copy"),
+    "{res}": N_("output size, e.g. 1920x1080"),
+    "{mode}": N_("processing: lossless, smart or reencode"),
+    "{n}": N_("position in the queue, 01, 02 …"),
 }
 
 # Overwrite policies
 RENAME, OVERWRITE, SKIP = "rename", "overwrite", "skip"
 POLICIES = (
-    (RENAME, "Add a number (name_2, name_3 …)"),
-    (OVERWRITE, "Overwrite"),
-    (SKIP, "Skip the clip"),
+    (RENAME, N_("Add a number (name_2, name_3 …)")),
+    (OVERWRITE, N_("Overwrite")),
+    (SKIP, N_("Skip the clip")),
 )
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 # Name additions for further encodings of the same clip ("Add to batch" asks for them)
 ADDITIONS = (
-    ("codec", "Codec"),
-    ("preset", "Preset"),
-    ("quality", "Quality"),
-    ("res", "Resolution"),
+    ("codec", N_("Codec")),
+    ("preset", N_("Preset")),
+    ("quality", N_("Quality")),
+    ("res", N_("Resolution")),
 )
 
 
@@ -69,15 +70,20 @@ def mode_key(job: Job) -> str:
 def describe(job: Job) -> str:
     """Short description of what an export of `job` does, e.g. 'Smart, 3 sections (1 re-encoded)'."""
     n = sum(1 for s in job.segments if s.start < job.trim_end and s.end > job.trim.start)
-    sections = f", {n} section{'s' * (n != 1)}" if n else ""
+    fps = f"{float(job.settings.fps):.5g}"
     if job.settings.smart:
         enc = sum(1 for s in job.segments if s.reencode and s.start < job.trim_end
                   and s.end > job.trim.start)
-        return f"Smart{sections} ({enc} re-encoded)" if n else "Smart (copy)"
+        return trp("Smart, %d section (%d re-encoded)", "Smart, %d sections (%d re-encoded)",
+                   n, n, enc) if n else tr("Smart (copy)")
     if job.settings.codec == COPY:
-        return f"Lossless{sections}" if n else \
-            f"Lossless @ {float(job.settings.fps):.5g} fps"
-    return f"Re-encode {job.codec.label.split(' (')[0]} @ {float(job.settings.fps):.5g} fps{sections}"
+        return trp("Lossless, %d section", "Lossless, %d sections", n, n) if n else \
+            tr("Lossless @ %s fps", fps)
+    codec = job.codec.label.split(" (")[0]      # the English label: the codec's own name
+    if n:
+        return trp("Re-encode %s @ %s fps, %d section", "Re-encode %s @ %s fps, %d sections",
+                   n, codec, fps, n)
+    return tr("Re-encode %s @ %s fps", codec, fps)
 
 
 def render_name(pattern: str, job: Job, index: int = 1) -> str:
@@ -140,7 +146,8 @@ class Item:
     job: Job                          # snapshot
     output: Path | None               # None = skipped
     supported_pix_fmts: list[str] | None = None
-    note: str = ""                    # why skipped / renamed / overwritten
+    note: str = ""                    # why skipped / renamed / overwritten (shown, translated)
+    kind: str = ""                    # "" | "renamed" | "skipped" | "overwrite" (compare this)
     done: bool = False                # exported by an earlier run: shown, not run again
 
     @property
@@ -168,20 +175,24 @@ def plan(jobs: list[tuple[Job, list[str] | None]], folder: Path | None, pattern:
             name += addition(job, additions[index - 1])
         path, note, n = output_path(job, out_dir, name), "", 1
         # Another output of this batch or a source file: always renamed, whatever the policy.
+        kind = ""
         while _target(path) in taken or _target(path) in sources:
             n += 1
-            path, note = output_path(job, out_dir, f"{name}_{n}"), f"renamed (_{n})"
+            path, note, kind = output_path(job, out_dir, f"{name}_{n}"), tr("renamed (_%d)", n), \
+                "renamed"
         if _target(path).exists():
             if policy == SKIP:
-                items.append(Item(job, None, pix_fmts, f"skipped: {_target(path).name} exists"))
+                items.append(Item(job, None, pix_fmts,
+                                  tr("skipped: %s exists", _target(path).name), kind="skipped"))
                 continue
             if policy == OVERWRITE:
-                note = "overwrites the existing file"
+                note, kind = tr("overwrites the existing file"), "overwrite"
             else:
                 while _target(path).exists() or _target(path) in taken:
                     n += 1
-                    path, note = output_path(job, out_dir, f"{name}_{n}"), f"renamed (_{n})"
-        items.append(Item(job, path, pix_fmts, note))
+                    path, note, kind = output_path(job, out_dir, f"{name}_{n}"), \
+                        tr("renamed (_%d)", n), "renamed"
+        items.append(Item(job, path, pix_fmts, note, kind=kind))
         taken.add(_target(path))
     return items
 

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, Q
                                QSplitter, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
+from ..i18n import tr
 
 RESOURCES = Path(__file__).with_name("resources")
 DOCS = Path(__file__).resolve().parent.parent / "docs"
@@ -51,7 +52,7 @@ def splash_pixmap(width: int) -> QPixmap:
 def load_manual(doc: QTextDocument, max_image_width: float,
                 prefix: str = "") -> list[tuple[int, str]]:
     """Fill `doc` with the user guide; returns (level, title) of every heading."""
-    text = MANUAL.read_text(encoding="utf-8") if MANUAL.is_file() else "# User guide missing"
+    text = MANUAL.read_text(encoding="utf-8") if MANUAL.is_file() else "# " + tr("User guide missing")
     doc.setBaseUrl(QUrl.fromLocalFile(str(DOCS) + "/"))
     doc.setMarkdown(prefix + text, QTextDocument.MarkdownDialectGitHub)
     fit_images(doc, max_image_width)
@@ -88,7 +89,7 @@ class HelpWindow(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("VideoSpeedControl – User guide")
+        self.setWindowTitle(tr("VideoSpeedControl – User guide"))
         self.resize(1100, 780)
         self.browser = QTextBrowser()
         self.browser.setOpenExternalLinks(True)
@@ -97,7 +98,7 @@ class HelpWindow(QDialog):
         for level, title in self.headings:
             self.toc.addItem(("    " * (level - 1)) + title)
         self.toc.currentRowChanged.connect(self._jump)
-        pdf = QLabel(f"<a href='{QUrl.fromLocalFile(str(PDF)).toString()}'>Open as PDF</a>")
+        pdf = QLabel(f"<a href='{QUrl.fromLocalFile(str(PDF)).toString()}'>{tr('Open as PDF')}</a>")
         pdf.setOpenExternalLinks(True)
         pdf.setVisible(PDF.is_file())
         left = QWidget()
@@ -135,20 +136,20 @@ def open_pdf() -> bool:
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("About VideoSpeedControl")
+        self.setWindowTitle(tr("About VideoSpeedControl"))
         picture = QLabel()
         picture.setPixmap(splash_pixmap(260))
         picture.setAlignment(Qt.AlignCenter)
         text = QLabel(
             f"<h2>VideoSpeedControl {__version__}</h2>"
-            "<p>Full control over the speed of a video clip: split a native slow-motion clip "
-            "into sections, each with its own frame rate – exported losslessly as a "
-            "variable-frame-rate clip, with a smart re-encode of only the changed sections, "
-            "or fully re-encoded in a codec of your choice.</p>"
+            "<p>" + tr("Full control over the speed of a video clip: split a native slow-motion "
+                       "clip into sections, each with its own frame rate – exported losslessly as "
+                       "a variable-frame-rate clip, with a smart re-encode of only the changed "
+                       "sections, or fully re-encoded in a codec of your choice.") + "</p>"
             f"<p>Copyright © 2026 Alex Vulcu<br>{ATTRIBUTION}</p>"
-            "<p>Licensed under the MIT License. Bundled tools keep their own licences "
-            "(FFmpeg: GPL, Qt / PySide6: LGPL, rife-ncnn-vulkan: MIT, AVM: BSD-3-Clause-Clear) "
-            "– see LICENSE and THIRD_PARTY_NOTICES.md.</p>")
+            "<p>" + tr("Licensed under the MIT License. Bundled tools keep their own licences "
+                       "(FFmpeg: GPL, Qt / PySide6: LGPL, rife-ncnn-vulkan: MIT, AVM: "
+                       "BSD-3-Clause-Clear) – see LICENSE and THIRD_PARTY_NOTICES.md.") + "</p>")
         text.setWordWrap(True)
         text.setTextFormat(Qt.RichText)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)

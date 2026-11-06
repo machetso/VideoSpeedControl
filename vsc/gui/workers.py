@@ -23,6 +23,7 @@ from PySide6.QtGui import QImage
 
 from ..core import encoders, ffmpeg_bin, playback, preview, preview_cache, rife, smart, treatment
 from ..core.probe import probe, scan_frames
+from ..i18n import tr
 
 
 def _emit(signal, *args) -> bool:
@@ -448,7 +449,7 @@ class Player(QObject):
         proc.wait()
         message = ""
         if proc.returncode not in (0, None) and generation == self._generation:
-            message = proc.stderr.read().decode("utf-8", "replace").strip() or "ffmpeg failed"
+            message = proc.stderr.read().decode("utf-8", "replace").strip() or tr("ffmpeg failed")
         proc.stderr.close()
         proc.stdout.close()
         if generation == self._generation:

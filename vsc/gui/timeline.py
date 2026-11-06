@@ -29,6 +29,7 @@ from fractions import Fraction
 from ..core import formats, playback, preview, segments as seg, smart
 from ..core.job import Mode
 from ..core.job import KEYFRAME_TRIM_REASON
+from ..i18n import tr, trp
 from .clips import (Clip, Status, easy_mode, fmt_duration, fmt_rate, fmt_seconds, fmt_slowdown,
                     frame_rate_choices)
 from . import workers
@@ -112,7 +113,7 @@ class Timeline(QWidget):
         p.fillRect(self.rect(), QColor("#202020"))
         if not self.count:
             p.setPen(QColor("#888"))
-            text = "Scanning frames…" if self.clip and self.clip.info else ""
+            text = tr("Scanning frames…") if self.clip and self.clip.info else ""
             p.drawText(self.rect(), Qt.AlignCenter, text)
             return
         span = self._span()
@@ -416,18 +417,18 @@ class PreviewPanel(QWidget):
             return b
 
         self.frame_spin = QSpinBox()
-        self.frame_spin.setToolTip("Frame number at the playhead (0 = first frame)")
+        self.frame_spin.setToolTip(tr("Frame number at the playhead (0 = first frame)"))
         self.frame_spin.setKeyboardTracking(False)
         self.frame_spin.valueChanged.connect(self.seek)
         self.position = QLabel()
         # changing text must never resize the layout (the view would jump during playback)
         self.position.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        self.play_button = QPushButton("▶ Play preview")
+        self.play_button = QPushButton(tr("▶ Play preview"))
         self.play_button.setFixedWidth(self.play_button.sizeHint().width())
-        self.play_button.setToolTip(
+        self.play_button.setToolTip(tr(
             "Play the output at the chosen frame rate and speed (Space).\n"
             "Reduced size, nothing is encoded – starts instantly.\n"
-            "Plays from the playhead to the out-point.")
+            "Plays from the playhead to the out-point."))
         self.play_button.clicked.connect(self.toggle_play)
         transport = QHBoxLayout()
         transport.addWidget(self.play_button)
@@ -437,26 +438,26 @@ class PreviewPanel(QWidget):
             b.setIcon(transport_icon(kind, self.palette().buttonText().color()))
             b.setIconSize(transport_icon_size(kind))
             return b
-        transport.addWidget(icon_button("first", "First frame (Home)", lambda: self.seek(0)))
-        transport.addWidget(icon_button("key-", "Previous keyframe (Shift+←)", lambda: self.step_key(-1)))
-        transport.addWidget(button("◀ 1", "Previous frame (←)", lambda: self.step(-1)))
+        transport.addWidget(icon_button("first", tr("First frame (Home)"), lambda: self.seek(0)))
+        transport.addWidget(icon_button("key-", tr("Previous keyframe (Shift+←)"), lambda: self.step_key(-1)))
+        transport.addWidget(button("◀ 1", tr("Previous frame (←)"), lambda: self.step(-1)))
         transport.addWidget(self.frame_spin)
-        transport.addWidget(button("1 ▶", "Next frame (→)", lambda: self.step(1)))
-        transport.addWidget(icon_button("key+", "Next keyframe (Shift+→)", lambda: self.step_key(1)))
-        transport.addWidget(icon_button("last", "Last frame (End)", lambda: self.seek(10**9)))
+        transport.addWidget(button("1 ▶", tr("Next frame (→)"), lambda: self.step(1)))
+        transport.addWidget(icon_button("key+", tr("Next keyframe (Shift+→)"), lambda: self.step_key(1)))
+        transport.addWidget(icon_button("last", tr("Last frame (End)"), lambda: self.seek(10**9)))
         transport.addWidget(self.position, 1)
         transport.addWidget(self.zoom.combo())
 
-        self.in_button = QPushButton("Set in (I)")
-        self.in_button.setToolTip("First frame of the output = frame at the playhead")
+        self.in_button = QPushButton(tr("Set in (I)"))
+        self.in_button.setToolTip(tr("First frame of the output = frame at the playhead"))
         self.in_button.clicked.connect(lambda: self.set_in(self.clip.playhead))
-        self.out_button = QPushButton("Set out (O)")
-        self.out_button.setToolTip("Last frame of the output = frame at the playhead")
+        self.out_button = QPushButton(tr("Set out (O)"))
+        self.out_button.setToolTip(tr("Last frame of the output = frame at the playhead"))
         self.out_button.clicked.connect(lambda: self.set_out(self.clip.playhead))
-        self.clear_button = QPushButton("Clear trim")
+        self.clear_button = QPushButton(tr("Clear trim"))
         self.clear_button.clicked.connect(self.clear_trim)
-        self.snap_button = QPushButton("Snap to keyframes")
-        self.snap_button.setToolTip(KEYFRAME_TRIM_REASON)
+        self.snap_button = QPushButton(tr("Snap to keyframes"))
+        self.snap_button.setToolTip(tr(KEYFRAME_TRIM_REASON))
         self.snap_button.clicked.connect(self.snap_trim)
         self.trim_label = QLabel()
         self.trim_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -468,12 +469,12 @@ class PreviewPanel(QWidget):
         self.key_hint.setWordWrap(True)
         self.key_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.key_hint.setStyleSheet("color: #b7950b")
-        self.key_hint.setToolTip(KEYFRAME_TRIM_REASON)
+        self.key_hint.setToolTip(tr(KEYFRAME_TRIM_REASON))
         self.note = QLabel()
         self.note.setWordWrap(True)
         self.note.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.note.setFixedHeight(2 * self.note.fontMetrics().lineSpacing() + 4)
-        self.note.setToolTip(KEYFRAME_TRIM_REASON)
+        self.note.setToolTip(tr(KEYFRAME_TRIM_REASON))
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.view, 1)
@@ -530,7 +531,7 @@ class PreviewPanel(QWidget):
             elif clip.status == Status.ERROR:
                 text = clip.error
             else:
-                text = clip.status.value
+                text = tr(clip.status.value)
             self.view.clear_image(text)
             self.position.clear()
             self.trim_label.clear()
@@ -586,7 +587,7 @@ class PreviewPanel(QWidget):
         if not self._ready():
             return
         trim = self.clip.job.trim_with_in(frame)
-        self._snap_note("In-point", frame, trim.start)
+        self._snap_note(tr("In-point"), frame, trim.start)
         self._set_trim(trim)
 
     def set_out(self, last: int) -> None:
@@ -595,7 +596,7 @@ class PreviewPanel(QWidget):
         job = self.clip.job
         trim = job.trim_with_out(last)
         end = trim.end if trim.end is not None else job.total_frames
-        self._snap_note("Out-point", last, end - 1)
+        self._snap_note(tr("Out-point"), last, end - 1)
         self._set_trim(trim)
 
     def clear_trim(self) -> None:
@@ -614,9 +615,9 @@ class PreviewPanel(QWidget):
 
     def _snap_note(self, what: str, wanted: int, got: int) -> None:
         if self.clip.job.snaps_to_keyframes and wanted != got:
-            self.note.setText(f"{what} moved to frame {got} (you chose {wanted}): lossless "
-                              "retime can only cut at keyframes. Hover for details, or choose "
-                              "a codec to cut frame-exactly.")
+            self.note.setText(tr("%s moved to frame %d (you chose %d): lossless "
+                                 "retime can only cut at keyframes. Hover for details, or choose "
+                                 "a codec to cut frame-exactly.", what, got, wanted))
         else:
             self.note.clear()
 
@@ -666,38 +667,38 @@ class PreviewPanel(QWidget):
     # ------------------------------------------------------------------ speed sections
 
     def _build_sections(self) -> QHBoxLayout:
-        self.sec_start_button = QPushButton("Section start [")
-        self.sec_start_button.setToolTip("Mark the frame at the playhead as the first frame of a "
-                                         "speed section ([).")
+        self.sec_start_button = QPushButton(tr("Section start ["))
+        self.sec_start_button.setToolTip(tr("Mark the frame at the playhead as the first frame "
+                                            "of a speed section ([)."))
         self.sec_start_button.clicked.connect(self.section_start)
-        self.sec_end_button = QPushButton("Section end ]")
-        self.sec_end_button.setToolTip("Mark the frame at the playhead as the last frame of the "
-                                       "section (]).")
+        self.sec_end_button = QPushButton(tr("Section end ]"))
+        self.sec_end_button.setToolTip(tr("Mark the frame at the playhead as the last frame of "
+                                          "the section (])."))
         self.sec_end_button.clicked.connect(self.section_end)
         self.sec_fps = QComboBox()
-        self.sec_fps.setToolTip("Frame rate of the section: each of its frames is shown for "
-                                "1/fps seconds.\nThe rest of the clip plays in real time.")
-        self.sec_add = QPushButton("Add section")
-        self.sec_add.setToolTip(
+        self.sec_fps.setToolTip(tr("Frame rate of the section: each of its frames is shown for "
+                                   "1/fps seconds.\nThe rest of the clip plays in real time."))
+        self.sec_add = QPushButton(tr("Add section"))
+        self.sec_add.setToolTip(tr(
             "Play the marked frames at the chosen frame rate.\n"
             "Sections can start at any frame – even without re-encoding, because no frame is "
-            "cut:\nonly the time each frame is shown changes.")
+            "cut:\nonly the time each frame is shown changes."))
         self.sec_add.clicked.connect(self.add_section)
         self.magnet_button = QToolButton()
         self.magnet_button.setText("🧲")
         self.magnet_button.setCheckable(True)
-        self.magnet_button.setToolTip(
+        self.magnet_button.setToolTip(tr(
             "Magnetic cursor: when you drag near a section, the cursor snaps to the frame right\n"
             "after it (to start the next section seamlessly) or – while you mark an end – to\n"
-            "the frame right before the next section. Click to switch it off.")
+            "the frame right before the next section. Click to switch it off."))
         self.magnet_button.setChecked(_setting("preview/magnetic", True))
         self.timeline.magnetic = self.magnet_button.isChecked()
         self.magnet_button.toggled.connect(self._set_magnetic)
-        self.sel_start_button = QPushButton("Start = playhead")
-        self.sel_start_button.setToolTip("The selected section now starts at the playhead")
+        self.sel_start_button = QPushButton(tr("Start = playhead"))
+        self.sel_start_button.setToolTip(tr("The selected section now starts at the playhead"))
         self.sel_start_button.clicked.connect(lambda: self._set_selected_range(start=True))
-        self.sel_end_button = QPushButton("End = playhead")
-        self.sel_end_button.setToolTip("The selected section now ends at the playhead")
+        self.sel_end_button = QPushButton(tr("End = playhead"))
+        self.sel_end_button.setToolTip(tr("The selected section now ends at the playhead"))
         self.sel_end_button.clicked.connect(lambda: self._set_selected_range(start=False))
         self.sec_label = QLabel()
         self.sec_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -708,15 +709,16 @@ class PreviewPanel(QWidget):
         row.addWidget(self.sec_label, 1)
 
         t = self.sections_table = QTableWidget(0, 9)
-        t.setHorizontalHeaderLabels(["Frames", "Frame rate", "Speed", "Length", "Smooth in",
-                                     "Smooth out", "Re-encode", "Output fps", ""])
+        t.setHorizontalHeaderLabels([tr("Frames"), tr("Frame rate"), tr("Speed"), tr("Length"),
+                                     tr("Smooth in"), tr("Smooth out"), tr("Re-encode"),
+                                     tr("Output fps"), ""])
         for col in (4, 5):
-            t.horizontalHeaderItem(col).setToolTip(
+            t.horizontalHeaderItem(col).setToolTip(tr(
                 "Smooth transition: the speed changes evenly over 0.5 s, centred on the border\n"
-                "(e.g. from 9.6× slow motion to real time), instead of jumping.")
-        t.horizontalHeaderItem(6).setToolTip("Smart re-encode: re-encode this section (source "
-                                             "codec) – everything else is copied.")
-        t.horizontalHeaderItem(7).setToolTip("Constant frame rate of the re-encoded section.")
+                "(e.g. from 9.6× slow motion to real time), instead of jumping."))
+        t.horizontalHeaderItem(6).setToolTip(tr("Smart re-encode: re-encode this section (source "
+                                                "codec) – everything else is copied."))
+        t.horizontalHeaderItem(7).setToolTip(tr("Constant frame rate of the re-encoded section."))
         t.verticalHeader().hide()
         t.setSelectionBehavior(QAbstractItemView.SelectRows)
         t.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -732,25 +734,25 @@ class PreviewPanel(QWidget):
         return row
 
     def _build_batch_row(self) -> QHBoxLayout:
-        self.batch_button = QPushButton("➕ Add to batch")
-        self.batch_button.setToolTip(
+        self.batch_button = QPushButton(tr("➕ Add to batch"))
+        self.batch_button.setToolTip(tr(
             "Add this clip as it is now – processing mode, output settings, trim and speed\n"
             "sections – to the batch list (Export tab). The sections stay here, so you can add\n"
-            "the same clip again, e.g. once lossless and once with smart re-encode.")
+            "the same clip again, e.g. once lossless and once with smart re-encode."))
         self.batch_button.clicked.connect(lambda: self.clip and self.add_to_batch.emit(self.clip))
-        self.update_button = QPushButton("✔ Update batch entry")
-        self.update_button.setToolTip("Replace the batch entry you opened with this clip as it "
-                                      "is now")
+        self.update_button = QPushButton(tr("✔ Update batch entry"))
+        self.update_button.setToolTip(tr("Replace the batch entry you opened with this clip as "
+                                         "it is now"))
         self.update_button.clicked.connect(
             lambda: self.clip and self.update_entry.emit(self.clip))
         self.update_button.hide()
-        self.clear_sections_button = QPushButton("Clear sections")
-        self.clear_sections_button.setToolTip("Remove all speed sections of this clip "
-                                              "(can be undone)")
+        self.clear_sections_button = QPushButton(tr("Clear sections"))
+        self.clear_sections_button.setToolTip(tr("Remove all speed sections of this clip "
+                                                 "(can be undone)"))
         self.clear_sections_button.clicked.connect(self._confirm_clear)
-        self.undo_button = QPushButton("↶ Undo")
+        self.undo_button = QPushButton(tr("↶ Undo"))
         self.undo_button.clicked.connect(self.undo)
-        self.redo_button = QPushButton("↷ Redo")
+        self.redo_button = QPushButton(tr("↷ Redo"))
         self.redo_button.clicked.connect(self.redo)
         row = QHBoxLayout()
         row.addWidget(self.batch_button)
@@ -765,17 +767,19 @@ class PreviewPanel(QWidget):
         """Show "Update batch entry" while a batch entry is open for editing (None = not)."""
         self.update_button.setVisible(label is not None)
         if label is not None:
-            self.update_button.setToolTip(f"Replace the batch entry “{label}” with this clip "
-                                          "as it is now")
+            self.update_button.setToolTip(tr("Replace the batch entry “%s” with this clip "
+                                             "as it is now", label))
 
     def _confirm_clear(self) -> None:
         if not self._ready() or not self.clip.segments:
             return
         n = len(self.clip.segments)
         answer = QMessageBox.question(
-            self, "Clear sections",
-            f"Remove all {n} speed section{'s' * (n != 1)} of {self.clip.path.name}?\n\n"
-            "You can bring them back with “↶ Undo” (Ctrl+Z).",
+            self, tr("Clear sections"),
+            trp("Remove all %d speed section of %s?\n\n"
+                "You can bring them back with “↶ Undo” (Ctrl+Z).",
+                "Remove all %d speed sections of %s?\n\n"
+                "You can bring them back with “↶ Undo” (Ctrl+Z).", n, n, self.clip.path.name),
             QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
         if answer == QMessageBox.Yes:
             self.clear_sections()
@@ -784,19 +788,19 @@ class PreviewPanel(QWidget):
         if not self._ready() or not self.clip.segments:
             return
         n = len(self.clip.segments)
-        self.clip.edit_segments([], f"clear {n} section{'s' * (n != 1)}")
+        self.clip.edit_segments([], trp("clear %d section", "clear %d sections", n, n))
         self.timeline.pending = (None, None)
         self._sections_changed()
 
     def undo(self) -> None:
         if self.clip and (what := self.clip.undo()):
             self._sections_changed()
-            self._note(f"Undone: {what}")
+            self._note(tr("Undone: %s", what))
 
     def redo(self) -> None:
         if self.clip and (what := self.clip.redo()):
             self._sections_changed()
-            self._note(f"Redone: {what}")
+            self._note(tr("Redone: %s", what))
 
     def _note(self, text: str) -> None:
         self.sec_label.setText(text)
@@ -810,7 +814,7 @@ class PreviewPanel(QWidget):
         real = self.clip.info.real_fps
         items = [(f"{label} – {fmt_slowdown(float(real / fps))}", str(fps))
                  for label, fps in frame_rate_choices(real) if fps <= real]
-        items += [(f"{fmt_rate(real * k)} fps – {k}× faster", str(real * k))
+        items += [(tr("%s fps – %d× faster", fmt_rate(real * k), k), str(real * k))
                   for k in SPEEDUP_FACTORS]
         return items
 
@@ -834,7 +838,7 @@ class PreviewPanel(QWidget):
         new = seg.Segment(min(a, b), max(a, b) + 1, Fraction(self.sec_fps.currentData()),
                           out_fps=self._default_out_fps())
         self.clip.edit_segments(seg.add(self.clip.segments, new),
-                                f"add section {new.start}–{new.end - 1}")
+                                tr("add section %d–%d", new.start, new.end - 1))
         self.timeline.pending = (None, None)
         self._show_row = self.clip.segments.index(new)    # scroll the table to the new row
         self._sections_changed()
@@ -845,7 +849,7 @@ class PreviewPanel(QWidget):
     def remove_section(self, index: int) -> None:
         s = self.clip.segments[index]
         self.clip.edit_segments(self.clip.segments[:index] + self.clip.segments[index + 1:],
-                                f"remove section {s.start}–{s.end - 1}")
+                                tr("remove section %d–%d", s.start, s.end - 1))
         self._sections_changed()
 
     def _set_section_fps(self, index: int, value: str) -> None:
@@ -860,7 +864,7 @@ class PreviewPanel(QWidget):
             s = self.clip.segments[index]
             new = list(self.clip.segments)
             new[index] = replace(s, **changes)
-            self.clip.edit_segments(new, f"change section {s.start}–{s.end - 1}")
+            self.clip.edit_segments(new, tr("change section %d–%d", s.start, s.end - 1))
             self._show_row = index            # keep the edited row in view
             self._sections_changed()
 
@@ -901,7 +905,7 @@ class PreviewPanel(QWidget):
         a, b = min(a, b), max(a, b) + 1
         others = self.clip.segments[:i] + self.clip.segments[i + 1:]
         new = seg.add(others, replace(s, start=a, end=b))
-        self.clip.edit_segments(new, f"section now {a}–{b - 1}")
+        self.clip.edit_segments(new, tr("section now %d–%d", a, b - 1))
         self._selected = next((k for k, x in enumerate(new) if x.start == a), None)
         self._sections_changed()
 
@@ -911,7 +915,8 @@ class PreviewPanel(QWidget):
         s = self.clip.segments[index]
         border = s.start if at_start else s.end
         self.clip.edit_segments(seg.with_smooth(self.clip.segments, border, on),
-                                f"smooth transition at frame {border} {'on' if on else 'off'}")
+                                tr("smooth transition at frame %d on", border) if on
+                                else tr("smooth transition at frame %d off", border))
         self._show_row = index
         self._sections_changed()
 
@@ -942,8 +947,8 @@ class PreviewPanel(QWidget):
         q = next((b for b in seg.borders(moved, self.clip.frames.count)
                   if b not in seg.borders(self._drag_base, self.clip.frames.count)), None)
         self._drag_base = None
-        self.clip.edit_segments(moved, f"move border to frame {q}" if q is not None
-                                else "move border")
+        self.clip.edit_segments(moved, tr("move border to frame %d", q) if q is not None
+                                else tr("move border"))
         self._sections_changed()
 
     def sections_replaced(self) -> None:
@@ -968,15 +973,20 @@ class PreviewPanel(QWidget):
         if self._selected is not None and (not clip or self._selected >= len(clip.segments)):
             self._selected = None
         self._update_selection_buttons()
-        for button, steps, verb in ((self.undo_button, clip.undo_steps if clip else [], "Undo"),
-                                    (self.redo_button, clip.redo_steps if clip else [], "Redo")):
+        for button, steps, is_undo in ((self.undo_button, clip.undo_steps if clip else [], True),
+                                       (self.redo_button, clip.redo_steps if clip else [], False)):
             button.setEnabled(bool(steps))
-            arrow = "↶" if verb == "Undo" else "↷"
-            button.setText(f"{arrow} {verb} ({len(steps)})" if steps else f"{arrow} {verb}")
-            key = "Ctrl+Z" if verb == "Undo" else "Ctrl+Shift+Z / Ctrl+Y"
-            button.setToolTip(f"{verb}: {steps[-1][0]} ({key}, {len(steps)} step"
-                              f"{'s' * (len(steps) != 1)})" if steps
-                              else f"Nothing to {verb.lower()} ({key})")
+            text = tr("↶ Undo") if is_undo else tr("↷ Redo")
+            button.setText(f"{text} ({len(steps)})" if steps else text)
+            key = "Ctrl+Z" if is_undo else "Ctrl+Shift+Z / Ctrl+Y"
+            n = len(steps)
+            if not steps:
+                tip = tr("Nothing to undo (%s)", key) if is_undo else tr("Nothing to redo (%s)", key)
+            elif is_undo:
+                tip = trp("Undo: %s (%s, %d step)", "Undo: %s (%s, %d steps)", n, steps[-1][0], key, n)
+            else:
+                tip = trp("Redo: %s (%s, %d step)", "Redo: %s (%s, %d steps)", n, steps[-1][0], key, n)
+            button.setToolTip(tip)
         if not ready:
             self.sec_add.setEnabled(False)
             self.sec_label.clear()
@@ -995,14 +1005,14 @@ class PreviewPanel(QWidget):
         a, b = self.timeline.pending
         self.sec_add.setEnabled(a is not None and b is not None)
         if a is None:
-            self.sec_label.setText("Mark a range with [ and ] to play it at another frame rate."
+            self.sec_label.setText(tr("Mark a range with [ and ] to play it at another frame rate.")
                                    if not clip.segments else "")
         elif b is None:
-            self.sec_label.setText(f"Section from frame {a} – now set the end (])")
+            self.sec_label.setText(tr("Section from frame %d – now set the end (])", a))
         else:
             lo, hi = min(a, b), max(a, b)
-            self.sec_label.setText(f"Frames {lo}–{hi} ({hi - lo + 1}) – choose the frame rate "
-                                   "and click “Add section”")
+            self.sec_label.setText(tr("Frames %d–%d (%d) – choose the frame rate "
+                                      "and click “Add section”", lo, hi, hi - lo + 1))
 
         t = self.sections_table
         t.setVisible(bool(clip.segments))
@@ -1041,20 +1051,21 @@ class PreviewPanel(QWidget):
                 smooth.setChecked(on)
                 smooth.setEnabled(on or (other is not None and other != s.fps))
                 if other is None:
-                    smooth.setToolTip("The clip starts here" if at_start else "The clip ends here")
+                    smooth.setToolTip(tr("The clip starts here") if at_start
+                                      else tr("The clip ends here"))
                 elif other == s.fps:
-                    smooth.setToolTip("Same speed on the other side")
+                    smooth.setToolTip(tr("Same speed on the other side"))
                 else:
                     a, b = (other, s.fps) if at_start else (s.fps, other)
-                    smooth.setToolTip(f"{fmt_slowdown(float(clip.info.real_fps / a))} → "
-                                      f"{fmt_slowdown(float(clip.info.real_fps / b))}, "
-                                      "changing evenly over 0.5 s")
+                    smooth.setToolTip(tr("%s → %s, changing evenly over 0.5 s",
+                                         fmt_slowdown(float(clip.info.real_fps / a)),
+                                         fmt_slowdown(float(clip.info.real_fps / b))))
                 smooth.toggled.connect(lambda v, row=row, at_start=at_start: QTimer.singleShot(
                     0, lambda: self._set_smooth(row, at_start, v)))
                 t.setCellWidget(row, col, _centered(smooth))
             check = QCheckBox()
             check.setChecked(s.reencode)
-            check.setToolTip("Re-encode this section with the source codec (smart re-encode)")
+            check.setToolTip(tr("Re-encode this section with the source codec (smart re-encode)"))
             check.toggled.connect(lambda on, row=row: QTimer.singleShot(
                 0, lambda: self._set_section(row, reencode=on)))
             t.setCellWidget(row, 6, _centered(check))
@@ -1071,7 +1082,7 @@ class PreviewPanel(QWidget):
             t.setCellWidget(row, 7, out)
             remove = QToolButton()
             remove.setText("✕")
-            remove.setToolTip("Remove this section")
+            remove.setToolTip(tr("Remove this section"))
             remove.clicked.connect(lambda _=False, row=row: QTimer.singleShot(
                 0, lambda: self.remove_section(row)))
             t.setCellWidget(row, 8, remove)
@@ -1103,22 +1114,22 @@ class PreviewPanel(QWidget):
         start = clip.playhead if clip.trim.start <= clip.playhead < end - 1 else clip.trim.start
         plan = playback.plan(job, start, size)
         if job.has_segments:
-            self._play_note = (f"Playing speed sections at {fmt_rate(plan.fps)} fps "
-                               f"({fmt_seconds(job.output_duration)} in total)")
+            self._play_note = tr("Playing speed sections at %s fps (%s in total)",
+                                 fmt_rate(plan.fps), fmt_seconds(job.output_duration))
         else:
-            self._play_note = (f"Playing at {fmt_rate(job.settings.fps)} fps – "
-                               f"{fmt_slowdown(1 / float(job.speed))}")
+            self._play_note = tr("Playing at %s fps – %s", fmt_rate(job.settings.fps),
+                                 fmt_slowdown(1 / float(job.speed)))
         if plan.note:
             self._play_note += f"  ·  {plan.note}"
         self.player.play(plan)
-        self.play_button.setText("■ Stop")
+        self.play_button.setText(tr("■ Stop"))
 
     def _stop_playback(self) -> None:
         if self.player.playing:
             self.player.stop()
             self.fetcher.reset()     # the view shows a small playback frame – fetch again
             self.note.clear()
-        self.play_button.setText("▶ Play preview")
+        self.play_button.setText(tr("▶ Play preview"))
 
     def _fetched(self, image) -> None:
         if not self.player.playing:
@@ -1141,13 +1152,14 @@ class PreviewPanel(QWidget):
         self.timeline.update()
         note = self._play_note
         if behind:
-            note += ("  ·  <span style='color:#d35400'>decoding can't keep up – the preview "
-                     "plays slower than the export will</span>")
+            note += ("  ·  <span style='color:#d35400'>"
+                     + tr("decoding can't keep up – the preview plays slower than the export will")
+                     + "</span>")
         self.note.setText(note)
 
     def _play_finished(self, message: str) -> None:
         self._stop_playback()
-        self.note.setText(f"Preview failed: {message}" if message else "")
+        self.note.setText(tr("Preview failed: %s", message) if message else "")
         self.refresh()
 
     # ------------------------------------------------------------------ labels
@@ -1156,40 +1168,43 @@ class PreviewPanel(QWidget):
         clip, job = self.clip, self.clip.job
         fm, ph = clip.frames, clip.playhead
         t = fm.times[ph] - fm.times[0]
-        text = f"Frame {ph} of {fm.count - 1}  ·  {fmt_duration(t)}{_key_text(fm, ph)}"
+        text = (tr("Frame %d of %d", ph, fm.count - 1)
+                + f"  ·  {fmt_duration(t)}{_key_text(fm, ph)}")
         if clip.proxy and not clip.proxy_done:
             ready = sum(1 for p in clip.proxy if p is not None) / len(clip.proxy)
-            text += f"  ·  fast preview {ready:.0%}"
+            text += "  ·  " + tr("fast preview %.0f%%", ready * 100)
         start = clip.trim.start
         end = clip.trim.end if clip.trim.end is not None else fm.count
         if start <= ph < end:
             out_t = job.output_time(ph)
-            text += f"  ·  output {fmt_duration(out_t)}"
+            text += "  ·  " + tr("output %s", fmt_duration(out_t))
         else:
-            text += "  ·  outside the trim range"
+            text += "  ·  " + tr("outside the trim range")
         self.position.setText(text)
 
         if start == 0 and end == fm.count:
-            trim = f"Whole clip: {fm.count} frames"
+            trim = trp("Whole clip: %d frame", "Whole clip: %d frames", fm.count, fm.count)
         else:
-            trim = (f"In {start}  ·  Out {end - 1}  ·  {end - start} of {fm.count} frames")
-        trim += f"  →  {job.output_frame_count} output frames, {fmt_duration(job.output_duration)}"
+            trim = trp("In %d  ·  Out %d  ·  %d of %d frame", "In %d  ·  Out %d  ·  %d of %d frames",
+                       fm.count, start, end - 1, end - start, fm.count)
+        trim += "  →  " + trp("%d output frame, %s", "%d output frames, %s", job.output_frame_count,
+                              job.output_frame_count, fmt_duration(job.output_duration))
         self.trim_label.setText(trim)
         self.snap_button.setVisible(job.snaps_to_keyframes and not job.trim_on_keyframes())
         self.key_hint.setVisible(job.snaps_to_keyframes)
         if job.mode == Mode.SMART:
-            self.key_hint.setText(
-                f"🔑 Smart re-encode joins copied and re-encoded parts only at keyframes (here "
-                f"every {_key_interval(job.frames)} frames): in / out points snap to them, and "
+            self.key_hint.setText(tr(
+                "🔑 Smart re-encode joins copied and re-encoded parts only at keyframes (here "
+                "every %d frames): in / out points snap to them, and "
                 "sections marked “Re-encode” are widened to the nearest keyframes – the extra "
-                "frames are re-encoded at the speed they have anyway.")
+                "frames are re-encoded at the speed they have anyway.", _key_interval(job.frames)))
         elif job.snaps_to_keyframes:
-            self.key_hint.setText(
-                f"🔑 Lossless mode: in / out points can only be set at keyframes (here every "
-                f"{_key_interval(job.frames)} frames). Only keyframes are complete pictures – all other "
+            self.key_hint.setText(tr(
+                "🔑 Lossless mode: in / out points can only be set at keyframes (here every "
+                "%d frames). Only keyframes are complete pictures – all other "
                 "frames depend on the frames before them, so a cut elsewhere would need "
                 "re-encoding. Choose a codec for frame-exact cuts. (Speed sections are not "
-                "cuts – they can start at any frame.)")
+                "cuts – they can start at any frame.)", _key_interval(job.frames)))
 
 
 def default_out_fps() -> Fraction:
@@ -1221,7 +1236,7 @@ def _key_interval(fm) -> int:
 
 
 def _key_text(fm, frame: int) -> str:
-    return "  · keyframe" if fm.keyframe_at_or_before(frame) == frame else ""
+    return "  · " + tr("keyframe") if fm.keyframe_at_or_before(frame) == frame else ""
 
 
 def transport_icon_size(kind: str) -> QSize:

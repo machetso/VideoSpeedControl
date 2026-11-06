@@ -23,6 +23,7 @@ from pathlib import Path
 from . import segments as seg
 from .formats import CODECS_BY_KEY, COPY
 from .job import OutputSettings, Trim
+from ..i18n import tr
 
 SUFFIX = ".cst"
 FORMAT = "VideoSpeedControl clip speed treatment"
@@ -61,13 +62,13 @@ class Treatment:
     def check(self, path: Path, frames: int) -> None:
         """Raise TreatmentError unless `path` is the video this treatment was made for."""
         if path.stat().st_size != self.source_size or fingerprint(path) != self.fingerprint:
-            raise TreatmentError(
-                f"This treatment belongs to another video: {self.source_name} "
-                f"({self.source_size:,} bytes, {self.frames} frames).\n"
-                f"{path.name} is a different file, so its sections and trim would not fit.")
+            raise TreatmentError(tr(
+                "This treatment belongs to another video: %s (%s bytes, %d frames).\n"
+                "%s is a different file, so its sections and trim would not fit.",
+                self.source_name, f"{self.source_size:,}", self.frames, path.name))
         if frames != self.frames:
-            raise TreatmentError(f"{path.name} has {frames} frames, the treatment was made for "
-                                 f"{self.frames} frames.")
+            raise TreatmentError(tr("%s has %d frames, the treatment was made for %d frames.",
+                                    path.name, frames, self.frames))
 
 
 def save(target: Path, source: Path, frames: int, settings: OutputSettings, ui: dict,
@@ -93,16 +94,16 @@ def load(path: Path) -> Treatment:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("format") != FORMAT:
-            raise TreatmentError(f"{path.name} is not a clip speed treatment file.")
+            raise TreatmentError(tr("%s is not a clip speed treatment file.", path.name))
         if data.get("version", 0) > VERSION:
-            raise TreatmentError(f"{path.name} was saved by a newer version of "
-                                 "VideoSpeedControl.")
+            raise TreatmentError(tr("%s was saved by a newer version of VideoSpeedControl.",
+                                    path.name))
         src = data["source"]
         known = {f.name for f in fields(OutputSettings)}
         settings = OutputSettings(**{k: _in(k, v) for k, v in data["settings"].items()
                                      if k in known})
         if settings.codec != COPY and settings.codec not in CODECS_BY_KEY:
-            raise TreatmentError(f"Unknown codec “{settings.codec}” in {path.name}.")
+            raise TreatmentError(tr("Unknown codec “%s” in %s.", settings.codec, path.name))
         trim = Trim(int(data["trim"]["start"]),
                     None if data["trim"]["end"] is None else int(data["trim"]["end"]))
         sections = [seg.Segment(int(s["start"]), int(s["end"]), Fraction(s["fps"]),
@@ -116,9 +117,9 @@ def load(path: Path) -> Treatment:
     except TreatmentError:
         raise
     except (OSError, UnicodeDecodeError) as e:
-        raise TreatmentError(f"{path.name} cannot be read: {e}") from e
+        raise TreatmentError(tr("%s cannot be read: %s", path.name, e)) from e
     except (ValueError, KeyError, TypeError, ZeroDivisionError) as e:
-        raise TreatmentError(f"{path.name} is damaged or incomplete ({e}).") from e
+        raise TreatmentError(tr("%s is damaged or incomplete (%s).", path.name, e)) from e
 
 
 def _out(value):

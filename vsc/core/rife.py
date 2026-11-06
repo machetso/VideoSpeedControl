@@ -39,6 +39,7 @@ from . import command, ffmpeg_bin
 from .encoders import hw_input_args
 from .job import Job, Mode
 from .runner import Progress, Result
+from ..i18n import tr
 
 MODELS = {"rife": "rife-v4.6", "rife_hq": "rife-v4.6"}
 # High quality = temporal test-time augmentation (both directions): 2× the time. Spatial TTA
@@ -88,8 +89,8 @@ def detect(refresh: bool = False) -> RifeStatus:
         return _status
     exe = find()
     if exe is None:
-        _status = RifeStatus(False, reason="rife-ncnn-vulkan not installed "
-                                           "(python tools/fetch_rife.py)")
+        _status = RifeStatus(False, reason=tr("%s not installed (%s)", "rife-ncnn-vulkan",
+                                              "python tools/fetch_rife.py"))
         return _status
     with tempfile.TemporaryDirectory(prefix="vsc-rife-") as tmp:
         tmp = Path(tmp)
@@ -102,13 +103,13 @@ def detect(refresh: bool = False) -> RifeStatus:
                                  cwd=exe.parent, capture_output=True, text=True,
                                  errors="replace", timeout=60, **ffmpeg_bin.POPEN_FLAGS)
         except subprocess.TimeoutExpired:
-            _status = RifeStatus(False, reason="RIFE test timed out")
+            _status = RifeStatus(False, reason=tr("RIFE test timed out"))
             return _status
         gpus = re.findall(r"^\[0 ([^\]]+)\]", res.stderr, re.M)
         gpu = gpus[0] if gpus else ""
         if res.returncode != 0 or not (tmp / "out.png").is_file():
             lines = [ln for ln in res.stderr.splitlines() if ln.strip()]
-            reason = lines[-1][:200] if lines else "RIFE failed (no Vulkan device?)"
+            reason = lines[-1][:200] if lines else tr("RIFE failed (no Vulkan device?)")
             _status = RifeStatus(False, gpu, reason=reason)
         else:
             soft = bool(re.search(r"llvmpipe|swiftshader|lavapipe", gpu, re.I))
@@ -178,7 +179,7 @@ class RifeRunner:
 
     def __init__(self, job: Job, output: Path, supported_pix_fmts: list[str] | None = None):
         if find() is None:
-            raise command.CommandError("RIFE is not installed (python tools/fetch_rife.py)")
+            raise command.CommandError(tr("RIFE is not installed (%s)", "python tools/fetch_rife.py"))
         self.job = job
         self.output = output
         self.ratio = grid_ratio(job)
@@ -285,10 +286,10 @@ class RifeRunner:
                                   stderr=subprocess.PIPE)
                 _, err = ext.communicate()
                 if ext.returncode != 0:
-                    raise _Failed("Extracting frames failed: " + err.decode("utf-8", "replace"))
+                    raise _Failed(tr("Extracting frames failed: %s", err.decode("utf-8", "replace")))
                 files = sorted(src.glob("*.png"))
                 if not files:
-                    raise _Failed("No frames extracted")
+                    raise _Failed(tr("No frames extracted"))
                 for i in range(len(files) + 1, piece.files + 1):   # past the clip end
                     shutil.copyfile(files[-1], src / f"{i:08d}.png")
 
@@ -304,7 +305,7 @@ class RifeRunner:
                         report(done + min(computed, piece.keep) * 0.9)
                 rife.wait()
                 if rife.returncode != 0:
-                    raise _Failed("RIFE failed: " + "".join(rife_err)[-800:])
+                    raise _Failed(tr("RIFE failed: %s", "".join(rife_err)[-800:]))
 
                 for i in range(1, piece.keep + 1):
                     enc.stdin.write((dst / f"{i:08d}.png").read_bytes())

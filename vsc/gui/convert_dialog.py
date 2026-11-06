@@ -29,26 +29,27 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QDial
 from ..core import audio, batch, convert, formats, suggest
 from ..core.convert import ConvertSettings
 from ..core.probe import probe, scan_frames
+from ..i18n import N_, tr, trp
 from .clips import fmt_bytes, fmt_seconds
 from .settings_panel import Combo
 from . import workers
 
-COLUMNS = ("File", "Length", "Size", "Settings", "Status")
+COLUMNS = (N_("File"), N_("Length"), N_("Size"), N_("Settings"), N_("Status"))
 _FILE, _LENGTH, _SIZE, _SETTINGS, _STATUS = range(5)
 
 AUDIO_CHOICES = (
-    ("smart", "Smart – copy if possible, else matched AAC"),
-    ("copy", "Copy unchanged"),
+    ("smart", N_("Smart – copy if possible, else matched AAC")),
+    ("copy", N_("Copy unchanged")),
     ("aac", "AAC"),
     ("opus", "Opus"),
     ("mp3", "MP3"),
-    ("flac", "FLAC (lossless)"),
-    ("none", "No sound"),
+    ("flac", N_("FLAC (lossless)")),
+    ("none", N_("No sound")),
 )
-CHANNEL_CHOICES = ((None, "Like the original"), (1, "Mono"), (2, "Stereo"),
-                   (6, "5.1 (6 channels)"), (8, "7.1 (8 channels)"))
-RATE_CHOICES = (("level", "Quality level"), ("crf", "Own quality value"),
-                ("kbps", "Data rate (kbit/s)"), ("smart", "Smart – measured per video"))
+CHANNEL_CHOICES = ((None, N_("Like the original")), (1, N_("Mono")), (2, N_("Stereo")),
+                   (6, N_("5.1 (6 channels)")), (8, N_("7.1 (8 channels)")))
+RATE_CHOICES = (("level", N_("Quality level")), ("crf", N_("Own quality value")),
+                ("kbps", N_("Data rate (kbit/s)")), ("smart", N_("Smart – measured per video")))
 
 
 class _ProbeSignals(QObject):
@@ -66,7 +67,7 @@ class _Probe(QRunnable):
             info = probe(self.path)
             frames = scan_frames(self.path, info.stream_index)
             if frames.count == 0:
-                raise ValueError("no video frames")
+                raise ValueError(tr("no video frames"))
             workers._emit(self.signals.done, self.path, info, frames)
         except Exception as e:      # noqa: BLE001 – any failure: the file can't be converted
             msg = str(e).strip().splitlines()[-1] if str(e).strip() else type(e).__name__
@@ -114,7 +115,8 @@ class _Row:
         self.info = None
         self.frames = None
         self.error = ""
-        self.status = "Reading…"
+        self.status = tr("Reading…")
+        self.waiting = False                 # queued for / being measured
         self.output: Path | None = None      # converted file (not converted again)
         self.own: ConvertSettings | None = None      # pro mode: own settings for this video
 
@@ -163,59 +165,59 @@ class SettingsEditor(QWidget):
         self._status = None
         # --- shared
         self.codec = Combo()
-        self.codec.setToolTip("Video codec of the converted files.")
+        self.codec.setToolTip(tr("Video codec of the converted files."))
         self.level = Combo()
         for name, tip in formats.QUALITY_LEVELS:
-            self.level.addItem(name)
-            self.level.setItemData(self.level.count() - 1, tip, Qt.ToolTipRole)
+            self.level.addItem(tr(name))
+            self.level.setItemData(self.level.count() - 1, tr(tip), Qt.ToolTipRole)
         self.goal = Combo()
         for key in convert.GOALS:
-            self.goal.addItem(suggest.GOAL_LABELS[key], key)
-        self.goal.setToolTip(
+            self.goal.addItem(tr(suggest.GOAL_LABELS[key]), key)
+        self.goal.setToolTip(tr(
             "Looks identical: the smallest file without a visible difference (VMAF ≥ 96).\n"
             "Smaller, minimal loss: noticeably smaller, a slight loss only on a close look "
-            "(VMAF ≥ 93).")
+            "(VMAF ≥ 93)."))
         # --- easy
-        self.smart = QCheckBox("Smart: smallest file that keeps picture and sound")
-        self.smart.setToolTip(
+        self.smart = QCheckBox(tr("Smart: smallest file that keeps picture and sound"))
+        self.smart.setToolTip(tr(
             "Each video is measured first: short samples are encoded at several quality\n"
             "values and compared with the original (VMAF). The smallest one that keeps the\n"
             "picture is used. The sound is copied unchanged when possible.\n"
-            "Measuring takes about 20 s per small video, longer for HD.")
-        self.sound = QCheckBox("Keep the sound")
+            "Measuring takes about 20 s per small video, longer for HD."))
+        self.sound = QCheckBox(tr("Keep the sound"))
         # --- pro
         self.fps = Combo()
-        self.fps.addItem("Original (each video's own)", None)
+        self.fps.addItem(tr("Original (each video's own)"), None)
         for label, rate in formats.FRAME_RATES:
             self.fps.addItem(f"{label} fps", str(rate))
-        self.fps.setToolTip("Another frame rate keeps the length: frames are dropped or "
-                            "repeated, never invented.")
+        self.fps.setToolTip(tr("Another frame rate keeps the length: frames are dropped or "
+                               "repeated, never invented."))
         self.container = Combo()
         for c in convert.CONTAINERS:
             self.container.addItem(c.upper(), c)
         self.rate = Combo()
         for key, label in RATE_CHOICES:
-            self.rate.addItem(label, key)
+            self.rate.addItem(tr(label), key)
         self.crf = QSpinBox()
-        self.crf.setToolTip("The codec's own quality value (CRF): lower = better and bigger.")
+        self.crf.setToolTip(tr("The codec's own quality value (CRF): lower = better and bigger."))
         self.kbps = QSpinBox()
         self.kbps.setRange(20, 200000)
         self.kbps.setSingleStep(50)
         self.kbps.setSuffix(" kbit/s")
-        self.kbps.setToolTip("Average data rate of the picture.")
+        self.kbps.setToolTip(tr("Average data rate of the picture."))
         self.audio = Combo()
         for key, label in AUDIO_CHOICES:
-            self.audio.addItem(label, key)
+            self.audio.addItem(tr(label), key)
         self.channels = Combo()
         for ch, label in CHANNEL_CHOICES:
-            self.channels.addItem(label, ch)
-        self.channels.setToolTip("Never more than the original has – more channels would only "
-                                 "repeat the same sound.")
+            self.channels.addItem(tr(label), ch)
+        self.channels.setToolTip(tr("Never more than the original has – more channels would "
+                                    "only repeat the same sound."))
         self.audio_kbps = QSpinBox()
         self.audio_kbps.setRange(0, 512)
         self.audio_kbps.setSingleStep(16)
         self.audio_kbps.setSuffix(" kbit/s")
-        self.audio_kbps.setSpecialValueText("Default")
+        self.audio_kbps.setSpecialValueText(tr("Default"))
         self.problem = QLabel()
         self.problem.setWordWrap(True)
         self.problem.setStyleSheet("color: #c0392b")
@@ -223,13 +225,13 @@ class SettingsEditor(QWidget):
         self.form = QFormLayout(self)
         self.form.setContentsMargins(0, 0, 0, 0)
         self._rows = {}
-        for key, label, w in (("fps", "Frame rate:", self.fps), ("container", "Container:", self.container),
-                              ("codec", "Codec:", self.codec), ("rate", "Picture:", self.rate),
-                              ("level", "Quality:", self.level), ("crf", "Quality value:", self.crf),
-                              ("kbps", "Data rate:", self.kbps), ("smart", "", self.smart),
-                              ("goal", "Smart goal:", self.goal), ("sound", "", self.sound),
-                              ("audio", "Sound:", self.audio), ("channels", "Channels:", self.channels),
-                              ("audio_kbps", "Sound rate:", self.audio_kbps),
+        for key, label, w in (("fps", tr("Frame rate:"), self.fps), ("container", tr("Container:"), self.container),
+                              ("codec", tr("Codec:"), self.codec), ("rate", tr("Picture:"), self.rate),
+                              ("level", tr("Quality:"), self.level), ("crf", tr("Quality value:"), self.crf),
+                              ("kbps", tr("Data rate:"), self.kbps), ("smart", "", self.smart),
+                              ("goal", tr("Smart goal:"), self.goal), ("sound", "", self.sound),
+                              ("audio", tr("Sound:"), self.audio), ("channels", tr("Channels:"), self.channels),
+                              ("audio_kbps", tr("Sound rate:"), self.audio_kbps),
                               ("problem", "", self.problem)):
             self.form.addRow(label, w)
             self._rows[key] = w
@@ -251,7 +253,8 @@ class SettingsEditor(QWidget):
             codec = formats.CODECS_BY_KEY[key]
             st = status.get(key) if status else None
             ok = st is None or st.available
-            self.codec.addItem(codec.label if ok else f"{codec.label} – not available", key)
+            self.codec.addItem(tr(codec.label) if ok else tr("%s – not available", tr(codec.label)),
+                               key)
             if not ok:
                 self.codec.model().item(self.codec.count() - 1).setEnabled(False)
         if current:
@@ -372,7 +375,7 @@ class ConvertDialog(QDialog):
 
     def __init__(self, parent=None, encoders=lambda: None):
         super().__init__(parent)
-        self.setWindowTitle("Convert videos")
+        self.setWindowTitle(tr("Convert videos"))
         self.setAcceptDrops(True)
         self.resize(900, 760)
         self._encoders = encoders
@@ -406,11 +409,11 @@ class ConvertDialog(QDialog):
         self.general = settings_from_json(qs.value("convert/general", "", type=str)) \
             if qs.value("convert/general", "", type=str) else ConvertSettings(audio="smart")
 
-        intro = QLabel("Re-encodes many videos at once. Add files or whole folders – or drop "
-                       "them here. The originals stay unchanged.")
+        intro = QLabel(tr("Re-encodes many videos at once. Add files or whole folders – or "
+                          "drop them here. The originals stay unchanged."))
         intro.setWordWrap(True)
-        self.easy_radio = QRadioButton("Easy")
-        self.pro_radio = QRadioButton("Pro")
+        self.easy_radio = QRadioButton(tr("Easy"))
+        self.pro_radio = QRadioButton(tr("Pro"))
         mode_group = QButtonGroup(self)
         mode_group.addButton(self.easy_radio)
         mode_group.addButton(self.pro_radio)
@@ -422,7 +425,7 @@ class ConvertDialog(QDialog):
         top.addWidget(self.pro_radio)
 
         self.table = QTableWidget(0, len(COLUMNS))
-        self.table.setHorizontalHeaderLabels(COLUMNS)
+        self.table.setHorizontalHeaderLabels([tr(c) for c in COLUMNS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().hide()
@@ -436,11 +439,11 @@ class ConvertDialog(QDialog):
         self.table.setColumnWidth(_STATUS, 200)
         self.table.itemSelectionChanged.connect(self._selection_changed)
 
-        self.add_files_button = QPushButton("Add files…", clicked=self._add_files)
-        self.add_folder_button = QPushButton("Add folder…", clicked=self._add_folder)
-        self.remove_button = QPushButton("Remove", clicked=self._remove)
-        self.clear_button = QPushButton("Clear list", clicked=self._clear)
-        self.subfolders = QCheckBox("Include sub-folders")
+        self.add_files_button = QPushButton(tr("Add files…"), clicked=self._add_files)
+        self.add_folder_button = QPushButton(tr("Add folder…"), clicked=self._add_folder)
+        self.remove_button = QPushButton(tr("Remove"), clicked=self._remove)
+        self.clear_button = QPushButton(tr("Clear list"), clicked=self._clear)
+        self.subfolders = QCheckBox(tr("Include sub-folders"))
         self.subfolders.setChecked(qs.value("convert/subfolders", True, type=bool))
         self.subfolders.toggled.connect(lambda v: QSettings().setValue("convert/subfolders", v))
         list_row = QHBoxLayout()
@@ -450,13 +453,13 @@ class ConvertDialog(QDialog):
         list_row.addStretch(1)
         list_row.addWidget(self.subfolders)
 
-        self.own_button = QPushButton("Own settings for selected", clicked=self._make_own)
-        self.own_button.setToolTip("The selected videos get their own settings (starting from the "
-                                   "general ones). Select them again later to change them.")
-        self.general_button = QPushButton("Back to general settings", clicked=self._drop_own)
-        self.measure_button = QPushButton("Measure now", clicked=self._measure_now)
-        self.measure_button.setToolTip("Measure the videos for the smart settings now (it also "
-                                       "happens automatically before converting).")
+        self.own_button = QPushButton(tr("Own settings for selected"), clicked=self._make_own)
+        self.own_button.setToolTip(tr("The selected videos get their own settings (starting from "
+                                      "the general ones). Select them again later to change them."))
+        self.general_button = QPushButton(tr("Back to general settings"), clicked=self._drop_own)
+        self.measure_button = QPushButton(tr("Measure now"), clicked=self._measure_now)
+        self.measure_button.setToolTip(tr("Measure the videos for the smart settings now (it also "
+                                          "happens automatically before converting)."))
         own_row = QHBoxLayout()
         own_row.addWidget(self.own_button)
         own_row.addWidget(self.general_button)
@@ -471,15 +474,15 @@ class ConvertDialog(QDialog):
         box = QVBoxLayout(self.settings_box)
         box.addWidget(self.editor)
 
-        self.next_to = QRadioButton(f"A “{convert.FOLDER_NAME}” folder next to each original")
-        self.chosen = QRadioButton("This folder:")
+        self.next_to = QRadioButton(tr("A “%s” folder next to each original", convert.FOLDER_NAME))
+        self.chosen = QRadioButton(tr("This folder:"))
         group = QButtonGroup(self)
         group.addButton(self.next_to)
         group.addButton(self.chosen)
         self.folder_edit = QLineEdit(qs.value("convert/folder", "", type=str))
-        self.folder_edit.setPlaceholderText("Choose a folder…")
+        self.folder_edit.setPlaceholderText(tr("Choose a folder…"))
         self.folder_edit.textChanged.connect(self._folder_changed)
-        browse = QPushButton("Choose…", clicked=self._choose_folder)
+        browse = QPushButton(tr("Choose…"), clicked=self._choose_folder)
         (self.chosen if qs.value("convert/use_folder", False, type=bool) and self.folder_edit.text()
          else self.next_to).setChecked(True)
         self.chosen.toggled.connect(self._refresh)
@@ -488,9 +491,9 @@ class ConvertDialog(QDialog):
         folder_row.addWidget(self.folder_edit, 1)
         folder_row.addWidget(browse)
         save = QFormLayout()
-        save.addRow("Save to:", self.next_to)
+        save.addRow(tr("Save to:"), self.next_to)
         save.addRow("", _wrap(folder_row))
-        note = QLabel("Existing files are never overwritten: a number is added (name_2 …).")
+        note = QLabel(tr("Existing files are never overwritten: a number is added (name_2 …)."))
         note.setStyleSheet("color: gray")
         save.addRow("", note)
 
@@ -499,9 +502,9 @@ class ConvertDialog(QDialog):
         self.progress.setTextVisible(False)
         self.summary = QLabel()
         self.summary.setWordWrap(True)
-        self.start_button = QPushButton("Convert", clicked=self._start_or_cancel)
+        self.start_button = QPushButton(tr("Convert"), clicked=self._start_or_cancel)
         self.start_button.setDefault(True)
-        close = QPushButton("Close", clicked=self.close)
+        close = QPushButton(tr("Close"), clicked=self.close)
         bottom = QHBoxLayout()
         bottom.addWidget(self.summary, 1)
         bottom.addWidget(close)
@@ -551,15 +554,17 @@ class ConvertDialog(QDialog):
         own = [i for i in sel if self.rows[i].own is not None]
         self._editing = own if self.pro and own and len(own) == len(sel) else []
         if not self.pro:
-            self.settings_box.setTitle("Settings for every video")
+            self.settings_box.setTitle(tr("Settings for every video"))
             self.editor.set_settings(self.easy_settings, False)
         elif self._editing:
             names = ", ".join(self.rows[i].path.name for i in self._editing[:2])
-            more = f" and {len(self._editing) - 2} more" if len(self._editing) > 2 else ""
-            self.settings_box.setTitle(f"Own settings: {names}{more}")
+            more = len(self._editing) - 2
+            self.settings_box.setTitle(
+                trp("Own settings: %s and %d more", "Own settings: %s and %d more", more, names, more)
+                if more > 0 else tr("Own settings: %s", names))
             self.editor.set_settings(self.rows[self._editing[0]].own, True)
         else:
-            self.settings_box.setTitle("General settings – for every video without own settings")
+            self.settings_box.setTitle(tr("General settings – for every video without own settings"))
             self.editor.set_settings(self.general, True)
         self._update_buttons()
         self._refresh()
@@ -621,7 +626,7 @@ class ConvertDialog(QDialog):
 
     def _choose_folder(self) -> None:
         start = self.folder_edit.text() or (str(self.rows[0].path.parent) if self.rows else "")
-        folder = QFileDialog.getExistingDirectory(self, "Save converted videos in", start)
+        folder = QFileDialog.getExistingDirectory(self, tr("Save converted videos in"), start)
         if folder:
             self.folder_edit.setText(folder)
             self.chosen.setChecked(True)
@@ -651,14 +656,15 @@ class ConvertDialog(QDialog):
         return new
 
     def _add_files(self) -> None:
-        from .main_window import VIDEO_FILTER
-        files, _ = QFileDialog.getOpenFileNames(self, "Add videos", "", VIDEO_FILTER)
+        from .main_window import video_filter
+        files, _ = QFileDialog.getOpenFileNames(self, tr("Add videos"), "", video_filter())
         self.add_paths([Path(f) for f in files])
 
     def _add_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Add all videos in a folder")
+        folder = QFileDialog.getExistingDirectory(self, tr("Add all videos in a folder"))
         if folder and not self.add_paths([Path(folder)]):
-            QMessageBox.information(self, "Convert videos", "No (new) videos found in this folder.")
+            QMessageBox.information(self, tr("Convert videos"),
+                                    tr("No (new) videos found in this folder."))
 
     def _append_row(self, row: _Row) -> None:
         r = self.table.rowCount()
@@ -677,22 +683,22 @@ class ConvertDialog(QDialog):
     def _settings_text(self, row: _Row) -> tuple[str, str]:
         """(cell text, tooltip) of the Settings column."""
         cs = self.settings_for(row)
-        base = ("Own: " + convert.describe(cs)) if (self.pro and row.own) else (
-            "General" if self.pro else "")
+        base = tr("Own: %s", convert.describe(cs)) if (self.pro and row.own) else (
+            tr("General") if self.pro else "")
         tip = convert.describe(cs)
         if cs.measures and row.info is not None:
             key = (row.path, _measure_key(cs))
             if key in self._measured:
                 s = self._measured[key]
                 share = s.size_bytes / row.info.size_bytes * 100 if row.info.size_bytes else 0
-                short = f"quality {s.crf} ≈ {s.video_kbps} kbit/s, ~{share:.0f} %"
-                tip += "\nSmart: " + s.summary(row.info)
+                short = tr("quality %s ≈ %s kbit/s, ~%.0f %%", s.crf, s.video_kbps, share)
+                tip += "\n" + tr("Smart: %s", s.summary(row.info))
                 base = f"{base} – {short}" if base else short
             elif key in self._measure_failed:
-                base = (base + " – " if base else "") + "measuring failed"
+                base = (base + " – " if base else "") + tr("measuring failed")
                 tip += "\n" + self._measure_failed[key]
             else:
-                base = (base + " – " if base else "") + "not measured yet"
+                base = (base + " – " if base else "") + tr("not measured yet")
         problem = convert.audio_problem(row.info, cs) if row.info else None
         if problem:
             base = "⚠ " + base
@@ -712,7 +718,7 @@ class ConvertDialog(QDialog):
         status.setText(row.status)
         status.setToolTip(row.error or (f"{info.codec} {info.width}×{info.height} "
                                         f"{float(info.fps):.5g} fps"
-                                        + (f", sound {info.audio}" if info.audio else "")
+                                        + (tr(", sound %s", info.audio) if info.audio else "")
                                         if info else ""))
 
     def _index(self, path: Path) -> int | None:
@@ -724,7 +730,8 @@ class ConvertDialog(QDialog):
             return
         row = self.rows[i]
         row.info, row.frames = info, frames
-        row.status = f"Ready – {info.codec} {info.width}×{info.height}, {float(info.fps):.4g} fps"
+        row.status = tr("Ready – %s %d×%d, %.4g fps", info.codec, info.width, info.height,
+                        float(info.fps))
         self._show(i)
         self._refresh()
 
@@ -733,7 +740,7 @@ class ConvertDialog(QDialog):
         if i is None:
             return
         self.rows[i].error = message
-        self.rows[i].status = "Cannot be read"
+        self.rows[i].status = tr("Cannot be read")
         self._show(i)
         self._refresh()
 
@@ -786,8 +793,8 @@ class ConvertDialog(QDialog):
         if not todo:
             return False
         if not suggest.vmaf_available():
-            QMessageBox.warning(self, "Convert videos", "This FFmpeg has no VMAF – smart "
-                                "settings cannot be measured.")
+            QMessageBox.warning(self, tr("Convert videos"), tr("This FFmpeg has no VMAF – smart "
+                                                               "settings cannot be measured."))
             return False
         tasks = []
         for i in todo:
@@ -795,7 +802,8 @@ class ConvertDialog(QDialog):
             key = _measure_key(self.settings_for(r))
             self._measure_failed.pop((r.path, key), None)
             tasks.append((r.path, r.info, r.frames, key))
-            r.status = "Waiting to be measured"
+            r.status = tr("Waiting to be measured")
+            r.waiting = True
             self._show(i)
         self._measure_total = len(tasks)
         self._measure_count = 0
@@ -810,20 +818,21 @@ class ConvertDialog(QDialog):
         i = self._index(path)
         if i is None:
             return
-        self.rows[i].status = f"Measuring… {fraction * 100:.0f} %"
+        self.rows[i].status = tr("Measuring… %.0f %%", fraction * 100)
         self.table.item(i, _STATUS).setText(self.rows[i].status)
         self.table.item(i, _STATUS).setToolTip(text)
         done = self._measure_count + fraction
         self.progress.setValue(int(1000 * done / max(1, self._measure_total)))
-        self.summary.setText(f"Measuring video {self._measure_count + 1} of "
-                             f"{self._measure_total} – {text}")
+        self.summary.setText(tr("Measuring video %d of %d – %s", self._measure_count + 1,
+                                self._measure_total, text))
 
     def _measure_done(self, path, key, s) -> None:
         self._measured[(path, key)] = s
         self._measure_count += 1
         i = self._index(path)
         if i is not None:
-            self.rows[i].status = "Measured"
+            self.rows[i].status = tr("Measured")
+            self.rows[i].waiting = False
             self._show(i)
 
     def _measure_error(self, path, key, message: str) -> None:
@@ -831,7 +840,8 @@ class ConvertDialog(QDialog):
         self._measure_count += 1
         i = self._index(path)
         if i is not None:
-            self.rows[i].status = "Measuring failed"
+            self.rows[i].status = tr("Measuring failed")
+            self.rows[i].waiting = False
             self.rows[i].error = message
             self._show(i)
 
@@ -839,14 +849,15 @@ class ConvertDialog(QDialog):
         self._measure = None
         self._set_running(False)
         for i, r in enumerate(self.rows):
-            if r.status.startswith(("Measuring…", "Waiting to be measured")):
-                r.status = "Ready"
+            if r.waiting:
+                r.waiting = False
+                r.status = tr("Ready")
                 self._show(i)
         if self._convert_after_measure and not cancelled:
             self._convert_after_measure = False
             self._start_converting()
         elif cancelled:
-            self.summary.setText("Measuring cancelled.")
+            self.summary.setText(tr("Measuring cancelled."))
 
     # ------------------------------------------------------------------ converting
 
@@ -872,35 +883,40 @@ class ConvertDialog(QDialog):
         converted = sum(r.info is not None and not r.todo for r in self.rows)
         problems = self._problems()
         unmeasured = self._unmeasured()
-        parts = [f"{len(ready)} video{'s' * (len(ready) != 1)} to convert"]
+        parts = [trp("%d video to convert", "%d videos to convert", len(ready), len(ready))]
         if ready:
             parts[0] += f" ({fmt_seconds(sum(self.rows[i].info.duration for i in ready))})"
         if converted:
-            parts.append(f"{converted} already converted")
+            parts.append(trp("%d already converted", "%d already converted", converted, converted))
         if reading:
-            parts.append(f"{reading} still being read")
+            parts.append(trp("%d still being read", "%d still being read", reading, reading))
         if failed:
-            parts.append(f"{failed} cannot be read")
+            parts.append(trp("%d cannot be read", "%d cannot be read", failed, failed))
         if unmeasured:
-            parts.append(f"{len(unmeasured)} will be measured first")
+            parts.append(trp("%d will be measured first", "%d will be measured first",
+                             len(unmeasured), len(unmeasured)))
         if problems:
-            parts.append(f"{len(problems)} with settings that do not fit (⚠ in the list)")
+            parts.append(trp("%d with settings that do not fit (⚠ in the list)",
+                             "%d with settings that do not fit (⚠ in the list)",
+                             len(problems), len(problems)))
         if missing_folder:
-            parts.append("choose the folder to save to")
-        self.summary.setText(", ".join(parts) if self.rows else "Add videos to convert.")
+            parts.append(tr("choose the folder to save to"))
+        self.summary.setText(", ".join(parts) if self.rows else tr("Add videos to convert."))
         # the editor's problem line: for the videos it applies to
         if self.pro:
             shown = self._editing or [i for i in ready if self.rows[i].own is None]
             texts = {p for i, p in problems if i in shown}
             n = sum(1 for i, _ in problems if i in shown)
-            self.editor.set_problem(f"{n} of {len(shown)} videos: " + " ".join(sorted(texts))
+            self.editor.set_problem(trp("%d of %d video:", "%d of %d videos:", len(shown), n, len(shown))
+                                    + " " + " ".join(sorted(texts))
                                     if texts else "")
         else:
             self.editor.set_problem("")
         self.measure_button.setVisible(any(self.settings_for(r).measures for r in self.rows)
                                        or not self.rows and self.editor.settings().measures)
         self.measure_button.setEnabled(bool(unmeasured))
-        self.start_button.setText(f"Convert {len(ready)}" if ready else "Convert")
+        self.start_button.setText(trp("Convert %d", "Convert %d", len(ready), len(ready))
+                                  if ready else tr("Convert"))
         self.start_button.setEnabled(bool(ready) and not reading and not missing_folder
                                      and not problems
                                      and self.editor.codec.currentData() is not None
@@ -932,7 +948,8 @@ class ConvertDialog(QDialog):
             for folder in {it.output.parent for it in items if it.output}:
                 folder.mkdir(parents=True, exist_ok=True)
         except OSError as e:
-            QMessageBox.warning(self, "Convert videos", f"Cannot create the output folder:\n{e}")
+            QMessageBox.warning(self, tr("Convert videos"),
+                                tr("Cannot create the output folder:\n%s", e))
             return
         QSettings().setValue("convert/use_folder", self.chosen.isChecked())
         self._items, self._row_of_item = items, rows
@@ -940,7 +957,7 @@ class ConvertDialog(QDialog):
         self._frames_before = [sum(frames[:k]) for k in range(len(frames))]
         self._total_frames = max(1, sum(frames))
         for k, i in enumerate(rows):
-            self.rows[i].status = "Waiting" if items[k].output else items[k].note
+            self.rows[i].status = tr("Waiting") if items[k].output else items[k].note
             self._show(i)
         self._batch = batch.Batch(items)
         self._start = time.monotonic()
@@ -966,9 +983,9 @@ class ConvertDialog(QDialog):
                   self.next_to, self.chosen, self.folder_edit, self.subfolders):
             w.setEnabled(not running)
         measuring = self._measure is not None
-        self.measure_button.setText("Cancel measuring" if measuring else "Measure now")
+        self.measure_button.setText(tr("Cancel measuring") if measuring else tr("Measure now"))
         self.measure_button.setEnabled(measuring or not running)
-        self.start_button.setText("Cancel" if running else "Convert")
+        self.start_button.setText(tr("Cancel") if running else tr("Convert"))
         self.start_button.setEnabled(True)
         self._update_buttons()
         if not running:
@@ -976,21 +993,23 @@ class ConvertDialog(QDialog):
 
     def _item_started(self, k: int) -> None:
         i = self._row_of_item[k]
-        self.rows[i].status = "Converting…"
+        self.rows[i].status = tr("Converting…")
         self._show(i)
         self.table.scrollToItem(self.table.item(i, _FILE))
 
     def _item_progress(self, k: int, p) -> None:
         i = self._row_of_item[k]
-        eta = f", {fmt_seconds(p.eta)} left" if p.eta is not None else ""
-        self.rows[i].status = f"Converting… {p.fraction * 100:.0f} %{eta}"
+        self.rows[i].status = (
+            tr("Converting… %.0f %%, %s left", p.fraction * 100, fmt_seconds(p.eta))
+            if p.eta is not None else tr("Converting… %.0f %%", p.fraction * 100))
         self.table.item(i, _STATUS).setText(self.rows[i].status)
         done = self._frames_before[k] + p.frame
         self.progress.setValue(int(1000 * done / self._total_frames))
         elapsed = time.monotonic() - self._start
         left = elapsed * (self._total_frames - done) / done if done else None
-        self.summary.setText(f"Video {k + 1} of {len(self._items)}"
-                             + (f" – about {fmt_seconds(left)} left in total" if left else ""))
+        self.summary.setText(tr("Video %d of %d", k + 1, len(self._items))
+                             + (" – " + tr("about %s left in total", fmt_seconds(left))
+                                if left else ""))
 
     def _item_done(self, r: batch.ItemResult) -> None:
         i = self._row_of_item[r.index]
@@ -1001,11 +1020,11 @@ class ConvertDialog(QDialog):
                 size = f" ({r.output.stat().st_size / row.info.size_bytes * 100:.0f} %)"
             row.status, row.error, row.output = f"✔ {r.output.name}{size}", str(r.output), r.output
         elif r.status == "failed":
-            row.status, row.error = "Failed", r.error
+            row.status, row.error = tr("Failed"), r.error
         elif r.status == "cancelled":
-            row.status = "Cancelled"
+            row.status = tr("Cancelled")
         else:
-            row.status = r.error or "Skipped"
+            row.status = r.error or tr("Skipped")
         self._show(i)
 
     def _finished(self, result: batch.BatchResult) -> None:
@@ -1013,17 +1032,18 @@ class ConvertDialog(QDialog):
         self.progress.setValue(1000 if not result.cancelled else self.progress.value())
         self._set_running(False)
         done, failed = result.count("done"), result.count("failed")
-        text = f"{done} converted"
+        text = trp("%d converted", "%d converted", done, done)
         if failed:
-            text += f", {failed} failed (see the Status column)"
+            text += ", " + trp("%d failed (see the Status column)",
+                               "%d failed (see the Status column)", failed, failed)
         if result.cancelled:
-            text += ", cancelled"
-        self.summary.setText(text + f" in {fmt_seconds(time.monotonic() - self._start)}.")
+            text += ", " + tr("cancelled")
+        self.summary.setText(tr("%s in %s.", text, fmt_seconds(time.monotonic() - self._start)))
 
     def closeEvent(self, event) -> None:
         if self._busy():
-            if QMessageBox.question(self, "Convert videos",
-                                    "A conversion is running. Cancel it and close?") \
+            if QMessageBox.question(self, tr("Convert videos"),
+                                    tr("A conversion is running. Cancel it and close?")) \
                     != QMessageBox.Yes:
                 event.ignore()
                 return

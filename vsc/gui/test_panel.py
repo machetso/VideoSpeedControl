@@ -17,11 +17,12 @@ from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, Q
 from ..core import preview, testencode
 from ..core.job import Mode
 from .clips import Clip, Status, fmt_bytes, fmt_duration, fmt_seconds
+from ..i18n import N_, tr, trp
 from . import workers
 from .zoom import ZoomState, fit_rect
 
-COMPARE_MODES = (("side", "Side by side"), ("wipe", "Wipe (drag the line)"),
-                 ("source", "Source only"), ("output", "Output only"))
+COMPARE_MODES = (("side", N_("Side by side")), ("wipe", N_("Wipe (drag the line)")),
+                 ("source", N_("Source only")), ("output", N_("Output only")))
 
 
 class CompareView(QWidget):
@@ -98,14 +99,14 @@ class CompareView(QWidget):
         if self.mode == "side":
             draw(self.source, src_rect, src_box)
             draw(self.output, out_rect, out_box)
-            self._label(p, src_box, "Source")
-            self._label(p, out_box, "Output")
+            self._label(p, src_box, tr("Source"))
+            self._label(p, out_box, tr("Output"))
         elif self.mode == "source":
             draw(self.source, src_rect, src_box)
-            self._label(p, src_box, "Source")
+            self._label(p, src_box, tr("Source"))
         elif self.mode == "output":
             draw(self.output, out_rect, out_box)
-            self._label(p, out_box, "Output")
+            self._label(p, out_box, tr("Output"))
         else:
             x = self._wipe_x()
             left = QRectF(out_box.x(), out_box.y(), x - out_box.x(), out_box.height())
@@ -116,9 +117,9 @@ class CompareView(QWidget):
             p.drawLine(QPointF(x, out_box.top()), QPointF(x, out_box.bottom()))
             p.setPen(QColor("#ccc"))
             p.drawText(QRectF(out_box.x(), out_box.bottom() + 2, x - out_box.x() - 6, 18),
-                       Qt.AlignRight | Qt.AlignVCenter, "◀ Source")
+                       Qt.AlignRight | Qt.AlignVCenter, tr("◀ Source"))
             p.drawText(QRectF(x + 6, out_box.bottom() + 2, out_box.right() - x, 18),
-                       Qt.AlignLeft | Qt.AlignVCenter, "Output ▶")
+                       Qt.AlignLeft | Qt.AlignVCenter, tr("Output ▶"))
 
     @staticmethod
     def _label(p: QPainter, box: QRectF, text: str) -> None:
@@ -189,19 +190,19 @@ class TestPanel(QWidget):
         self.frames_spin = QSpinBox()
         self.frames_spin.setRange(5, 5000)
         self.frames_spin.setValue(testencode.DEFAULT_FRAMES)
-        self.frames_spin.setSuffix(" frames")
+        self.frames_spin.setSuffix(tr(" frames"))
         self.frames_spin.setMaximumWidth(130)
-        self.frames_spin.setToolTip("Number of output frames to encode, starting at the playhead.")
-        self.run_button = QPushButton("Run test encode")
-        self.run_button.setToolTip("Encodes the frames from the playhead (see the Preview tab)\n"
-                                   "with exactly the current output settings.")
+        self.frames_spin.setToolTip(tr("Number of output frames to encode, starting at the playhead."))
+        self.run_button = QPushButton(tr("Run test encode"))
+        self.run_button.setToolTip(tr("Encodes the frames from the playhead (see the Preview tab)\n"
+                                      "with exactly the current output settings."))
         self.run_button.clicked.connect(lambda: self.start_test.emit(self.frames_spin.value()))
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton(tr("Cancel"))
         self.cancel_button.clicked.connect(self.cancel_test)
         self.progress = QProgressBar()
         self.progress.setTextVisible(True)
         top = QHBoxLayout()
-        for w in (QLabel("Test:"), self.frames_spin, self.run_button, self.cancel_button):
+        for w in (QLabel(tr("Test:")), self.frames_spin, self.run_button, self.cancel_button):
             top.addWidget(w)
         top.addWidget(self.progress, 3)
         top.addStretch(1)
@@ -215,12 +216,12 @@ class TestPanel(QWidget):
         self.zoom.changed.connect(self._request_frames)
         self.mode_combo = QComboBox()
         for key, label in COMPARE_MODES:
-            self.mode_combo.addItem(label, key)
+            self.mode_combo.addItem(tr(label), key)
         self.mode_combo.currentIndexChanged.connect(
             lambda: self.view.set_mode(self.mode_combo.currentData()))
         self.slider = QSlider(Qt.Horizontal)
         self.slider.valueChanged.connect(self._request_frames)
-        self.slider.setToolTip("Frame of the test output")
+        self.slider.setToolTip(tr("Frame of the test output"))
         self.frame_label = QLabel()
         compare = QHBoxLayout()
         compare.addWidget(self.mode_combo)
@@ -229,7 +230,7 @@ class TestPanel(QWidget):
         compare.addWidget(self.zoom.combo())
 
         self.cmd_button = QToolButton()
-        self.cmd_button.setText("FFmpeg command ▸")
+        self.cmd_button.setText(tr("FFmpeg command ▸"))
         self.cmd_button.setCheckable(True)
         self.cmd_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.cmd = QPlainTextEdit()
@@ -257,7 +258,7 @@ class TestPanel(QWidget):
 
     def _toggle_cmd(self, on: bool) -> None:
         self.cmd.setVisible(on)
-        self.cmd_button.setText("FFmpeg command ▾" if on else "FFmpeg command ▸")
+        self.cmd_button.setText(tr("FFmpeg command ▾") if on else tr("FFmpeg command ▸"))
 
     # ------------------------------------------------------------------ public
 
@@ -275,8 +276,9 @@ class TestPanel(QWidget):
     def set_progress(self, p) -> None:
         self.progress.setMaximum(max(1, p.total_frames))
         self.progress.setValue(min(p.frame, p.total_frames))
-        eta = f", {fmt_seconds(p.eta)} left" if p.eta is not None else ""
-        self.progress.setFormat(f"{p.frame}/{p.total_frames} frames, {p.fps:.1f} fps{eta}")
+        eta = tr(", %s left", fmt_seconds(p.eta)) if p.eta is not None else ""
+        self.progress.setFormat(trp("%d/%d frame, %.1f fps", "%d/%d frames, %.1f fps",
+                                    p.total_frames, p.frame, p.total_frames, p.fps) + eta)
 
     def refresh(self) -> None:
         clip = self.clip
@@ -289,9 +291,9 @@ class TestPanel(QWidget):
         if not testing:
             self.progress.reset()
         if clip and ready:
-            self.run_button.setText(f"Run test encode from frame {clip.playhead}")
+            self.run_button.setText(tr("Run test encode from frame %d", clip.playhead))
         else:
-            self.run_button.setText("Run test encode")
+            self.run_button.setText(tr("Run test encode"))
 
         test = clip.test if clip else None
         self.result.setText(self._result_text(clip) if clip else "")
@@ -311,9 +313,9 @@ class TestPanel(QWidget):
             self.view.src_size = clip.info.display_size
             self.view.message = ""
         else:
-            self.view.message = ("Run a test encode to compare source and output."
+            self.view.message = (tr("Run a test encode to compare source and output.")
                                  if not (test and test.ok) else
-                                 "No comparison for this output format.")
+                                 tr("No comparison for this output format."))
             self.frame_label.clear()
         self.view.update()
         self._request_frames()
@@ -323,31 +325,45 @@ class TestPanel(QWidget):
     def _result_text(self, clip: Clip) -> str:
         test = clip.test
         if clip.testing:
-            return "Encoding test frames…"
+            return tr("Encoding test frames…")
         if test is None:
-            return ("Encodes a short piece with exactly the current settings and measures the "
-                    "speed. That gives the time estimate for the clip and the whole batch.")
+            return tr("Encodes a short piece with exactly the current settings and measures the "
+                      "speed. That gives the time estimate for the clip and the whole batch.")
         if test.cancelled:
-            return "Test cancelled."
+            return tr("Test cancelled.")
         if not test.ok:
-            return f"<span style='color:#c0392b'>Test failed:</span> {_html(test.error[-600:])}"
+            return (f"<span style='color:#c0392b'>{tr('Test failed:')}</span> "
+                    f"{_html(test.error[-600:])}")
         job = clip.job
-        lines = [f"<b>{test.frames} frames in {test.elapsed:.1f} s → {test.fps:.1f} frames/s</b>,"
-                 f" {fmt_bytes(test.bytes)}"]
+        lines = ["<b>" + trp("%d frame in %.1f s → %.1f frames/s",
+                             "%d frames in %.1f s → %.1f frames/s",
+                             test.frames, test.frames, test.elapsed, test.fps)
+                 + f"</b>, {fmt_bytes(test.bytes)}"]
         if test.settings == clip.settings:
             est = testencode.estimate(job, test, [])
-            whole = "trimmed clip" if clip.trim.start or clip.trim.end is not None else "whole clip"
-            lines.append(f"Estimate for the {whole} ({job.output_frame_count} frames, "
-                         f"{fmt_duration(job.output_duration)}): <b>{fmt_seconds(est.seconds)}</b>, "
-                         f"about <b>{fmt_bytes(est.bytes)}</b>")
-            lines.append("<small>Accuracy depends on how typical the test piece is: test at "
-                         "a busy part of the clip for a safe estimate.</small>")
+            n = job.output_frame_count
+            args = (n, fmt_duration(job.output_duration), fmt_seconds(est.seconds),
+                    fmt_bytes(est.bytes))
+            if clip.trim.start or clip.trim.end is not None:
+                lines.append(trp("Estimate for the trimmed clip (%d frame, %s): <b>%s</b>, "
+                                 "about <b>%s</b>",
+                                 "Estimate for the trimmed clip (%d frames, %s): <b>%s</b>, "
+                                 "about <b>%s</b>", n, *args))
+            else:
+                lines.append(trp("Estimate for the whole clip (%d frame, %s): <b>%s</b>, "
+                                 "about <b>%s</b>",
+                                 "Estimate for the whole clip (%d frames, %s): <b>%s</b>, "
+                                 "about <b>%s</b>", n, *args))
+            lines.append("<small>" + tr("Accuracy depends on how typical the test piece is: "
+                                        "test at a busy part of the clip for a safe estimate.")
+                         + "</small>")
             if job.mode == Mode.RETIME:
-                lines.append("Lossless retime copies the stream – no encoding, so it is fast "
-                             "for any length.")
+                lines.append(tr("Lossless retime copies the stream – no encoding, so it is fast "
+                                "for any length."))
         else:
-            lines.append("<span style='color:#d35400'>The output settings changed after this "
-                         "test – the estimate no longer applies. Run the test again.</span>")
+            lines.append("<span style='color:#d35400'>" + tr(
+                "The output settings changed after this test – the estimate no longer applies. "
+                "Run the test again.") + "</span>")
         return "<br>".join(lines)
 
     # ------------------------------------------------------------------ comparison
@@ -364,7 +380,8 @@ class TestPanel(QWidget):
         k = self.slider.value()
         test = clip.test
         src = min(test.source_frame(k), clip.frames.count - 1)
-        self.frame_label.setText(f"output {k + 1}/{media.frames.count} ↔ source frame {src}")
+        self.frame_label.setText(tr("output %d/%d ↔ source frame %d", k + 1, media.frames.count,
+                                     src))
         dpr = self.devicePixelRatioF()
         src_rect, out_rect = self.view.frame_rects()
 

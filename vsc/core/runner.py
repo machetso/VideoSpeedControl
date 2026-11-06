@@ -18,6 +18,7 @@ from pathlib import Path
 
 from . import command, ffmpeg_bin
 from .job import Job
+from ..i18n import tr
 
 
 @dataclass
@@ -118,7 +119,7 @@ def _create_video(job: Job, output: Path, supported_pix_fmts: list[str] | None):
         return smart.SmartRunner(job, output, job.joins, supported_pix_fmts)
     if job.codec and job.codec.external == "avm":
         if rife.is_rife(job):
-            raise command.CommandError("RIFE cannot be combined with AV2")
+            raise command.CommandError(tr("RIFE cannot be combined with AV2"))
         from . import avm
         return avm.AvmRunner(job, output, supported_pix_fmts)
     if rife.is_rife(job):

@@ -12,6 +12,7 @@ import subprocess
 
 from . import ffmpeg_bin
 from .probe import FrameMap, MediaInfo
+from ..i18n import tr
 
 # Seek slightly before the wanted frame; accurate seeking then delivers exactly that frame.
 SEEK_EPS_FRAMES = 0.25
@@ -49,8 +50,8 @@ def grab_frame(info: MediaInfo, frames: FrameMap, index: int, size: tuple[int, i
     res = subprocess.run(frame_args(info, frames, index, size, accurate), capture_output=True,
                          timeout=timeout, **ffmpeg_bin.POPEN_FLAGS)
     if res.returncode != 0 or not res.stdout:
-        msg = res.stderr.decode("utf-8", "replace").strip() or "no image"
-        raise ValueError(f"Cannot read frame {index}: {msg}")
+        msg = res.stderr.decode("utf-8", "replace").strip() or tr("no image")
+        raise ValueError(tr("Cannot read frame %d: %s", index, msg))
     return res.stdout
 
 

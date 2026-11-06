@@ -29,10 +29,11 @@ from pathlib import Path
 
 from . import audio, command, ffmpeg_bin, formats
 from .probe import FrameMap, MediaInfo
+from ..i18n import N_, tr
 
 # goal → (VMAF mean over all samples, VMAF mean every single sample must reach)
 GOALS = {"identical": (96.0, 94.5), "smaller": (93.0, 91.0)}
-GOAL_LABELS = {"identical": "Looks identical", "smaller": "Smaller, minimal loss"}
+GOAL_LABELS = {"identical": N_("Looks identical"), "smaller": N_("Smaller, minimal loss")}
 SAMPLES = 3
 PIXEL_BUDGET = 1.5e8          # pixels per sample (sample frames = budget / frame size, clamped)
 MIN_SAMPLE_FRAMES, MAX_SAMPLE_FRAMES = 48, 150
@@ -64,11 +65,11 @@ class Suggestion:
 
     def summary(self, info: MediaInfo) -> str:
         """e.g. 'quality 23 ≈ 205 kbit/s, sound copied → about 46 % of the original'."""
-        sound = {"copy": "sound copied", "none": "no sound"}.get(
-            self.audio, f"AAC {self.audio_kbps} kbit/s")
+        sound = {"copy": tr("sound copied"), "none": tr("no sound")}.get(
+            self.audio) or tr("AAC %d kbit/s", self.audio_kbps)
         share = self.size_bytes / info.size_bytes * 100 if info.size_bytes else 0
-        text = (f"quality {self.crf} ≈ {self.video_kbps} kbit/s (VMAF {self.vmaf:.1f}), {sound}"
-                f" → about {share:.0f} % of the original")
+        text = tr("quality %d ≈ %d kbit/s (VMAF %.1f), %s → about %.0f %% of the original",
+                  self.crf, self.video_kbps, self.vmaf, sound, share)
         return text + (f". {self.note}" if self.note else "")
 
 
@@ -122,7 +123,7 @@ def crf_range(codec_key: str) -> tuple[int, int]:
     values = formats.QUALITY_VALUES.get(codec_key)
     codec = formats.CODECS_BY_KEY[codec_key]
     if not values or codec.quality is None:
-        raise SuggestError(f"{codec.label} has no quality scale to search.")
+        raise SuggestError(tr("%s has no quality scale to search.", tr(codec.label)))
     lo = max(codec.quality.minimum + 1, values[0] - 8)
     return lo, min(codec.quality.maximum, values[-1])
 
@@ -131,7 +132,7 @@ def _run(args: list[str], cwd: Path) -> None:
     res = subprocess.run(args, cwd=cwd, capture_output=True, text=True, errors="replace",
                          timeout=3600, **ffmpeg_bin.POPEN_FLAGS)
     if res.returncode != 0:
-        raise SuggestError(res.stderr.strip()[-400:] or "FFmpeg failed")
+        raise SuggestError(res.stderr.strip()[-400:] or tr("FFmpeg failed"))
 
 
 def _reference(info: MediaInfo, frames: FrameMap | None, span: tuple[int, int], out: Path) -> None:
@@ -207,7 +208,7 @@ def suggest(info: MediaInfo, frames: FrameMap | None, codec_key: str, goal: str 
         d = Path(tmp)
         refs = []
         for k, span in enumerate(spans):
-            step(f"Preparing sample {k + 1} of {len(spans)}")
+            step(tr("Preparing sample %d of %d", k + 1, len(spans)))
             ref = d / f"ref{k}.mkv"
             _reference(info, frames, span, ref)
             refs.append(ref)
@@ -223,7 +224,7 @@ def suggest(info: MediaInfo, frames: FrameMap | None, codec_key: str, goal: str 
                                                                  container="mkv"))
                 scores, size = [], 0
                 for k, ref in enumerate(refs):
-                    step(f"Trying quality {crf} (sample {k + 1})")
+                    step(tr("Trying quality %d (sample %d)", crf, k + 1))
                     enc = d / f"enc{k}.mkv"
                     size += _encode(job, ref, enc, pix_fmt)
                     per_frame = _vmaf(enc, ref, pix_fmt)
@@ -241,10 +242,10 @@ def suggest(info: MediaInfo, frames: FrameMap | None, codec_key: str, goal: str 
     total = int((video_kbps + sound_kbps) * 1000 / 8 * info.duration)
     note = ""
     if not found:
-        note = (f"Even the best quality searched does not reach the goal "
-                f"(VMAF {sum(scores) / len(scores):.1f}).")
+        note = tr("Even the best quality searched does not reach the goal (VMAF %.1f).",
+                  sum(scores) / len(scores))
     elif info.video_bitrate and video_kbps * 1000 >= NO_SAVING * info.video_bitrate:
-        note = "No real saving with this codec: it needs about as much data as the original."
-    progress(1.0, "Measured")
+        note = tr("No real saving with this codec: it needs about as much data as the original.")
+    progress(1.0, tr("Measured"))
     return Suggestion(codec_key, goal, crf, video_kbps, sum(scores) / len(scores), a_mode,
                       a_kbps, channels, total, note)

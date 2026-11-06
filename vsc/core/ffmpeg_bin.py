@@ -15,6 +15,8 @@ import sys
 from functools import cache
 from pathlib import Path
 
+from ..i18n import tr
+
 IS_WINDOWS = sys.platform == "win32"
 EXE = ".exe" if IS_WINDOWS else ""
 PLATFORM_DIR = "windows-x64" if IS_WINDOWS else "linux-x64"
@@ -44,7 +46,7 @@ def find_tool(name: str) -> str:
     if found := shutil.which(name):
         return found
     raise FileNotFoundError(
-        f"{name} not found. Run 'python tools/fetch_ffmpeg.py' or install FFmpeg."
+        tr("%s not found. Run '%s' or install FFmpeg.", name, "python tools/fetch_ffmpeg.py")
     )
 
 

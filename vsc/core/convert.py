@@ -28,6 +28,7 @@ from pathlib import Path
 from . import audio, batch, formats
 from .job import Job, OutputSettings
 from .probe import FrameMap, MediaInfo
+from ..i18n import tr
 
 # codecs offered (best default first); the GUI greys out the ones FFmpeg lacks
 CODECS = ("svtav1", "aom", "x265", "x264")
@@ -168,16 +169,17 @@ def audio_problem(info: MediaInfo, cs: ConvertSettings) -> str | None:
         return None
     if cs.audio == "copy":
         if not audio.container_holds(cs.container, info.audio_codec):
-            return (f"{(info.audio_codec or 'this sound').upper()} cannot be copied into "
-                    f"{cs.container.upper()} – choose MKV or another sound codec.")
+            return tr("%s cannot be copied into %s – choose MKV or another sound codec.",
+                      (info.audio_codec or tr("this sound")).upper(), cs.container.upper())
         return None
     return audio.encode_reason(cs.container, cs.audio)
 
 
 def fps_choices(info: MediaInfo) -> list[tuple[str, Fraction | None]]:
     """(label, rate) for the frame-rate list: the original first, then the app's usual rates."""
-    out: list[tuple[str, Fraction | None]] = [(f"{float(info.fps):.5g} fps (original)", None)]
-    out += [(f"{label} fps", r) for label, r in formats.FRAME_RATES if r != info.fps]
+    out: list[tuple[str, Fraction | None]] = [
+        (tr("%s fps (original)", f"{float(info.fps):.5g}"), None)]
+    out += [(tr("%s fps", label), r) for label, r in formats.FRAME_RATES if r != info.fps]
     return out
 
 
@@ -193,7 +195,7 @@ def make_pro_job(info: MediaInfo, frames: FrameMap | None, cs: ConvertSettings,
     codec = formats.CODECS_BY_KEY[cs.codec]
     container = cs.container if cs.container in codec.containers else codec.containers[0]
     if cs.measures and measured is None:
-        raise ValueError("This file has not been measured yet.")
+        raise ValueError(tr("This file has not been measured yet."))
     quality = bitrate = None
     if cs.rate == "smart":
         quality = measured.crf
@@ -227,20 +229,22 @@ def describe(cs: ConvertSettings) -> str:
     """Short text for a row with its own settings, e.g. 'HEVC MKV · 25 fps · 800 kbit/s · …'."""
     parts = [f"{formats.CODECS_BY_KEY[cs.codec].label.split(' (')[0]} {cs.container.upper()}"]
     if cs.fps:
-        parts.append(f"{float(cs.fps):.5g} fps")
+        parts.append(tr("%s fps", f"{float(cs.fps):.5g}"))
     if cs.rate == "level":
-        parts.append(formats.QUALITY_LEVELS[cs.level][0])
+        parts.append(tr(formats.QUALITY_LEVELS[cs.level][0]))
     elif cs.rate == "crf":
-        parts.append(f"quality {cs.crf}")
+        parts.append(tr("quality %d", cs.crf))
     elif cs.rate == "kbps":
-        parts.append(f"{cs.kbps} kbit/s")
+        parts.append(tr("%d kbit/s", cs.kbps))
     else:
-        parts.append("smart, " + ("looks identical" if cs.goal == "identical" else "smaller"))
-    a = {"default": "AAC", "smart": "sound smart", "copy": "sound copied",
-         "none": "no sound"}.get(cs.audio) or audio.LABELS[cs.audio]
+        parts.append(tr("smart, looks identical") if cs.goal == "identical"
+                     else tr("smart, smaller"))
+    a = {"default": "AAC", "smart": tr("sound smart"), "copy": tr("sound copied"),
+         "none": tr("no sound")}.get(cs.audio) or tr(audio.LABELS[cs.audio])
     if cs.audio in audio.ENCODERS:
         if cs.channels:
-            a += {1: " mono", 2: " stereo"}.get(cs.channels, f" {cs.channels} ch")
+            a += " " + (tr("mono") if cs.channels == 1 else tr("stereo") if cs.channels == 2
+                        else tr("%d ch", cs.channels))
         if cs.audio_kbps and cs.audio != "flac":
             a += f" {cs.audio_kbps}k"
     parts.append(a)

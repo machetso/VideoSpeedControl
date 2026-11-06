@@ -15,7 +15,9 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QPointF, QRectF, Signal
 from PySide6.QtWidgets import QComboBox
 
-ZOOMS = (("Fit", None), ("100 % (1:1)", 1.0), ("200 %", 2.0))
+from ..i18n import N_, tr
+
+ZOOMS = ((N_("Fit"), None), ("100 % (1:1)", 1.0), ("200 %", 2.0))
 
 
 def fit_rect(img_w: float, img_h: float, box: QRectF) -> QRectF:
@@ -66,10 +68,10 @@ class ZoomState(QObject):
     def combo(self) -> QComboBox:
         """A combo box kept in sync with this state."""
         box = QComboBox()
-        box.setToolTip("Zoom. At 100 % every pixel of the footage is shown 1:1 – drag to pan,\n"
-                       "double-click the picture to switch between Fit and 100 %.")
+        box.setToolTip(tr("Zoom. At 100 % every pixel of the footage is shown 1:1 – drag to pan,\n"
+                          "double-click the picture to switch between Fit and 100 %."))
         for label, z in ZOOMS:
-            box.addItem(label, z)
+            box.addItem(tr(label), z)
         box.currentIndexChanged.connect(lambda: self.zoom != box.currentData()
                                         and self.set_zoom(box.currentData()))
 

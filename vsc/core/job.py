@@ -15,6 +15,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from . import formats, segments as seg
+from ..i18n import N_, tr
 from .formats import COPY, CODECS_BY_KEY
 from .probe import FrameMap, MediaInfo
 
@@ -28,14 +29,14 @@ class Mode(Enum):
 
 
 MODE_LABELS = {
-    Mode.RETIME: "Lossless retime (no re-encoding)",
-    Mode.REENCODE: "Re-encode, every frame used once",
-    Mode.DROP: "Frame selection (frames are skipped)",
-    Mode.INTERPOLATE: "Interpolation (in-between frames are calculated)",
-    Mode.SMART: "Smart re-encode (only marked sections are re-encoded)",
+    Mode.RETIME: N_("Lossless retime (no re-encoding)"),
+    Mode.REENCODE: N_("Re-encode, every frame used once"),
+    Mode.DROP: N_("Frame selection (frames are skipped)"),
+    Mode.INTERPOLATE: N_("Interpolation (in-between frames are calculated)"),
+    Mode.SMART: N_("Smart re-encode (only marked sections are re-encoded)"),
 }
 
-KEYFRAME_TRIM_REASON = (
+KEYFRAME_TRIM_REASON = N_(
     "Without re-encoding, cuts are only possible at keyframes: only keyframes are complete "
     "pictures. All other frames merely store the differences to their neighbours and cannot "
     "be decoded once the preceding keyframe is cut away."
@@ -188,17 +189,17 @@ class Job:
         s = self.settings
         reasons = []
         if not self.has_segments and not self.is_lossless_speed:
-            reasons.append(
-                f"Speed {float(self.speed):.4g}× differs from the lossless speed "
-                f"{float(self.lossless_speed):.4g}× at {float(s.fps):.5g} fps")
+            reasons.append(tr("Speed %s× differs from the lossless speed %s× at %s fps",
+                              f"{float(self.speed):.4g}", f"{float(self.lossless_speed):.4g}",
+                              f"{float(s.fps):.5g}"))
         if s.resize != "source":
-            reasons.append("Resizing requires re-encoding")
+            reasons.append(tr("Resizing requires re-encoding"))
         if self.frames and not self.trim_on_keyframes():
-            reasons.append("Trim points are not on keyframes")
+            reasons.append(tr("Trim points are not on keyframes"))
         if (self.has_segments and self.container == "mkv"
                 and max(p.rate for p in self.pieces()) > MKV_MAX_FPS):
-            reasons.append("Matroska stores timestamps in milliseconds – too coarse for sections "
-                           f"above {MKV_MAX_FPS} fps; choose MP4 or MOV")
+            reasons.append(tr("Matroska stores timestamps in milliseconds – too coarse for "
+                              "sections above %d fps; choose MP4 or MOV", MKV_MAX_FPS))
         return reasons
 
     def trim_on_keyframes(self) -> bool:
@@ -304,7 +305,7 @@ class Job:
         c = self.codec
         allowed = formats.allowed_formats(c, self.profile, supported)
         if not allowed:
-            raise ValueError(f"{c.label}: no usable pixel format")
+            raise ValueError(tr("%s: no usable pixel format", tr(c.label)))
         want_chroma = self.settings.chroma or self.info.chroma
         want_depth = self.settings.depth or min(10, max(8, self.info.bit_depth))
         if (want_chroma, want_depth) in allowed:

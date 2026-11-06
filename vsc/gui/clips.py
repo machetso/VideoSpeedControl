@@ -18,21 +18,22 @@ from PySide6.QtGui import QColor
 from ..core import formats, segments as seg, testencode
 from ..core.job import Job, Mode, OutputSettings, Trim
 from ..core.probe import FrameMap, MediaInfo
+from ..i18n import N_, tr
 
 
 class Status(Enum):
-    PROBING = "Reading…"
-    SCANNING = "Scanning frames…"
-    READY = "Ready"
-    ERROR = "Error"
+    PROBING = N_("Reading…")          # values are shown – tr(status.value)
+    SCANNING = N_("Scanning frames…")
+    READY = N_("Ready")
+    ERROR = N_("Error")
 
 
 MODE_SHORT = {
-    Mode.SMART: "Smart re-encode",
-    Mode.RETIME: "A – lossless retime",
-    Mode.REENCODE: "Re-encode",
-    Mode.DROP: "B – frame selection",
-    Mode.INTERPOLATE: "C – interpolation",
+    Mode.SMART: N_("Smart re-encode"),
+    Mode.RETIME: N_("A – lossless retime"),
+    Mode.REENCODE: N_("Re-encode"),
+    Mode.DROP: N_("B – frame selection"),
+    Mode.INTERPOLATE: N_("C – interpolation"),
 }
 
 
@@ -134,19 +135,19 @@ def frame_rate_choices(real_fps) -> list[tuple[str, "Fraction"]]:
         rates.append((f"{name} fps {extra}".strip(), fps))
     for i, (label, fps) in enumerate(rates):
         if fps == real_fps:
-            rates[i] = (f"{label} (original)", fps)
+            rates[i] = (tr("%s (original)", label), fps)
             return rates
-    rates.append((f"{fmt_rate(real_fps)} fps (original)", real_fps))
+    rates.append((tr("%s fps (original)", fmt_rate(real_fps)), real_fps))
     return sorted(rates, key=lambda r: r[1])
 
 
 def fmt_slowdown(factor: float) -> str:
     """How much slower (factor > 1) or faster than the original, e.g. '8× slower'."""
     if abs(factor - 1) < 1e-4:
-        return "real time"
+        return tr("real time")
     if factor > 1:
-        return f"{factor:.3g}× slower"
-    return f"{1 / factor:.3g}× faster"
+        return tr("%s× slower", f"{factor:.3g}")
+    return tr("%s× faster", f"{1 / factor:.3g}")
 
 
 def fmt_seconds(seconds: float) -> str:
@@ -173,8 +174,9 @@ def chroma_label(chroma: str) -> str:
 
 
 class ClipModel(QAbstractTableModel):
-    COLUMNS = ("File", "Device", "Codec", "Resolution", "FPS", "Frames", "Duration", "Format",
-               "Output", "Estimate", "Status")
+    # English column keys (used in code); the header shows tr(key)
+    COLUMNS = (N_("File"), N_("Device"), N_("Codec"), N_("Resolution"), N_("FPS"), N_("Frames"),
+               N_("Duration"), N_("Format"), N_("Output"), N_("Estimate"), N_("Status"))
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -190,7 +192,7 @@ class ClipModel(QAbstractTableModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return self.COLUMNS[section]
+            return tr(self.COLUMNS[section])
         return None
 
     def data(self, index, role=Qt.DisplayRole):
@@ -209,15 +211,17 @@ class ClipModel(QAbstractTableModel):
                 return clip.error
             if col == "FPS" and clip.info and clip.info.slowmo_factor:
                 i = clip.info
-                return (f"Recorded at {fmt_rate(i.capture_fps)} fps, stored at {fmt_rate(i.fps)} fps:\n"
-                        f"the file is already {i.slowmo_factor:.3g}× slow motion.\n"
-                        f"{fmt_rate(i.capture_fps)} fps is used as the original frame rate.")
+                return tr("Recorded at %s fps, stored at %s fps:\n"
+                          "the file is already %s× slow motion.\n"
+                          "%s fps is used as the original frame rate.",
+                          fmt_rate(i.capture_fps), fmt_rate(i.fps), f"{i.slowmo_factor:.3g}",
+                          fmt_rate(i.capture_fps))
             if col == "Device" and clip.info and clip.info.recorded:
-                return f"Recorded {clip.info.recorded:%Y-%m-%d %H:%M}"
+                return tr("Recorded %s", f"{clip.info.recorded:%Y-%m-%d %H:%M}")
             if col == "Estimate":
-                return ("Time and size for the whole (trimmed) clip.\n"
-                        "Measured by a test encode of this clip, or ≈ scaled from a test of\n"
-                        "another clip with identical settings. Run a test encode for a value.")
+                return tr("Time and size for the whole (trimmed) clip.\n"
+                          "Measured by a test encode of this clip, or ≈ scaled from a test of\n"
+                          "another clip with identical settings. Run a test encode for a value.")
         if role == Qt.ForegroundRole:
             if clip.status == Status.ERROR:
                 return QColor("#c0392b")
@@ -230,7 +234,7 @@ class ClipModel(QAbstractTableModel):
         if col == "File":
             return clip.path.name
         if col == "Status":
-            return clip.export or clip.status.value
+            return clip.export or tr(clip.status.value)
         i = clip.info
         if i is None:
             return ""
@@ -244,25 +248,25 @@ class ClipModel(QAbstractTableModel):
         if col == "FPS":
             text = fmt_rate(i.real_fps) + (" (VFR?)" if i.possibly_vfr else "")
             if i.slowmo_factor:
-                text += f" (slow-mo, file {fmt_rate(i.fps)})"
+                text += tr(" (slow-mo, file %s)", fmt_rate(i.fps))
             return text
         if col == "Frames":
             job = clip.job
             if clip.trim.start or clip.trim.end is not None:
-                return f"{job.source_frame_count} of {job.total_frames}"
+                return tr("%d of %d", job.source_frame_count, job.total_frames)
             return str(job.total_frames)
         if col == "Duration":
             return fmt_duration(i.duration)
         if col == "Format":
-            return f"{chroma_label(i.chroma)} {i.bit_depth}-bit"
+            return tr("%s %d-bit", chroma_label(i.chroma), i.bit_depth)
         if col == "Output":
             job = clip.job
             if job.mode == Mode.SMART:
-                return "Smart re-encode"
+                return tr("Smart re-encode")
             if job.has_segments:
-                return ("Sections – lossless (VFR)" if job.mode == Mode.RETIME else
-                        f"Sections → {fmt_rate(job.settings.fps)} fps")
-            return MODE_SHORT[job.mode]
+                return (tr("Sections – lossless (VFR)") if job.mode == Mode.RETIME else
+                        tr("Sections → %s fps", fmt_rate(job.settings.fps)))
+            return tr(MODE_SHORT[job.mode])
         return ""
 
     # ------------------------------------------------------------------ estimates
@@ -275,7 +279,7 @@ class ClipModel(QAbstractTableModel):
 
     def _estimate_text(self, clip: Clip) -> str:
         if clip.testing:
-            return "testing…"
+            return tr("testing…")
         est = self.estimate(clip)
         if est is None:
             return ""

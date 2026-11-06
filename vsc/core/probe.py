@@ -17,6 +17,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from . import ffmpeg_bin
+from ..i18n import tr
 
 TRANSFER_NAMES = {
     "bt709": "SDR (BT.709)",
@@ -177,19 +178,20 @@ def probe(path: str | Path) -> MediaInfo:
         "-show_format", "-show_streams", str(path),
     ], timeout=60)
     if res.returncode != 0:
-        raise ValueError(f"Cannot read {path.name}: {res.stderr.strip() or 'unknown error'}")
+        raise ValueError(tr("Cannot read %s: %s", path.name,
+                              res.stderr.strip() or tr("unknown error")))
     data = json.loads(res.stdout or "{}")
     streams = data.get("streams", [])
     fmt = data.get("format", {})
     videos = [s for s in streams if s.get("codec_type") == "video"
               and not s.get("disposition", {}).get("attached_pic")]
     if not videos:
-        raise ValueError(f"{path.name} contains no video stream")
+        raise ValueError(tr("%s contains no video stream", path.name))
     v = videos[0]
 
     fps = parse_rate(v.get("r_frame_rate")) or parse_rate(v.get("avg_frame_rate"))
     if not fps:
-        raise ValueError(f"{path.name}: frame rate unknown")
+        raise ValueError(tr("%s: frame rate unknown", path.name))
 
     rotation = 0
     for sd in v.get("side_data_list", []):
@@ -259,7 +261,7 @@ def _device(tags: dict[str, str], v_tags: dict[str, str]) -> str | None:
             tuple(GOPRO_MODELS)):
         model = next((m for prefix, m in GOPRO_MODELS.items() if firmware.startswith(prefix)), "")
         name = f"GoPro {model}".strip()
-        return f"{name} (firmware {firmware})" if firmware else name
+        return tr("%s (firmware %s)", name, firmware) if firmware else name
     encoder = tags.get("encoder", "")
     if encoder and not encoder.lower().startswith(("lavf", "lavc")):
         return encoder         # e.g. DJI cameras write their name here
@@ -394,7 +396,7 @@ def scan_frames(path: str | Path, stream_index: int = 0) -> FrameMap:
         str(path),
     ], timeout=600)
     if res.returncode != 0:
-        raise ValueError(f"Cannot scan frames: {res.stderr.strip()}")
+        raise ValueError(tr("Cannot scan frames: %s", res.stderr.strip()))
     frames: list[tuple[int, bool]] = []
     packets: list[tuple[int, int, int]] = []
     time_base = Fraction(1, 1000)

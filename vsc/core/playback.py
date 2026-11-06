@@ -20,6 +20,7 @@ from . import ffmpeg_bin, segments as seg
 from .command import _num, seek_time
 from .formats import COPY
 from .job import Job
+from ..i18n import tr
 
 PREVIEW_MAX = (960, 540)
 PREVIEW_VFR_FPS = Fraction(60)   # variable-rate output is previewed like a 60 Hz screen shows it
@@ -65,7 +66,7 @@ def plan(job: Job, start: int, size: tuple[int, int]) -> PlayPlan:
         rate = max(p.rate for p in pieces)
         if job.settings.codec == COPY or job.settings.smart:
             out_fps = PREVIEW_VFR_FPS
-            note = "Variable frame rate, previewed at 60 fps."
+            note = tr("Variable frame rate, previewed at %d fps.", PREVIEW_VFR_FPS)
         chain.append(f"setpts='({seg.setpts_expr(pieces)})/TB'")
         ratio = float(out_fps / min(p.rate for p in pieces))   # > 1 if any part is stretched
     else:
@@ -75,7 +76,7 @@ def plan(job: Job, start: int, size: tuple[int, int]) -> PlayPlan:
     if ratio > 1 + 1e-6 and method != "dup" and not variable:
         chain.append(f"framerate=fps={out_fps}")
         if is_slow(method):
-            note = "Preview shows the interpolation as blending (the real one is too slow)."
+            note = tr("Preview shows the interpolation as blending (the real one is too slow).")
     else:
         chain.append(f"fps={out_fps}")
     args = [ffmpeg_bin.ffmpeg(), "-hide_banner", "-v", "error", "-nostdin"]

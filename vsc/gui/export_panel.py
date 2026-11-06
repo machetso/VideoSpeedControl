@@ -17,10 +17,12 @@ from PySide6.QtWidgets import (QButtonGroup, QComboBox, QFileDialog, QFormLayout
                                QRadioButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from ..core import batch
+from ..i18n import N_, tr, trp
 from .clips import fmt_seconds
 
-STATUS_TEXT = {"queued": "Queued", "running": "Encoding…", "done": "Done", "failed": "Failed",
-               "cancelled": "Cancelled", "skipped": "Skipped"}
+STATUS_TEXT = {"queued": N_("Queued"), "running": N_("Encoding…"), "done": N_("Done"),
+               "failed": N_("Failed"), "cancelled": N_("Cancelled"), "skipped": N_("Skipped")}
+OVERWRITES = "overwrites the existing file"     # batch.plan's note (compared untranslated)
 STATUS_COLOR = {"done": "#27ae60", "failed": "#c0392b", "cancelled": "#d35400",
                 "skipped": "#7f8c8d"}
 
@@ -40,13 +42,13 @@ class ExportPanel(QWidget):
         self._outputs: list[Path | None] = []
         self._done_rows: set[int] = set()
 
-        self.next_to_source = QRadioButton("Next to each source file")
-        self.to_folder = QRadioButton("Folder:")
+        self.next_to_source = QRadioButton(tr("Next to each source file"))
+        self.to_folder = QRadioButton(tr("Folder:"))
         group = QButtonGroup(self)
         group.addButton(self.next_to_source)
         group.addButton(self.to_folder)
         self.folder = QLineEdit(self.store.value("export/folder", str(Path.home() / "Videos")))
-        browse = QPushButton("Browse…")
+        browse = QPushButton(tr("Browse…"))
         browse.clicked.connect(self._browse)
         folder_row = QHBoxLayout()
         folder_row.addWidget(self.to_folder)
@@ -58,30 +60,30 @@ class ExportPanel(QWidget):
             self.to_folder.setChecked(True)
 
         self.pattern = QLineEdit(self.store.value("export/pattern", batch.DEFAULT_PATTERN))
-        tokens = "\n".join(f"{t}  –  {d}" for t, d in batch.PATTERN_TOKENS.items())
-        self.pattern.setToolTip("File name without extension. Placeholders:\n" + tokens)
+        tokens = "\n".join(f"{t}  –  {tr(d)}" for t, d in batch.PATTERN_TOKENS.items())
+        self.pattern.setToolTip(tr("File name without extension. Placeholders:") + "\n" + tokens)
         self.pattern.setPlaceholderText(batch.DEFAULT_PATTERN)
-        pattern_help = QLabel("Placeholders: " + "  ".join(batch.PATTERN_TOKENS))
+        pattern_help = QLabel(tr("Placeholders: %s", "  ".join(batch.PATTERN_TOKENS)))
         pattern_help.setStyleSheet("color: gray")
         pattern_help.setToolTip(tokens)
 
         self.policy = QComboBox()
         for key, label in batch.POLICIES:
-            self.policy.addItem(label, key)
+            self.policy.addItem(tr(label), key)
         idx = self.policy.findData(self.store.value("export/policy", batch.RENAME))
         self.policy.setCurrentIndex(max(0, idx))
 
         self.scope = QComboBox()
-        self.scope.addItem("All clips", "all")
-        self.scope.addItem("Selected clips only", "selected")
-        self.scope.addItem("Batch list (added in Preview & trim)", "batch")
-        self.scope.setItemData(2, "Snapshots added with “Add to batch” – the same clip can be in "
-                                  "the list several times, e.g. lossless and smart.",
+        self.scope.addItem(tr("All clips"), "all")
+        self.scope.addItem(tr("Selected clips only"), "selected")
+        self.scope.addItem(tr("Batch list (added in Preview & trim)"), "batch")
+        self.scope.setItemData(2, tr("Snapshots added with “Add to batch” – the same clip can be "
+                                     "in the list several times, e.g. lossless and smart."),
                                Qt.ToolTipRole)
-        self.remove_button = QPushButton("Remove from list")
-        self.remove_button.setToolTip("Remove the selected entries from the batch list")
+        self.remove_button = QPushButton(tr("Remove from list"))
+        self.remove_button.setToolTip(tr("Remove the selected entries from the batch list"))
         self.remove_button.clicked.connect(self._remove_selected)
-        self.clear_button = QPushButton("Clear list")
+        self.clear_button = QPushButton(tr("Clear list"))
         self.clear_button.clicked.connect(self.clear_entries)
         scope_row = QHBoxLayout()
         scope_row.addWidget(self.scope, 1)
@@ -89,16 +91,16 @@ class ExportPanel(QWidget):
         scope_row.addWidget(self.clear_button)
 
         form = QFormLayout()
-        form.addRow("Save to", self.next_to_source)
+        form.addRow(tr("Save to"), self.next_to_source)
         form.addRow("", folder_row)
-        form.addRow("File name", self.pattern)
+        form.addRow(tr("File name"), self.pattern)
         form.addRow("", pattern_help)
-        form.addRow("If the file exists", self.policy)
-        form.addRow("Export", scope_row)
+        form.addRow(tr("If the file exists"), self.policy)
+        form.addRow(tr("Export"), scope_row)
 
         self.queue = QTreeWidget()
         self.queue.setColumnCount(3)
-        self.queue.setHeaderLabels(["Clip", "Output file", "Status"])
+        self.queue.setHeaderLabels([tr("Clip"), tr("Output file"), tr("Status")])
         self.queue.setRootIsDecorated(False)
         self.queue.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.queue.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -106,13 +108,13 @@ class ExportPanel(QWidget):
         self.queue.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.queue.itemDoubleClicked.connect(self._double_clicked)
 
-        self.start_button = QPushButton("Start export")
+        self.start_button = QPushButton(tr("Start export"))
         self.start_button.setDefault(True)
         self.start_button.clicked.connect(self.start)
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton(tr("Cancel"))
         self.cancel_button.clicked.connect(self.cancel)
         self.cancel_button.setEnabled(False)
-        self.open_button = QPushButton("Open output folder")
+        self.open_button = QPushButton(tr("Open output folder"))
         self.open_button.clicked.connect(self._open_folder)
         buttons = QHBoxLayout()
         buttons.addWidget(self.start_button)
@@ -122,7 +124,7 @@ class ExportPanel(QWidget):
 
         self.clip_progress = QProgressBar()
         self.overall = QProgressBar()
-        self.overall.setFormat("%p % of the batch")
+        self.overall.setFormat(tr("%s %% of the batch", "%p"))
         self.message = QLabel()
         self.message.setWordWrap(True)
 
@@ -189,7 +191,7 @@ class ExportPanel(QWidget):
         self.options_changed.emit()
 
     def _browse(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Output folder", self.folder.text())
+        folder = QFileDialog.getExistingDirectory(self, tr("Output folder"), self.folder.text())
         if folder:
             self.folder.setText(folder)
             self.to_folder.setChecked(True)
@@ -211,18 +213,18 @@ class ExportPanel(QWidget):
         self.queue.clear()
         self._outputs = []
         for name, item in zip(names, items):
-            row = QTreeWidgetItem([name, self._out_text(item.output), item.note])
+            row = QTreeWidgetItem([name, self._out_text(item.output), tr(item.note)])
             if item.done:
-                row.setText(2, "Done – exported earlier, not exported again")
+                row.setText(2, tr("Done – exported earlier, not exported again"))
                 row.setForeground(2, QColor(STATUS_COLOR["done"]))
             elif item.output is None:
                 row.setForeground(2, QColor(STATUS_COLOR["skipped"]))
-            elif item.note.startswith("overwrites"):
+            elif item.kind == "overwrite":                # language-independent (batch.Item.kind)
                 row.setForeground(2, QColor(STATUS_COLOR["cancelled"]))
             row.setToolTip(1, str(item.output or ""))
             if self.batch_list():
-                row.setToolTip(0, "Double-click: open this entry in Preview & trim – edit it or "
-                                  "add another encoding of the clip")
+                row.setToolTip(0, tr("Double-click: open this entry in Preview & trim – edit it "
+                                     "or add another encoding of the clip"))
             self.queue.addTopLevelItem(row)
             self._outputs.append(item.output)
         runnable = sum(it.output is not None and not it.done for it in items)
@@ -230,12 +232,16 @@ class ExportPanel(QWidget):
         self._done_rows = {i for i, it in enumerate(items) if it.done}
         self.start_button.setEnabled(runnable > 0)
         self._update_list_buttons()
-        text = f"{runnable} clip(s) will be exported." if items else "No clips to export."
+        text = trp("%d clip(s) will be exported.", "%d clip(s) will be exported.", runnable,
+                   runnable) if items else tr("No clips to export.")
         if done:
-            text += (f"  {done} already exported (kept in the list, not exported again – "
-                     "edit an entry or delete its file to export it again).")
+            text += "  " + trp("%d already exported (kept in the list, not exported again – "
+                               "edit an entry or delete its file to export it again).",
+                               "%d already exported (kept in the list, not exported again – "
+                               "edit an entry or delete its file to export it again).",
+                               done, done)
         if problems:
-            text += "  Not included: " + "; ".join(problems)
+            text += "  " + tr("Not included: %s", "; ".join(tr(p) for p in problems))
         self.message.setText(text)
 
     @staticmethod
@@ -264,7 +270,7 @@ class ExportPanel(QWidget):
         row = self.queue.topLevelItem(index)
         if row is None:
             return
-        row.setText(2, STATUS_TEXT.get(status, status) + (f" – {detail}" if detail else ""))
+        row.setText(2, tr(STATUS_TEXT.get(status, status)) + (f" – {tr(detail)}" if detail else ""))
         row.setForeground(2, QColor(STATUS_COLOR.get(status, self.palette().text().color())))
         if status == "running":
             self.queue.scrollToItem(row)
@@ -277,7 +283,7 @@ class ExportPanel(QWidget):
     def _reset_progress(self) -> None:
         self.clip_progress.setRange(0, 1000)
         self.clip_progress.setValue(0)
-        self.clip_progress.setFormat("Current clip")
+        self.clip_progress.setFormat(tr("Current clip"))
         self.overall.setRange(0, 1000)
         self.overall.setValue(0)
 
@@ -286,21 +292,29 @@ class ExportPanel(QWidget):
         self.clip_progress.setValue(round(clip_fraction * 1000))
         self.clip_progress.setFormat(f"{clip_name}: {clip_fraction:.0%}  {clip_text}")
         self.overall.setValue(round(overall_fraction * 1000))
-        self.overall.setFormat(f"Batch: {overall_fraction:.0%}  {overall_text}")
+        self.overall.setFormat(tr("Batch: %s  %s", f"{overall_fraction:.0%}", overall_text))
 
     def finished(self, result: batch.BatchResult, elapsed: float) -> None:
         self.set_running(False)
-        parts = [f"{result.count('done')} done"]
-        for status in ("failed", "skipped", "cancelled"):
-            if result.count(status):
-                parts.append(f"{result.count(status)} {status}")
-        text = ("Export cancelled: " if result.cancelled else "Export finished: ") + ", ".join(parts)
-        text += f" in {fmt_seconds(elapsed)}."
+        n = result.count("done")
+        parts = [trp("%d done", "%d done", n, n)]
+        n = result.count("failed")
+        if n:
+            parts.append(trp("%d failed", "%d failed", n, n))
+        n = result.count("skipped")
+        if n:
+            parts.append(trp("%d skipped", "%d skipped", n, n))
+        n = result.count("cancelled")
+        if n:
+            parts.append(trp("%d cancelled", "%d cancelled", n, n))
+        text = (tr("Export cancelled: %s in %s.", ", ".join(parts), fmt_seconds(elapsed))
+                if result.cancelled else
+                tr("Export finished: %s in %s.", ", ".join(parts), fmt_seconds(elapsed)))
         if result.count("failed"):
-            text += "  Hover over “Failed” for the error message."
+            text += "  " + tr("Hover over “Failed” for the error message.")
         if result.count("cancelled") or result.count("failed"):
-            text += "  Incomplete files were deleted."
+            text += "  " + tr("Incomplete files were deleted.")
         self.message.setText(text)
         if not result.cancelled:
             self.overall.setValue(1000)
-            self.overall.setFormat("Batch: done")
+            self.overall.setFormat(tr("Batch: done"))

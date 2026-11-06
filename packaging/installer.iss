@@ -38,10 +38,20 @@ OutputBaseFilename={#AppName}-{#AppVersion}-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; the user picks the setup language (default: the Windows language); the same language is
+; then used by the program (Help → Language can change it later)
+ShowLanguageDialog=yes
+UsePreviousLanguage=no
 
 [Languages]
+; the program's languages (i18n/*.json): English, German, Spanish, French, Romanian, Hebrew, Klingon
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "romanian"; MessagesFile: "languages\Romanian.isl"
+Name: "hebrew"; MessagesFile: "compiler:Languages\Hebrew.isl"
+Name: "klingon"; MessagesFile: "languages\Klingon.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -52,6 +62,17 @@ Source: "..\dist\{#AppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesu
 [InstallDelete]
 ; an update replaces the whole bundle – no files left over from the previous version
 Type: filesandordirs; Name: "{app}\_internal"
+
+[Registry]
+; the setup language becomes the program's language – read by QSettings("VideoSpeedControl",
+; "VideoSpeedControl") key "language" (HKCU, also for an all-users install: it is a user choice)
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "en"; Languages: english
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "de"; Languages: german
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "es"; Languages: spanish
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "fr"; Languages: french
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "ro"; Languages: romanian
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "he"; Languages: hebrew
+Root: HKCU; Subkey: "Software\VideoSpeedControl\VideoSpeedControl"; ValueType: string; ValueName: "language"; ValueData: "tlh"; Languages: klingon
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

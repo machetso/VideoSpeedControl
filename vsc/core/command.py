@@ -16,6 +16,7 @@ from . import ffmpeg_bin, segments as seg
 from .encoders import hw_filter_suffix, hw_input_args
 from .formats import COPY
 from .job import Job, Mode
+from ..i18n import tr
 
 # Re-encode: seek slightly before the wanted frame; accurate seeking then starts exactly on it.
 SEEK_EPS_FRAMES = 0.25
@@ -67,7 +68,7 @@ def _stream_args(job: Job) -> list[str]:
 
 def build(job: Job, output: Path, supported_pix_fmts: list[str] | None = None) -> list[str]:
     if job.source_frame_count <= 0:
-        raise CommandError("Trim range is empty")
+        raise CommandError(tr("Trim range is empty"))
     if job.mode == Mode.RETIME:
         return _build_copy(job, output)
     return _build_encode(job, output, supported_pix_fmts)
@@ -76,7 +77,7 @@ def build(job: Job, output: Path, supported_pix_fmts: list[str] | None = None) -
 def _build_copy(job: Job, output: Path) -> list[str]:
     blockers = job.retime_blockers()
     if blockers:
-        raise CommandError("Lossless retime not possible: " + "; ".join(blockers))
+        raise CommandError(tr("Lossless retime not possible: %s", "; ".join(blockers)))
     return copy_args(job, output, "setts" if job.has_segments else "itsscale")
 
 
@@ -147,8 +148,8 @@ def _time_filters(job: Job) -> list[str]:
     # Re-time by frame number so that slightly irregular source timestamps cannot cause jitter
     if job.has_segments:
         if job.settings.interpolation not in ("dup", "blend", "mci"):
-            raise CommandError("RIFE cannot be combined with speed sections – "
-                               "choose another interpolation")
+            raise CommandError(tr("RIFE cannot be combined with speed sections – "
+                                  "choose another interpolation"))
         chain = [f"setpts='({seg.setpts_expr(job.pieces())})/TB'"]   # quoted: commas inside
     else:
         rate = job.info.real_fps * job.speed  # source frames per output second

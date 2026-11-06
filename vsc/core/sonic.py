@@ -23,6 +23,7 @@ from functools import cache
 from pathlib import Path
 
 from .ffmpeg_bin import IS_WINDOWS, PLATFORM_DIR
+from ..i18n import tr
 
 LIB_NAME = "sonic.dll" if IS_WINDOWS else "libsonic.so"
 
@@ -61,7 +62,7 @@ def _lib() -> ctypes.CDLL | None:
 
 def unavailable_reason() -> str | None:
     if _lib() is None:
-        return "The Sonic library is missing – run 'python tools/build_sonic.py'."
+        return tr("The Sonic library is missing – run '%s'.", "python tools/build_sonic.py")
     return None
 
 

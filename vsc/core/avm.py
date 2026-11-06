@@ -28,6 +28,7 @@ from . import command, ffmpeg_bin
 from .encoders import EncoderStatus
 from .job import Job
 from .runner import Progress, Result
+from ..i18n import tr
 
 VERSION = "v1.0.0"
 EXT = ".exe" if sys.platform == "win32" else ""
@@ -62,15 +63,15 @@ def find(name: str = "avmenc") -> Path | None:
 def detect() -> EncoderStatus:
     exe = find()
     if not exe or not find("avmdec"):
-        return EncoderStatus(False, [], "AVM (AV2 reference encoder) is not installed – "
-                                        "run tools/fetch_avm.py")
+        return EncoderStatus(False, [], tr("AVM (AV2 reference encoder) is not installed – "
+                                           "run %s", "tools/fetch_avm.py"))
     try:
         res = subprocess.run([str(exe), "--help"], capture_output=True, timeout=20,
                              **ffmpeg_bin.POPEN_FLAGS)
     except (OSError, subprocess.TimeoutExpired) as e:
-        return EncoderStatus(False, [], f"avmenc does not start: {e}")
+        return EncoderStatus(False, [], tr("%s does not start: %s", "avmenc", e))
     if b"--cpu-used" not in res.stdout + res.stderr:
-        return EncoderStatus(False, [], "avmenc does not start")
+        return EncoderStatus(False, [], tr("%s does not start", "avmenc"))
     return EncoderStatus(True, list(PIX_FMTS))
 
 
@@ -180,4 +181,4 @@ def decode_for_preview(src: Path, dst: Path, timeout: float = 600) -> None:
     dec.wait(timeout=timeout)
     if dec.returncode != 0 or res.returncode != 0:
         msg = (dec.stderr.read().decode("utf-8", "replace") + res.stderr.decode("utf-8", "replace"))
-        raise ValueError(f"Cannot decode the AV2 file: {msg.strip()[:300]}")
+        raise ValueError(tr("Cannot decode the AV2 file: %s", msg.strip()[:300]))
